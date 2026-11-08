@@ -4,12 +4,16 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-i2a"
 mkdir -p "${BUILD_DIR}"
+source "${ROOT}/tests/hgs_song_state_sources.sh"
 
 mapfile -t COMMON_SOURCES < <(
   sed -n '/COMMON_SOURCES=(/,/)/p' "${ROOT}/tests/run_stage15_tonal_integration_tests.sh" |
     grep -F '"${ROOT}/src/' |
     sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
 )
+for source_path in "${HGS_SONG_STATE_SOURCES[@]}"; do
+  COMMON_SOURCES+=("${source_path#${ROOT}}")
+done
 
 # The magnitude contract reads the shipped GeneratorParams default, so it links
 # the same Scene sources production does rather than a stand-in.

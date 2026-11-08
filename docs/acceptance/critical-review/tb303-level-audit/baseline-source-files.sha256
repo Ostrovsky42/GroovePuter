@@ -1,0 +1,12 @@
+a1311d713bca17e973e427348046ee018907f1cdc712584625cdc54ff959a7fe  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/swappable_synth_voice.cpp
+07dd29348dadcd4468bfd9ec93f3453926aa999754beb5f3b54121e91e693feb  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/mini_tb303.cpp
+90163a728966c304db563d3a16a835e5ab8f35259d2306667d2a0020c5d45408  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/filter.cpp
+173521942c22da5c5e0fc65425ec4b6d25c27dd1cf3090432caf08b2ec1096d8  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/audio_wavetables.cpp
+08353f755e782fb5667932894d4a27c562332f9d139dc8a16b096781896bf428  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/sh101_synth_voice.cpp
+cef1ff10dccfb252b10020f59c0600092ca709e745e653be161284ae3acf35b9  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/wave_morph_synth_voice.cpp
+6e02dfc98ff1584e77c2f460eee520bc6b71f1bc2ac3797f3bdd6ea61150af0a  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/ay_synth_voice.cpp
+d8976ae2762f7e22f181082ea6a99f592baf7dfbfd65ae6e355641c6b1628179  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/sid_synth.cpp
+19285e9a68141de28e34286bcc0a9a29ee458f592e197a62e0a92b5c8c2c3d53  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/sid_synth_voice.cpp
+da4141ddca62ebc659060f97484fbb1319c3f270bb4f3c85bdea9b13417f88af  /tmp/gp-dsp-a-render.3rrIY2/source/src/dsp/sn76489_synth_voice.cpp
+3740180ff8bbcd504d74f39218c99a392d2d7890c7d0443f6808e2de5af942be  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sound_quality_presets.cpp
+cb142cf1e069f3b0a9d42831c5ecfbc1e4ffee411cebb80f686c8791a0d8ab98  /home/gg/.codex/worktrees/b156/miniacid/tools/dsp_a/render.cpp

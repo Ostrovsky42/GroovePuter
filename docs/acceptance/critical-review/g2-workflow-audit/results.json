@@ -1,0 +1,146 @@
+[
+  {
+    "genre": 10,
+    "seed": 1369899009,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899009 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899010,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899010 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899011,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899011 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899012,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899012 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899013,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899013 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899014,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899014 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899015,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899015 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 10,
+    "seed": 1369899016,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=420 enabled=1 develop=0 sparse=0",
+      "G2_LAYOUT genre=10 seed=1369899016 take=1 take_status=1 first=1 cycle=1 cycle_status=0 develop_skipped=0 break_skipped=0 cycle_bars=8 after_cycle=13 copy=1 paste=1 return_exact=1 total_bars=16 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899009,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899009 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899010,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899010 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899011,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899011 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899012,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899012 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899013,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899013 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899014,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899014 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899015,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899015 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  },
+  {
+    "genre": 5,
+    "seed": 1369899016,
+    "exit": 0,
+    "result": [
+      "G2_ADMISSION prepare=0 archetype=411 enabled=0 develop=1 sparse=1",
+      "G2_LAYOUT genre=5 seed=1369899016 take=1 take_status=1 first=1 cycle=0 cycle_status=5 develop_skipped=0 break_skipped=0 cycle_bars=0 after_cycle=5 copy=0 paste=0 return_exact=0 total_bars=4 saved=1"
+    ]
+  }
+]

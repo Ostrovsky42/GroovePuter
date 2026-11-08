@@ -7,6 +7,7 @@
 #include "../../dsp/atlas_runtime.h"
 #include "../../dsp/miniacid_engine.h"
 #include "../../dsp/mode_manager.h"
+#include "../../phrase/runtime_pattern_event_bank.h"
 #include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 #include "strong_rhythm_live_bridge.h"
@@ -19,6 +20,7 @@ enum class QuantizedGenerationResult : uint8_t {
   CommittedNow,
   PendingNextBar,
   AttemptUnavailable,
+  Busy,
 };
 
 enum class QuantizedGenerationStatus : uint8_t {
@@ -49,6 +51,16 @@ struct PatternTarget {
   int drumSlot = -1;
 };
 
+struct AuditionContext {
+  const MiniAcid* owner = nullptr;
+  PatternTarget target{};
+  uint32_t revision = 0;
+  int songSlot = -1;
+  int songRow = -1;
+  int drumAddress = -1;
+  bool songMode = false;
+};
+
 struct PendingGeneration {
   MiniAcid* owner = nullptr;
   PatternTarget target{};
@@ -58,7 +70,9 @@ struct PendingGeneration {
   uint8_t swingPct = 0;
   QuantizedGenerationScope scope = QuantizedGenerationScope::Full;
   SynthPattern synth[2]{};
+  PhraseRuntime::RuntimePatternEventBuffer synthRuntime[2]{};
   DrumPatternSet drums{};
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin patternHarmony{};
   uint32_t committedRevision = 0;
 };
 
@@ -68,6 +82,9 @@ enum class SlotState : uint8_t {
   Armed,
   Ready,
   Reading,
+  AuditionReserved,
+  AuditionReady,
+  AuditionActive,
 };
 
 struct WriteLease {
@@ -88,6 +105,156 @@ inline std::atomic<int8_t> g_publishedSlot{-1};
 inline std::atomic<uint8_t> g_status{
     static_cast<uint8_t>(QuantizedGenerationStatus::Idle)};
 inline std::atomic<uint32_t> g_commitSerial{0};
+inline std::atomic<uint32_t> g_auditionSession{0};
+inline std::atomic<bool> g_auditionInvalid{false};
+inline std::atomic<bool> g_auditionCleanupPublished{false};
+inline std::atomic<bool> g_auditionSoloRequested{false};
+inline std::atomic<bool> g_auditionSoloActive{false};
+// Immutable while a session is active; begin/end require audio quiescence.
+inline AuditionContext g_auditionContext{};
+
+// Control-side reservation only: no audition data or audio reader exists yet.
+// Both slots must remain reserved until explicitly released by that control
+// owner. Existing generation, Song and Phrase acquisitions then return Busy.
+inline bool reserveAuditionSlots() {
+  if (g_publishedSlot.load(std::memory_order_acquire) >= 0) return false;
+  uint8_t empty = static_cast<uint8_t>(SlotState::Empty);
+  if (!g_slotState[0].compare_exchange_strong(
+          empty, static_cast<uint8_t>(SlotState::AuditionReserved),
+          std::memory_order_acq_rel, std::memory_order_acquire)) return false;
+  empty = static_cast<uint8_t>(SlotState::Empty);
+  if (!g_slotState[1].compare_exchange_strong(
+          empty, static_cast<uint8_t>(SlotState::AuditionReserved),
+          std::memory_order_acq_rel, std::memory_order_acquire)) {
+    g_slotState[0].store(static_cast<uint8_t>(SlotState::Empty),
+                         std::memory_order_release);
+    return false;
+  }
+  return true;
+}
+
+inline void releaseAuditionSlots() {
+  if (g_auditionSession.load(std::memory_order_acquire) != 0) return;
+  for (auto& state : g_slotState) {
+    uint8_t reserved = static_cast<uint8_t>(SlotState::AuditionReserved);
+    state.compare_exchange_strong(reserved, static_cast<uint8_t>(SlotState::Empty),
+                                  std::memory_order_acq_rel,
+                                  std::memory_order_acquire);
+  }
+}
+
+// One control producer and one audio consumer. Session termination requires
+// audio quiescence (the existing AudioMutationGate); no pointer returned by
+// audibleAuditionDrums may survive an audio boundary or that termination.
+inline uint32_t g_nextAuditionSession = 0;  // control thread only
+
+inline uint32_t beginAuditionSession(const AuditionContext& context) {
+  if (context.owner == nullptr || context.drumAddress < 0 ||
+      (context.songMode && (context.songSlot < 0 || context.songRow < 0)) ||
+      g_auditionSession.load(std::memory_order_acquire) != 0 ||
+      !reserveAuditionSlots()) return 0;
+  if (++g_nextAuditionSession == 0) ++g_nextAuditionSession;
+  g_auditionContext = context;
+  g_auditionInvalid.store(false, std::memory_order_release);
+  g_auditionCleanupPublished.store(false, std::memory_order_release);
+  g_auditionSoloRequested.store(false, std::memory_order_release);
+  g_auditionSoloActive.store(false, std::memory_order_release);
+  g_auditionSession.store(g_nextAuditionSession, std::memory_order_release);
+  return g_nextAuditionSession;
+}
+
+// Audio consumer calls this after Song advancement and before using drums.
+// Invalidating is one-way: the control owner must terminate under the gate.
+inline bool validateAuditionContext(uint32_t session, const AuditionContext& now) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire)) return false;
+  const auto& expected = g_auditionContext;
+  const auto& a = expected.target;
+  const auto& b = now.target;
+  // During Song playback the preview follows resident drum rows. The original
+  // context remains immutable for a future explicit destination check.
+  const bool sameSelectors = expected.songMode ||
+      (expected.songRow == now.songRow &&
+       a.synthBank[0] == b.synthBank[0] && a.synthBank[1] == b.synthBank[1] &&
+       a.synthSlot[0] == b.synthSlot[0] && a.synthSlot[1] == b.synthSlot[1]);
+  const bool validDrums = expected.songMode
+      ? now.songRow >= 0 && now.drumAddress >= 0 &&
+            songPatternPage(now.drumAddress) == a.page
+      : expected.drumAddress == now.drumAddress &&
+            a.drumBank == b.drumBank && a.drumSlot == b.drumSlot;
+  const bool same = expected.owner == now.owner && expected.revision == now.revision &&
+      expected.songMode == now.songMode && expected.songSlot == now.songSlot &&
+      sameSelectors && validDrums && a.page == b.page;
+  if (!same) g_auditionInvalid.store(true, std::memory_order_release);
+  return same;
+}
+
+inline bool stageAuditionCandidate(uint32_t session, const DrumPatternSet& drums,
+                                   const DrumPatternSet& accepted) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
+    return false;
+  for (const auto& state : g_slotState) {
+    if (state.load(std::memory_order_acquire) ==
+        static_cast<uint8_t>(SlotState::AuditionReady)) return false;
+  }
+  for (int slot = 0; slot < 2; ++slot) {
+    if (g_slotState[slot].load(std::memory_order_acquire) !=
+        static_cast<uint8_t>(SlotState::AuditionReserved)) continue;
+    g_slots[slot].drums = drums;
+    for (int lane = 0; lane < DrumPatternSet::kMaxLanes; ++lane)
+      g_slots[slot].drums.lanes[lane] = accepted.lanes[lane];
+    g_slots[slot].drums.groove = accepted.groove;
+    g_slotState[slot].store(static_cast<uint8_t>(SlotState::AuditionReady),
+                            std::memory_order_release);
+    return true;
+  }
+  return false;
+}
+
+inline const DrumPatternSet* audibleAuditionDrums(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
+    return nullptr;
+  for (int slot = 0; slot < 2; ++slot) {
+    if (g_slotState[slot].load(std::memory_order_acquire) ==
+        static_cast<uint8_t>(SlotState::AuditionActive)) return &g_slots[slot].drums;
+  }
+  return nullptr;
+}
+
+// Audio thread only, at the existing BAR_START after target validation.
+inline bool activateAuditionAtBar(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session ||
+      g_auditionInvalid.load(std::memory_order_acquire))
+    return false;
+  int ready = -1;
+  int active = -1;
+  for (int slot = 0; slot < 2; ++slot) {
+    const auto state = static_cast<SlotState>(g_slotState[slot].load(std::memory_order_acquire));
+    if (state == SlotState::AuditionReady) ready = slot;
+    if (state == SlotState::AuditionActive) active = slot;
+  }
+  if (ready < 0) return false;
+  g_slotState[ready].store(static_cast<uint8_t>(SlotState::AuditionActive),
+                           std::memory_order_release);
+  if (active >= 0) {
+    g_slotState[active].store(static_cast<uint8_t>(SlotState::AuditionReserved),
+                              std::memory_order_release);
+  }
+  return true;
+}
+
+// Control thread only, while audio is quiescent under AudioMutationGate.
+inline bool endAuditionSession(uint32_t session) {
+  if (session == 0 || g_auditionSession.load(std::memory_order_acquire) != session)
+    return false;
+  g_auditionSession.store(0, std::memory_order_release);
+  for (auto& state : g_slotState) {
+    state.store(static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
+  }
+  return true;
+}
 
 inline PatternTarget captureTarget(const SceneManager& scenes) {
   PatternTarget target{};
@@ -126,6 +293,29 @@ inline bool sameTarget(const PatternTarget& lhs, const PatternTarget& rhs) {
 inline int patternAddressFor(const PatternTarget& target) {
   return songPatternFromPageBankIndex(
       target.page, target.drumBank, target.drumSlot);
+}
+
+inline GroovePuterMaterial::GeneratedPatternHarmonyOrigin
+patternHarmonyFromMigration(const PatternTarget& target,
+                            const StrongRhythmMigrationResult& migration) {
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin origin{};
+  origin.address = {0, static_cast<uint8_t>(
+      songPatternFromPageBankIndex(target.page, target.synthBank[0],
+                                   target.synthSlot[0]))};
+  origin.authority = migration.harmonicAuthority;
+  origin.idiomTemplate = migration.idiomTemplate;
+  origin.rootPitchClass = migration.harmonicRootPitchClass;
+  origin.scaleTypeValue = migration.harmonicScaleTypeValue;
+  origin.onsets = migration.harmonicPlan.onsets;
+  origin.eventCount = migration.harmonicPlan.eventCount;
+  if (origin.eventCount == migration.harmonicProgression.eventCount &&
+      origin.eventCount <= GroovePuterRhythm::kMaxHarmonicEvents) {
+    for (uint8_t i = 0; i < origin.eventCount; ++i)
+      origin.events[i] = migration.harmonicProgression.events[i];
+  } else {
+    origin.eventCount = 0;
+  }
+  return origin;
 }
 
 inline bool targetStillActive(const SceneManager& scenes, const PatternTarget& target) {
@@ -254,7 +444,9 @@ inline void applyLegacyRoleSplit(
   bassBehavior.avoidClusters = true;
   bassBehavior.forceOctaveJump = false;
 
-  leadBehavior.stepMask = 0xAAAA;
+  // stepMask is bit = step (stepAllowed in mode_manager.cpp), unlike drum
+  // templates where bit 15 = step 0. 0x4444 = steps 2/6/10/14 (offbeat 8ths).
+  leadBehavior.stepMask = 0x4444;
   leadBehavior.motifLength = 4;
   leadBehavior.avoidClusters = false;
   leadBehavior.forceOctaveJump = false;
@@ -270,7 +462,8 @@ inline bool preparePlayingCandidate(
     RealizationLevel requestLevel,
     uint32_t generationAttemptOrdinal,
     bool usePreviousPending,
-    PendingGeneration& candidate) {
+    PendingGeneration& candidate,
+    bool keepDrums = false) {
   SceneManager& scenes = engine.sceneManager();
   const Scene& scene = scenes.currentScene();
   if (!targetValid(target)) return false;
@@ -288,6 +481,7 @@ inline bool preparePlayingCandidate(
       : engine.bpm();
   candidate.swingPct = scene.feel.swingPct;
   candidate.scope = QuantizedGenerationScope::Full;
+  candidate.patternHarmony = GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
 
   if (!reusePriorMaterial) {
     // Copy the exact captured target, not a second lookup through mutable current
@@ -341,12 +535,18 @@ inline bool preparePlayingCandidate(
   StrongRhythmMigrationContext context = migrationContextFor(scene, target);
   context.level = requestLevel;
   context.generationAttemptOrdinal = generationAttemptOrdinal;
-  const StrongRhythmMigrationResult migration = migrateStrongRhythmMaterial(
-      requestedGenre,
-      context,
-      candidate.drums,
-      candidate.synth[0],
-      candidate.synth[1]);
+  // GEN DRUMS KEEP (0.9.18): both synths are rebuilt against the drums the
+  // slot already has, the way a synth-only G is; the drums stay as they are.
+  if (keepDrums) {
+    candidate.drums = scene.drumBanks[target.drumBank].patterns[target.drumSlot];
+  }
+  const StrongRhythmMigrationResult migration = keepDrums
+      ? migrateStrongRhythmSynths(requestedGenre, context, candidate.drums,
+                                  candidate.synth[0], candidate.synth[1])
+      : migrateStrongRhythmMaterial(requestedGenre, context, candidate.drums,
+                                    candidate.synth[0], candidate.synth[1]);
+  if (migration.status == StrongRhythmMigrationStatus::Applied)
+    candidate.patternHarmony = patternHarmonyFromMigration(target, migration);
 
   // The audio transport may advance Song/page ownership while generation runs.
   // Never publish a candidate for a target that is no longer the exact active
@@ -376,6 +576,7 @@ inline bool prepareSynthCandidate(
   candidate.scope = voice == 0
       ? QuantizedGenerationScope::SynthA
       : QuantizedGenerationScope::SynthB;
+  candidate.patternHarmony = GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
   candidate.synth[0] = scene.synthABanks[target.synthBank[0]]
       .patterns[target.synthSlot[0]];
   candidate.synth[1] = scene.synthBBanks[target.synthBank[1]]
@@ -395,6 +596,8 @@ inline bool prepareSynthCandidate(
       candidate.drums,
       candidate.synth[0],
       candidate.synth[1]);
+  if (migration.status == StrongRhythmMigrationStatus::Applied && voice == 0)
+    candidate.patternHarmony = patternHarmonyFromMigration(target, migration);
   return migration.status == StrongRhythmMigrationStatus::Applied &&
          targetStillActive(scenes, target);
 }
@@ -518,7 +721,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -575,7 +778,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   // Synth A/B rerolls consume the same tuple-local attempt stream as GENRE G.

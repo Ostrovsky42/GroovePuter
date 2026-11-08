@@ -1,0 +1,527 @@
+#include <cassert>
+#include <cstdint>
+#include <cstdio>
+#include <type_traits>
+
+#include "src/phrase/runtime_synth_playback.h"
+
+namespace {
+
+using PhraseRuntime::RuntimeSynthEvent;
+using PhraseRuntime::RuntimeSynthPlaybackActionType;
+using PhraseRuntime::RuntimeSynthPlaybackActions;
+using PhraseRuntime::RuntimeSynthPlaybackState;
+
+RuntimeSynthEvent event(uint8_t note, uint16_t durationSubticks = 192) {
+  RuntimeSynthEvent value{};
+  value.startTick = 0;
+  value.durationSubticks = durationSubticks;
+  value.note = note;
+  value.velocity = 103;
+  value.probability = 100;
+  value.flags = PhraseRuntime::kEventAccent;
+  return value;
+}
+
+void requireAction(const RuntimeSynthPlaybackActions& actions,
+                   uint8_t index,
+                   RuntimeSynthPlaybackActionType type,
+                   uint8_t note) {
+  assert(index < actions.count);
+  assert(actions.values[index].type == type);
+  assert(actions.values[index].event.note == note);
+}
+
+PhraseRuntime::PatternProjectionSettings longGateSettings() {
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 2.0f;
+  return settings;
+}
+
+PhraseRuntime::PatternProjectionSettings shortGateSettings() {
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = 0;
+  settings.swingPercent = 50;
+  settings.swingEnabled = false;
+  settings.gateLengthRatio = 0.5f;
+  return settings;
+}
+
+SynthPattern conditionalLifetimePattern(uint8_t probability,
+                                        bool ghost,
+                                        bool tieAfterConditional) {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+  pattern.steps[0].note = 60;
+  pattern.steps[0].probability = 100;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = 64;
+  pattern.steps[2].probability = probability;
+  pattern.steps[2].ghost = ghost;
+  if (tieAfterConditional) pattern.steps[3].note = -2;
+  return pattern;
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer project(
+    const SynthPattern& pattern) {
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, longGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  return projected;
+}
+
+PhraseRuntime::RuntimeSynthEventBuffer projectShortGate(
+    const SynthPattern& pattern) {
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, shortGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  return projected;
+}
+
+SynthPattern emptyShortGatePattern() {
+  SynthPattern pattern{};
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    pattern.steps[step] = SynthStep{};
+    pattern.steps[step].note = -1;
+  }
+  return pattern;
+}
+
+void testAdjacentTieExtendsShortGateThroughTiedStep() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+
+  PhraseRuntime::RuntimeSynthEventBuffer projected{};
+  assert(PhraseRuntime::projectPatternToRuntimeEvents(
+             pattern, shortGateSettings(), projected) ==
+         PhraseRuntime::PatternProjectionStatus::Ready);
+  assert(projected.count == 1);
+
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  const RuntimeSynthEvent& note = projected.events[0];
+  // NOTE at step 0 followed by TIE at step 1 is one continuous event through
+  // the end of the tied step; it is not a second onset at the tie boundary.
+  assert(note.durationSubticks == 2u * stepSubticks);
+
+  RuntimeSynthPlaybackState state{};
+  const auto onset = state.acceptOnset(note, 0);
+  assert(onset.count == 1);
+  requireAction(onset, 0, RuntimeSynthPlaybackActionType::Start, 60);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  assert(state.active());
+  assert(state.activeNote() == 60);
+  assert(state.releaseDue(2u * stepSubticks).count == 1);
+  assert(!state.active());
+}
+
+void testAdjacentTieChainHasOneOnsetAndOneFinalRelease() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = -2;
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  assert(projected.events[0].durationSubticks == 3u * stepSubticks);
+
+  RuntimeSynthPlaybackState state{};
+  const auto onset = state.acceptOnset(projected.events[0], 0);
+  assert(onset.count == 1);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  assert(state.releaseDue(2u * stepSubticks).count == 0);
+  const auto release = state.releaseDue(3u * stepSubticks);
+  assert(release.count == 1);
+  requireAction(release, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  assert(!state.active());
+}
+
+void testRestBlocksLaterTieAndOrphanTieHasNoOnset() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[2].note = -2;  // Step 1 is REST.
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+  SynthPattern withoutTie = emptyShortGatePattern();
+  withoutTie.steps[0].note = 60;
+  const auto baseline = projectShortGate(withoutTie);
+  assert(projected.events[0].durationSubticks ==
+         baseline.events[0].durationSubticks);
+
+  SynthPattern orphan = emptyShortGatePattern();
+  orphan.steps[0].note = -2;
+  const auto orphanProjection = projectShortGate(orphan);
+  assert(orphanProjection.count == 0);
+  RuntimeSynthPlaybackState orphanState{};
+  assert(orphanState.releaseDue(100000).count == 0);
+  assert(!orphanState.active());
+}
+
+void testFollowingNoteStartsAtTiedStepBoundary() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  pattern.steps[2].note = 67;
+
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 2);
+  constexpr uint32_t stepSubticks = 24u * PhraseRuntime::kSubticksPerTick;
+  assert(projected.events[0].durationSubticks == 2u * stepSubticks);
+  assert(projected.events[1].note == 67);
+
+  RuntimeSynthPlaybackState state{};
+  const auto first = state.acceptOnset(projected.events[0], 0);
+  assert(first.count == 1);
+  assert(state.releaseDue(stepSubticks).count == 0);
+  const auto replacement = state.acceptOnset(
+      projected.events[1], 2u * stepSubticks);
+  assert(replacement.count == 2);
+  requireAction(replacement, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(replacement, 1, RuntimeSynthPlaybackActionType::Start, 67);
+}
+
+void testTieRemainsDistinctFromSlide() {
+  SynthPattern tied = emptyShortGatePattern();
+  tied.steps[0].note = 60;
+  tied.steps[1].note = -2;
+  const auto tieProjection = projectShortGate(tied);
+  assert(tieProjection.count == 1);
+  assert((tieProjection.events[0].flags & PhraseRuntime::kEventSlide) == 0);
+
+  SynthPattern sliding = emptyShortGatePattern();
+  sliding.steps[0].note = 60;
+  sliding.steps[1].note = 67;
+  sliding.steps[1].slide = true;
+  const auto slideProjection = projectShortGate(sliding);
+  assert(slideProjection.count == 2);
+  assert((slideProjection.events[1].flags & PhraseRuntime::kEventSlide) != 0);
+  assert(tieProjection.events[0].note == 60);
+  assert(slideProjection.events[1].note == 67);
+}
+
+void testTieCannotOutliveHardBarrier() {
+  SynthPattern pattern = emptyShortGatePattern();
+  pattern.steps[0].note = 60;
+  pattern.steps[1].note = -2;
+  const auto projected = projectShortGate(pattern);
+  assert(projected.count == 1);
+
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(projected.events[0], 0);
+  const auto barrier = state.hardBarrier();
+  assert(barrier.count == 1);
+  requireAction(barrier, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  assert(state.releaseDue(projected.events[0].durationSubticks).count == 0);
+  assert(!state.active());
+}
+
+void testFirstOnsetStartsAndOwnsDeadline() {
+  RuntimeSynthPlaybackState state{};
+  const RuntimeSynthEvent note = event(60, 160);
+  const auto actions = state.acceptOnset(note, 1000);
+
+  assert(actions.count == 1);
+  requireAction(actions, 0, RuntimeSynthPlaybackActionType::Start, 60);
+  assert(state.active());
+  assert(state.activeNote() == 60);
+  assert(state.releaseAtSubtick() == 1160);
+}
+
+void testReplacingOnsetReleasesBeforeStart() {
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(event(60, 320), 1000);
+
+  const auto actions = state.acceptOnset(event(64, 192), 1120);
+  assert(actions.count == 2);
+  requireAction(actions, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(actions, 1, RuntimeSynthPlaybackActionType::Start, 64);
+  assert(state.activeNote() == 64);
+  assert(state.releaseAtSubtick() == 1312);
+}
+
+void testNaturalExpiryReleasesExactlyOnce() {
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(event(67, 64), 2000);
+
+  auto before = state.releaseDue(2063);
+  assert(before.count == 0);
+  assert(state.active());
+
+  auto exact = state.releaseDue(2064);
+  assert(exact.count == 1);
+  requireAction(exact, 0, RuntimeSynthPlaybackActionType::Release, 67);
+  assert(!state.active());
+
+  auto repeated = state.releaseDue(4096);
+  assert(repeated.count == 0);
+}
+
+void testZeroDurationStillHasOneSubtickLifetime() {
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(event(69, 0), 500);
+  assert(state.releaseAtSubtick() == 501);
+  assert(state.releaseDue(500).count == 0);
+  assert(state.releaseDue(501).count == 1);
+}
+
+void testRetriggerDoesNotExtendLifetime() {
+  RuntimeSynthPlaybackState state{};
+  const RuntimeSynthEvent base = event(55, 400);
+  (void)state.acceptOnset(base, 700);
+  const uint32_t deadline = state.releaseAtSubtick();
+
+  RuntimeSynthEvent retrigger = base;
+  retrigger.velocity = 91;
+  const auto actions = state.acceptRetrigger(retrigger);
+  assert(actions.count == 1);
+  requireAction(actions, 0, RuntimeSynthPlaybackActionType::Retrigger, 55);
+  assert(state.releaseAtSubtick() == deadline);
+
+  const auto release = state.releaseDue(deadline);
+  assert(release.count == 1);
+}
+
+void testRetriggerWithoutActiveLifetimeIsIgnored() {
+  RuntimeSynthPlaybackState state{};
+  const auto actions = state.acceptRetrigger(event(72));
+  assert(actions.count == 0);
+  assert(!state.active());
+}
+
+void testOrdinaryBarWrapIsNotABarrier() {
+  RuntimeSynthPlaybackState state{};
+  const uint32_t barEndSubtick =
+      static_cast<uint32_t>(PhraseRuntime::kTicksPerBar) *
+      PhraseRuntime::kSubticksPerTick;
+  const uint32_t start = barEndSubtick - 8;
+  (void)state.acceptOnset(event(48, 32), start);
+
+  assert(state.releaseDue(barEndSubtick - 1).count == 0);
+  assert(state.releaseDue(barEndSubtick).count == 0);
+  assert(state.active());
+  assert(state.releaseDue(start + 32).count == 1);
+}
+
+void testGuaranteedOnsetMayPreclipTiedLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(100, false, false));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& guaranteed = projected.events[1];
+  const uint32_t guaranteedStart =
+      static_cast<uint32_t>(guaranteed.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  assert(guaranteed.probability == 100);
+  assert((guaranteed.flags & PhraseRuntime::kEventGhost) == 0);
+  assert(first.durationSubticks == guaranteedStart);
+}
+
+void testProbabilityZeroOnsetMustNotPreclipTiedLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(0, false, false));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  const uint32_t conditionalStart =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  assert(conditional.probability == 0);
+  assert(first.durationSubticks >= conditionalStart);
+}
+
+void testAcceptedConditionalOnsetReleasesThenStarts() {
+  const auto projected = project(
+      conditionalLifetimePattern(63, true, false));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  const uint32_t conditionalStart =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  assert(conditional.probability < 100);
+  assert((conditional.flags & PhraseRuntime::kEventGhost) != 0);
+  assert(first.durationSubticks >= conditionalStart);
+
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(first, 0);
+  const auto replacement = state.acceptOnset(conditional, conditionalStart);
+  assert(replacement.count == 2);
+  requireAction(replacement, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(replacement, 1, RuntimeSynthPlaybackActionType::Start, 64);
+}
+
+void testRejectedConditionalOnsetLetsLaterTieExtendOldLifetime() {
+  const auto projected = project(
+      conditionalLifetimePattern(100, true, true));
+  assert(projected.count == 2);
+  const RuntimeSynthEvent& first = projected.events[0];
+  const RuntimeSynthEvent& conditional = projected.events[1];
+  const uint32_t conditionalStart =
+      static_cast<uint32_t>(conditional.startTick) *
+      PhraseRuntime::kSubticksPerTick;
+  const uint32_t laterTieStart = 72u * PhraseRuntime::kSubticksPerTick;
+  assert((conditional.flags & PhraseRuntime::kEventGhost) != 0);
+  assert(first.durationSubticks > conditionalStart);
+  assert(first.durationSubticks > laterTieStart);
+
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(first, 0);
+  // Runtime ghost/probability rejected the conditional token, so no
+  // acceptOnset() call occurs here. The sounding note must remain alive.
+  assert(state.releaseDue(conditionalStart).count == 0);
+  assert(state.active());
+  assert(state.releaseDue(laterTieStart).count == 0);
+  assert(state.active());
+}
+
+void testHardBarrierReleasesExactlyOnce() {
+  RuntimeSynthPlaybackState state{};
+  (void)state.acceptOnset(event(76, 512), 3000);
+
+  const auto barrier = state.hardBarrier();
+  assert(barrier.count == 1);
+  requireAction(barrier, 0, RuntimeSynthPlaybackActionType::Release, 76);
+  assert(!state.active());
+  assert(state.hardBarrier().count == 0);
+  assert(state.releaseDue(999999).count == 0);
+}
+
+void testPlaybackStateIsFixedAndTriviallyCopyable() {
+  static_assert(std::is_trivially_copyable<RuntimeSynthPlaybackState>::value,
+                "P2 playback state must remain fixed/trivially copyable");
+  static_assert(std::is_trivially_copyable<RuntimeSynthPlaybackActions>::value,
+                "P2 action batch must remain fixed/trivially copyable");
+  // 0.9.17 Melody chords: a chord onset may release four voices and start one
+  // (5 actions of 11 bytes). Still a fixed, stack-returned batch.
+  static_assert(sizeof(RuntimeSynthPlaybackActions) <= 64,
+                "P2 action batch grew unexpectedly");
+}
+
+// 0.9.17 Melody chords ------------------------------------------------------
+
+bool isChordVoice(const RuntimeSynthPlaybackActions& actions, uint8_t index) {
+  return (actions.values[index].event.flags & PhraseRuntime::kEventChordVoice) != 0;
+}
+
+void testChordNotesSoundTogetherAndEndOnTheirOwn() {
+  RuntimeSynthPlaybackState state;
+  auto a = state.acceptChordOnset(event(60, 192), 1000);
+  auto b = state.acceptChordOnset(event(64, 96), 1000);
+  auto c = state.acceptChordOnset(event(67, 384), 1000);
+  assert(a.count == 1 && b.count == 1 && c.count == 1);
+  requireAction(c, 0, RuntimeSynthPlaybackActionType::Start, 67);
+  assert(isChordVoice(c, 0));
+  assert(state.voiceCount() == 3);
+  assert(state.topNote() == 67);
+
+  auto first = state.releaseDue(1096);  // 64 ends first
+  assert(first.count == 1);
+  requireAction(first, 0, RuntimeSynthPlaybackActionType::Release, 64);
+  assert(state.voiceCount() == 2);
+  auto second = state.releaseDue(1192);
+  requireAction(second, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  auto last = state.releaseDue(1384);
+  requireAction(last, 0, RuntimeSynthPlaybackActionType::Release, 67);
+  assert(!state.active() && state.topNote() == -1);
+}
+
+void testChordNoteEndingAtNextOnsetReleasesFirst() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 192), 0);
+  auto next = state.acceptChordOnset(event(62, 192), 192);
+  assert(next.count == 2);
+  requireAction(next, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(next, 1, RuntimeSynthPlaybackActionType::Start, 62);
+  assert(state.voiceCount() == 1);
+}
+
+void testChordSamePitchRestartsAndFifthStealsOldest() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 999), 0);
+  auto again = state.acceptChordOnset(event(60, 999), 10);
+  assert(again.count == 2);
+  requireAction(again, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(again, 1, RuntimeSynthPlaybackActionType::Start, 60);
+  assert(state.voiceCount() == 1);
+
+  state.acceptChordOnset(event(64, 999), 20);
+  state.acceptChordOnset(event(67, 999), 30);
+  state.acceptChordOnset(event(71, 999), 40);
+  assert(state.voiceCount() == PhraseRuntime::kMaxChordVoices);
+  auto fifth = state.acceptChordOnset(event(74, 999), 50);
+  requireAction(fifth, 0, RuntimeSynthPlaybackActionType::Release, 60);
+  requireAction(fifth, 1, RuntimeSynthPlaybackActionType::Start, 74);
+  assert(state.voiceCount() == PhraseRuntime::kMaxChordVoices);
+  assert(state.topNote() == 74);
+}
+
+void testHardBarrierAndMonoOnsetReleaseEveryChordVoice() {
+  RuntimeSynthPlaybackState state;
+  for (uint8_t note : {60, 64, 67, 71}) state.acceptChordOnset(event(note, 999), 0);
+  auto barrier = state.hardBarrier();
+  assert(barrier.count == 4);
+  for (uint8_t i = 0; i < 4; ++i) {
+    assert(barrier.values[i].type == RuntimeSynthPlaybackActionType::Release);
+    assert(isChordVoice(barrier, i));
+  }
+  assert(!state.active());
+
+  for (uint8_t note : {60, 64, 67, 71}) state.acceptChordOnset(event(note, 999), 0);
+  auto mono = state.acceptOnset(event(48, 96), 10);
+  assert(mono.count == 5);
+  requireAction(mono, 4, RuntimeSynthPlaybackActionType::Start, 48);
+  assert(!isChordVoice(mono, 4));
+  assert(state.voiceCount() == 1 && state.activeNote() == 48);
+}
+
+void testChordRetriggerTargetsTheMatchingVoice() {
+  RuntimeSynthPlaybackState state;
+  state.acceptChordOnset(event(60, 999), 0);
+  state.acceptChordOnset(event(64, 999), 0);
+  auto retrig = state.acceptRetrigger(event(60, 999));
+  assert(retrig.count == 1);
+  requireAction(retrig, 0, RuntimeSynthPlaybackActionType::Retrigger, 60);
+  assert(isChordVoice(retrig, 0));
+  assert(state.acceptRetrigger(event(55, 999)).count == 0);
+}
+
+}  // namespace
+
+int main() {
+  testChordNotesSoundTogetherAndEndOnTheirOwn();
+  testChordNoteEndingAtNextOnsetReleasesFirst();
+  testChordSamePitchRestartsAndFifthStealsOldest();
+  testHardBarrierAndMonoOnsetReleaseEveryChordVoice();
+  testChordRetriggerTargetsTheMatchingVoice();
+  testAdjacentTieExtendsShortGateThroughTiedStep();
+  testAdjacentTieChainHasOneOnsetAndOneFinalRelease();
+  testRestBlocksLaterTieAndOrphanTieHasNoOnset();
+  testFollowingNoteStartsAtTiedStepBoundary();
+  testTieRemainsDistinctFromSlide();
+  testTieCannotOutliveHardBarrier();
+  testFirstOnsetStartsAndOwnsDeadline();
+  testReplacingOnsetReleasesBeforeStart();
+  testNaturalExpiryReleasesExactlyOnce();
+  testZeroDurationStillHasOneSubtickLifetime();
+  testRetriggerDoesNotExtendLifetime();
+  testRetriggerWithoutActiveLifetimeIsIgnored();
+  testOrdinaryBarWrapIsNotABarrier();
+  testGuaranteedOnsetMayPreclipTiedLifetime();
+  testProbabilityZeroOnsetMustNotPreclipTiedLifetime();
+  testAcceptedConditionalOnsetReleasesThenStarts();
+  testRejectedConditionalOnsetLetsLaterTieExtendOldLifetime();
+  testHardBarrierReleasesExactlyOnce();
+  testPlaybackStateIsFixedAndTriviallyCopyable();
+  std::puts("PATTERN/PHRASE P2 runtime lifetime owner: PASS");
+  return 0;
+}

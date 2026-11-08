@@ -88,8 +88,10 @@ class HoldAccelerator {
 };
 
 // Global navigation keys are reserved at the app level.
-// IMPORTANT: To avoid breaking in-page editing (303/drums), global page jumps require CTRL.
 // Bracket paging remains global without modifiers.
+// Only reserve a Ctrl/Fn letter that MiniAcidDisplay::handleEvent really
+// handles (tests/test_global_nav_reserved_keys.cpp enforces this); any other
+// Ctrl/Fn letter belongs to the page.
 static inline bool isGlobalNav(const UIEvent& e) {
   // Page cycling is always global.
   if (e.key == '[' || e.key == ']') return true;
@@ -101,16 +103,9 @@ static inline bool isGlobalNav(const UIEvent& e) {
     return true;
   }
 
-  // Direct page jumps: require CTRL (or META) to prevent stealing normal editing keys.
-  if (!(e.ctrl || e.meta)) return false;
-  switch (e.key) {
-    case 'g': case 'd': case 'e':
-    case 'y': case 'Y':
-    case 't': case 'm': case 'p':
-      return true;
-    default:
-      return false;
-  }
+  // Fn+M opens the workspace launcher in MiniAcidDisplay::handleEvent.
+  if (e.meta && (e.key == 'm' || e.key == 'M')) return true;
+  return false;
 }
 
 } // namespace UIInput

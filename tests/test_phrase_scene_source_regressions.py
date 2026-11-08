@@ -5,7 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCENES_H = (ROOT / "scenes.h").read_text()
 SCENES_CPP = (ROOT / "scenes.cpp").read_text()
 ROUND_TRIP = (ROOT / "tests/test_scene_roundtrip.cpp").read_text()
-WORKFLOW = (ROOT / ".github/workflows/phrase-core.yml").read_text()
+WORKFLOW = (ROOT / "scripts/ci/run_phrase_core.sh").read_text()
 
 
 def require(text: str, needle: str, label: str) -> None:
@@ -125,12 +125,12 @@ require(
 require(
     WORKFLOW,
     "tests/test_scene_roundtrip.cpp",
-    "focused workflow Scene round-trip build",
+    "Phrase runner Scene round-trip build",
 )
 require(
     WORKFLOW,
     "build/host-tests/test_scene_roundtrip",
-    "focused workflow Scene round-trip execution",
+    "Phrase runner Scene round-trip execution",
 )
 
 if "phraseCore" in SCENES_CPP and "std::vector" in SCENES_CPP:

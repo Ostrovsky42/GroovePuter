@@ -49,11 +49,11 @@ for filename in (
         raise AssertionError(f"removed or legacy axis source must not exist: {filename}")
 
 for needle in (
-    '"GENRE 1/2"',
-    '"CORRIDOR / VOCABULARY"',
+    '"GENRE 1/3"',
+    '"WHAT G GENERATES"',
     "GenreCatalog::grooveboxModeForRecipe",
-    '"PROFILE ONLY"',
-    '"MATERIALIZE"',
+    '"STYLE ONLY"',
+    '"NEW TAKE"',
 ):
     require(GENRE, needle, f"GENRE contract missing: {needle}")
 
@@ -73,7 +73,7 @@ if not (
     "regenerateWithStrongRhythmMigration" in GENRE or
     "regenerateWithQuantizedCommit" in GENRE
 ):
-    raise AssertionError("GENRE MATERIALIZE has no generation boundary")
+    raise AssertionError("GENRE NEW TAKE has no generation boundary")
 forbid(
     GENRE,
     (
@@ -85,7 +85,7 @@ forbid(
 )
 
 for needle in (
-    '"FEEL 2/2"',
+    '"FEEL 3/3"',
     '"TIMING / VELOCITY"',
     "scene.feel.timingProfile",
     "mini_acid_.applyFeelTimingFromScene_();",
@@ -112,7 +112,9 @@ forbid(
     "FEEL",
 )
 
-length_owner_tokens = ("capture_length_", "cycleLength(")
+# PERFORM's looper has its own unrelated NOTE LENGTH row (loop.cycleLength), so
+# only the PhrasePage-specific spellings count as a second phrase-length owner.
+length_owner_tokens = ("capture_length_", "PhrasePage::cycleLength")
 unexpected_length_owners = []
 for candidate in PAGE_DIR.glob("*_page.*"):
     source = candidate.read_text(encoding="utf-8")
@@ -183,7 +185,7 @@ forbid(session_hub_list,
        ("SessionPages::kSynthAParameters", "SessionPages::kSynthBParameters"),
        "persisted normal HUB navigation")
 
-for title in ("GENRE 1/2", "FEEL 2/2"):
+for title in ("GENRE 1/3", "FEEL 3/3"):
     require(HELP, title, f"Alt+H section missing: {title}")
 forbid(HELP,
        ("GENERATION 3/3", "GEN 3/3", "TEXTURE 4/4", "LIVE SOUND SURFACE"),

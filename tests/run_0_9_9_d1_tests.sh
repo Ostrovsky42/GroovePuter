@@ -2,6 +2,8 @@
 set -euo pipefail
 
 mkdir -p build/host-tests
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+source "${ROOT_DIR}/tests/hgs_song_state_sources.sh"
 
 CXXFLAGS=(
   -std=c++17
@@ -31,6 +33,8 @@ g++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-variable \
   -I. -Iplatform_sdl -include platform_sdl/arduino_compat.h \
   tests/test_generation_scene_roundtrip.cpp \
   scenes.cpp json_evented.cpp src/audio/pattern_paging.cpp \
+  "${HGS_SONG_STATE_SOURCES[@]}" \
+  src/generation/generation_context.cpp \
   -o build/host-tests/test_generation_scene_roundtrip
 build/host-tests/test_generation_scene_roundtrip
 
@@ -38,6 +42,8 @@ g++ "${CXXFLAGS[@]}" \
   tests/test_pattern_paging_ownership.cpp \
   src/audio/pattern_paging.cpp \
   src/audio/pattern_project_cleanup.cpp \
+  "${HGS_SONG_STATE_SOURCES[@]}" \
+  src/generation/generation_context.cpp \
   -o build/host-tests/test_pattern_paging_ownership
 build/host-tests/test_pattern_paging_ownership
 

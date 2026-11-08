@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {"name":"major_route","text":"I V vi IV","dialect":"major","key_context":"major","expected_roots":[0,7,9,5],"expected_quality_ids":[0,0,1,0]},
+    {"name":"mingus_I7_major_seventh","text":"I7","dialect":"major","key_context":"major","expected_roots":[0],"expected_quality_ids":[7]},
+    {"name":"mingus_Idom7_dominant_seventh","text":"Idom7","dialect":"major","key_context":"major","expected_roots":[0],"expected_quality_ids":[2]},
+    {"name":"dominant_seventh_aliases","text":"V7 Vdom7","dialect":"major","key_context":"major","expected_roots":[7,7],"expected_quality_ids":[2,2]},
+    {"name":"sixth_ninth_and_dominant_ninth","text":"IV6 VI69 I9","dialect":"major","key_context":"major","expected_roots":[5,9,0],"expected_quality_ids":[13,15,16]},
+    {"name":"suspended_and_power","text":"Vsus4 ii5","dialect":"major","key_context":"major","expected_roots":[7,2],"expected_quality_ids":[5,10]},
+    {"name":"minor_case_is_minor_context","text":"iv IV","dialect":"minor","key_context":"minor","expected_roots":[5,5],"expected_quality_ids":[1,1],"expected_spellings":["iv","IV"]},
+    {"name":"minor_context_explicit_quality_suffixes","text":"III VII v7 vdim","dialect":"minor","key_context":"minor","expected_roots":[3,10,7,7],"expected_quality_ids":[0,0,6,3],"expected_spellings":["III","VII","v7","vdim"]},
+    {"name":"modal_case_spelling_does_not_override_resolver","text":"i IV","dialect":"modal","key_context":"major","expected_roots":[0,5],"expected_quality_ids":[0,0]},
+    {"name":"borrowed_and_sharp_diminished","text":"bVII #IVdim","dialect":"modal","key_context":"major","expected_roots":[10,6],"expected_quality_ids":[3,3]},
+    {"name":"source_specific_ii5_power_chord","text":"ii5","dialect":"major","key_context":"major","expected_roots":[2],"expected_quality_ids":[10]},
+    {"name":"roman_slash_bass","text":"I/bVII","dialect":"modal","key_context":"major","expected_roots":[0],"expected_quality_ids":[0],"expected_bass_roots":[10],"expected_bass_intervals":[10]},
+    {"name":"intentional_repeated_route_events","text":"I I I V","dialect":"major","key_context":"major","expected_roots":[0,0,0,7],"expected_quality_ids":[0,0,0,0]}
+  ],
+  "errors": [
+    {"name":"malformed_token","text":"I Vx","dialect":"major","key_context":"major","token":"Vx"},
+    {"name":"empty_route","text":"   ","dialect":"major","key_context":"major","token":""},
+    {"name":"mingus_does_not_resolve_M_minus_5","text":"IM-5","dialect":"major","key_context":"major","token":"IM-5","reason":"unsupported_suffix"},
+    {"name":"mingus_does_not_resolve_add9","text":"Vadd9","dialect":"major","key_context":"major","token":"Vadd9","reason":"unsupported_suffix"},
+    {"name":"mingus_does_not_resolve_madd9","text":"imadd9","dialect":"minor","key_context":"minor","token":"imadd9","reason":"unsupported_suffix"}
+  ],
+  "transposition_pair": {
+    "a":{"text":"I V vi IV","dialect":"major","key_context":"major"},
+    "b":{"text":"I V vi IV","dialect":"major","key_context":"major"},
+    "key_a":"C",
+    "key_b":"D",
+    "absolute_a":"C G Am F",
+    "absolute_b":"D A Bm G"
+  }
+}

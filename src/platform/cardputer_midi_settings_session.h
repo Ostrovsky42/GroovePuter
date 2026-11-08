@@ -4,6 +4,7 @@
 
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_device_profile_runtime.h"
+#include "src/midi/midi_input_dispatcher.h"
 
 namespace GroovePuterPlatform {
 
@@ -12,11 +13,31 @@ namespace GroovePuterPlatform {
 void initializeCardputerMidiSettingsSession();
 
 #ifdef ARDUINO
+void initializeCardputerMidiInputSettings();
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig();
+bool setCardputerMidiInputRoutingConfig(
+    const GroovePuterMidi::MidiInputRoutingConfig& config);
+
 GroovePuterMidi::MidiDeviceProfile pendingCardputerMidiDeviceProfile();
 bool selectCardputerMidiDeviceProfileForNextBoot(
     GroovePuterMidi::MidiDeviceProfile profile);
 bool cardputerMidiDeviceProfileRestartRequired();
 #else
+inline GroovePuterMidi::MidiInputRoutingConfig& desktopMidiInputRoutingConfig() {
+    static GroovePuterMidi::MidiInputRoutingConfig config{};
+    return config;
+}
+inline void initializeCardputerMidiInputSettings() {}
+inline GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRoutingConfig() {
+    return desktopMidiInputRoutingConfig();
+}
+inline bool setCardputerMidiInputRoutingConfig(
+        const GroovePuterMidi::MidiInputRoutingConfig& config) {
+    if (!GroovePuterMidi::MidiInputDispatcher::isValidConfig(config)) return false;
+    desktopMidiInputRoutingConfig() = config;
+    return true;
+}
+
 namespace Detail {
 struct DesktopMidiProfileSelection {
     bool initialized{false};

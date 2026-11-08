@@ -6,6 +6,7 @@
 
 #include "tonal_projector.h"
 #include "../roles/chord_progression.h"
+#include "../harmony/harmonic_source.h"
 
 namespace GroovePuterRhythm {
 
@@ -27,6 +28,10 @@ struct TonalMaterializationRequest {
   // supplies degree/chromatic-root content for those events.
   StepMask harmonicEventOnsets = 0;
   ChordProgressionPlan progression{};
+  // Graph events are projected into the unchanged legacy HarmonicEvent
+  // carrier only after the explicit source tag has been checked.
+  GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
+      GroovePuterHarmony::HarmonicStrategy::Legacy;
 
   // One value per role-onset ordinal. Clear tag = scale-degree offset relative
   // to the active harmonic event. Set tag = exact semitone offset relative to

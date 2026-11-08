@@ -146,8 +146,11 @@ def main() -> None:
     # `settings` would use the wrong genre/variant.
     require(ui, "generationProfileFor(requestedSettings)", "genre_page.cpp")
     require(ui, "profile.corridor.suggestedBpm", "genre_page.cpp")
-    require(ui, "selectedProfile.corridor.bpmMin", "genre_page.cpp")
-    require(ui, "selectedProfile.corridor.bpmMax", "genre_page.cpp")
+    # HGS's compact GENRE screen no longer draws the old BPM range hint.
+    # The production tempo request must still come from the requested profile;
+    # test_generation_stage14_genres.cpp verifies the corridor's bounds.
+    require(ui, "requestedBpm = static_cast<float>(profile.corridor.suggestedBpm)",
+            "genre_page.cpp")
     assert "kGenreBpm" not in ui
 
     # ENTER still follows the APPLY selector while plain G is the explicit full

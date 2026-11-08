@@ -1,4 +1,5 @@
 #include <cassert>
+#include <cstdio>
 #include <cstdint>
 #include <vector>
 
@@ -263,7 +264,43 @@ void testPatternDrumRoutingAndRetrig() {
 }
 }  // namespace
 
+// 0.9.15: an external keyboard (Host MIDI IN) plays through the same external output as the
+// built-in PERFORM keyboard: the MIDI-input source must reach the wire as live synth notes.
+void testMidiInputReachesWire() {
+    UsbMidiOutput::setMidiInputThru(true);
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                    MusicalEventSource::MidiInput,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 7, 60, 100);
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::MidiInput,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 60, 0);
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 64, 90,
+                                    MusicalEventSource::MidiInput,
+                                    MusicalEventTarget::SynthB));
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 8, 64, 90);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::MidiInput,
+                                    MusicalEventTarget::SynthB));
+    assert(transport.packets.size() == 4);
+    expectPacket(transport.packets[3], PacketType::NoteOff, 8, 64, 0);
+    UsbMidiOutput::setMidiInputThru(false);
+    std::puts("MIDI input source reaches the external output as live synth notes (Host only): PASS");
+}
+
 int main() {
+    testMidiInputReachesWire();
     FakeUsbMidiTransport transport;
     UsbMidiOutput output(transport);
 

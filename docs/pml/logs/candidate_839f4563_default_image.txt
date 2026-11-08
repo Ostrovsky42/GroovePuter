@@ -1,0 +1,10 @@
+DEFAULT image (no probe), build/cardputer-adv-dynbuffers:
+2f03d658d2fe6867316f939f6b90b5c5a9226335159011ebe16bc0e49d0af821  build/cardputer-adv-dynbuffers/GroovePuter.ino.elf
+0bd147f480800ba7c38e7c986b273a0c8c533e38f69774aaf63f0be0132629ca  build/cardputer-adv-dynbuffers/GroovePuter.ino.bin
+0
+PML-PROBE strings in ELF: 0
+
+Cardputer DRAM globals: 189984 bytes (budget 191488)
+  .dram0.data: 37080 bytes
+  .dram0.bss:  152904 bytes
+  policy: provisional exception; threshold-rule items 5-7 pending

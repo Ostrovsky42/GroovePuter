@@ -20,28 +20,46 @@ def test_theme_selection() -> None:
     cycle_end = theme.index("inline VisualStyle previousThemeStyle", cycle_start)
     cycle = theme[cycle_start:cycle_end]
 
-    require("case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;" in cycle,
-            "CARBON must switch directly to CYBER")
-    require("case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;" in cycle,
-            "CYBER must switch directly to CARBON")
-    require("return VisualStyle::AMBER" not in cycle,
-            "AMBER must not re-enter the public theme cycle")
-    require("return VisualStyle::MINIMAL_DARK" not in cycle,
-            "reserved STAGE must not enter the public theme cycle")
+    # Owner decision (option B): CLEAN <-> CYBER only; AMBER and STAGE are
+    # not reachable from the selector.
+    require("VisualStyle::MINIMAL ? VisualStyle::RETRO_CLASSIC" in cycle and
+            ": VisualStyle::MINIMAL;" in cycle,
+            "the theme selector must toggle CLEAN <-> CYBER")
+    for retired in ("AMBER", "MINIMAL_DARK"):
+        require(f"VisualStyle::{retired}" not in cycle,
+                f"{retired} must not be reachable from the theme selector")
 
     require('#include "ui_theme.h"' in display and
             "return UI::nextThemeStyle(style);" in display,
-            "global Alt+\\ theme switching must use the shared binary selector")
+            "global Alt+\\ theme switching must use the shared single-theme selector")
     require("UI::nextThemeStyle(UI::currentStyle)" in launcher,
-            "launcher preview must use the same binary selector")
+            "launcher theme key must use the same single-theme selector")
 
-    require("IGfxColor(0x020406)" in theme and
-            "IGfxColor(0x080D12)" in theme,
-            "CARBON semantic surfaces must stay near-black")
-    require("IGfxColor(0xC7D0D9)" in theme,
-            "CARBON body text must be light gray rather than full white")
+    common = (ROOT / "src/ui/ui_common.cpp").read_text(encoding="utf-8")
+    require("VisualStyle currentStyle = VisualStyle::MINIMAL;" in common,
+            "the boot style before any session load must be CLEAN")
+    project = (ROOT / "src/ui/pages/project_page.cpp").read_text(encoding="utf-8")
+    style_start = project.index("VisualStyle nextStyle(VisualStyle style)")
+    style_end = project.index("VisualStyle prevStyle(VisualStyle style)", style_start)
+    require("return UI::nextThemeStyle(style);" in project[style_start:style_end] and
+            "return UI::previousThemeStyle(style);" in project,
+            "PROJECT Theme row must share the single-theme selector")
+    require("VisualStyle::AMBER" not in project,
+            "PROJECT Theme row must not cycle into AMBER")
+    session = (ROOT / "src/state/ui_session_state.h").read_text(encoding="utf-8")
+    require("uint8_t visualStyle{0};" in session and
+            "value == kCyberVisualStyle ? kCyberVisualStyle : kCleanVisualStyle" in session,
+            "session default is CLEAN and restore keeps CYBER")
+
+    cyber = theme.index("case VisualStyle::RETRO_CLASSIC:")
+    require("RetroTheme::BG_DEEP_BLACK" in theme[cyber:cyber + 400],
+            "themePalette must map RETRO_CLASSIC to the CYBER palette")
+    require("IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x000000)" in theme,
+            "MINIMAL (CLEAN) surfaces must be true black with no panel fill")
+    require("IGfxColor(0xE7E3DE)" in theme and "IGfxColor(0x9C9A94)" in theme,
+            "MINIMAL (CLEAN) Warm text and secondary must match docs/design/CLEAN_THEME_SPEC.md")
     require("COLOR_TEXT = IGfxColor(0xD2DAE2)" in colors,
-            "legacy CARBON pages must also avoid broad pure-white text")
+            "legacy MINIMAL pages must also avoid broad pure-white text")
 
     require('#include "../ui_theme.h"' in visuals and
             "UI::themePalette()" in visuals,
@@ -68,8 +86,10 @@ def test_perform_piano_key_shapes() -> None:
     require("isBlackPianoPitch(note)" in row and
             "const int blackH" in row and "const int blackW" in row,
             "melodic rows must retain long white keys with shorter black keys")
-    require("drawTinyNoteLabel" in row and "keyboard.noteForKey" in row,
-            "piano keys must show compact resolved note names")
+    require("drawKeyNoteLabel" in row and "keyboard.noteForKey" in row,
+            "piano keys must show their resolved note names")
+    require("drawTinyNoteLabel" in visuals.split("inline void drawKeyNoteLabel")[1].split("inline void drawPianoKeyRow")[0],
+            "a key too narrow for the regular font keeps the tiny label")
     require("keyboard.isPhysicalKeyHeld(physical)" in row,
             "two piano rows must preserve independent physical-key held state")
     require("char keyLabel" not in row and "gfx.drawText" not in row,
@@ -161,10 +181,14 @@ def test_workflow_local_page_navigation() -> None:
             "Fn brackets must bypass page-local first refusal")
     require(page_dispatch < brackets,
             "plain brackets must still give local editors first refusal")
-    require("UIInput::isTab(event)" in feel and
+    require("UIInput::navCode(event)" in feel and
+            "nav == GROOVEPUTER_UP" in feel and
+            "moveFocus(-1)" in feel and
+            "nav == GROOVEPUTER_DOWN" in feel and
+            "moveFocus(1)" in feel and
             "FocusRow::Swing" in feel and "FocusRow::TimingHumanize" in feel and
             "FocusRow::VelocityHumanize" in feel,
-            "plain Tab must navigate the FEEL timing/velocity rows")
+            "FEEL must navigate timing/velocity rows through the current Up/Down route")
 
     for label in ("PERFORM", "GENERATE", "HUB", "SONG", "SETTINGS", "HELP"):
         require(f'return "{label}";' in launcher,

@@ -8,14 +8,14 @@
 /**
  * Reusable Drum Sequencer Grid Component.
  * 
- * Displays a step grid with 8 drum voices and accent row.
+ * Displays a step grid with 8 drum voices. Accent is a property of each hit
+ * and is rendered inside the hit cell; there is no aggregate accent row.
  * Supports mouse interaction and visual highlighting.
  */
 class DrumSequencerGridComponent : public Component {
  public:
   struct Callbacks {
     std::function<void(int step, int voice)> onToggle;
-    std::function<void(int step)> onToggleAccent;
     std::function<int()> cursorStep;
     std::function<int()> cursorVoice;
     std::function<bool()> gridFocused;
@@ -43,10 +43,6 @@ class DrumSequencerGridComponent : public Component {
     int grid_bottom = 0;
     int cell_w = 0;
     int stripe_h = 0;
-    int accent_y = 0;
-    int accent_h = 0;
-    int accent_bottom = 0;
-    int accent_gap = 0;
   };
 
   void drawMinimalStyle(IGfx& gfx, const GridLayout& layout);
@@ -57,5 +53,9 @@ class DrumSequencerGridComponent : public Component {
 
   MiniAcid& mini_acid_;
   Callbacks callbacks_;
-  GrooveboxStyle style_ = GrooveboxStyle::MINIMAL_DARK;
+  GrooveboxStyle style_ = GrooveboxStyle::MINIMAL;
 };
+
+// Lane label with its direct mute key ("3KIK" ... "0CLP"; SP12 and 606 follow
+// their key/voice mapping). Shared by the grid and the rhythm browser.
+const char* drumVoiceKeyLabel(const std::string& engine, int voice);

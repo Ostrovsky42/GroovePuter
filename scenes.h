@@ -1,6 +1,9 @@
 #ifndef SCENES_H
 #define SCENES_H
 
+#include <functional>
+#include "scene_storage.h"
+
 
 #include <stdint.h>
 #include <cstdio>
@@ -167,7 +170,43 @@ struct Song {
   SongPosition positions[kMaxPositions];
   int length = 1;
   bool reverse = false;
+  // Per-cell voice-source override (voice A/B, one bit per row). 0 = follow the
+  // slot type; 1 = play STEPS even when the slot is a Melody. Sparse in JSON.
+  uint8_t stepsOverride[2][Song::kMaxPositions / 8] = {};
+
+  bool stepsOverrideAt(int voice, int row) const {
+    if (voice < 0 || voice > 1 || row < 0 || row >= kMaxPositions) return false;
+    return (stepsOverride[voice][row >> 3] >> (row & 7)) & 1;
+  }
+  void setStepsOverride(int voice, int row, bool on) {
+    if (voice < 0 || voice > 1 || row < 0 || row >= kMaxPositions) return;
+    const uint8_t mask = static_cast<uint8_t>(1u << (row & 7));
+    if (on) stepsOverride[voice][row >> 3] |= mask;
+    else stepsOverride[voice][row >> 3] &= static_cast<uint8_t>(~mask);
+  }
+  bool anyStepsOverride() const {
+    for (int v = 0; v < 2; ++v)
+      for (int i = 0; i < kMaxPositions / 8; ++i)
+        if (stepsOverride[v][i]) return true;
+    return false;
+  }
+  // Rows [from, kMaxPositions-1] move down by one; the freed row `at` is clear.
+  void insertOverrideRow(int at) {
+    for (int v = 0; v < 2; ++v) {
+      for (int r = kMaxPositions - 1; r > at; --r) setStepsOverride(v, r, stepsOverrideAt(v, r - 1));
+      setStepsOverride(v, at, false);
+    }
+  }
+  // Rows above `at` move up by one; the last row is clear.
+  void deleteOverrideRow(int at) {
+    for (int v = 0; v < 2; ++v) {
+      for (int r = at; r < kMaxPositions - 1; ++r) setStepsOverride(v, r, stepsOverrideAt(v, r + 1));
+      setStepsOverride(v, kMaxPositions - 1, false);
+    }
+  }
 };
+
+#include "src/state/material_slot.h"
 
 template <typename PatternType>
 struct Bank {
@@ -362,6 +401,8 @@ struct GenreSettings {
     uint8_t rhythmSelectionMode = static_cast<uint8_t>(
         GroovePuterRhythm::RhythmSelectionMode::Auto);
     uint16_t rhythmArchetypeId = 0; // stable ID; meaningful only in MANUAL
+    uint8_t harmonicStrategy = 0; // 0 = Legacy, 1 = Graph; old projects stay Legacy
+    bool harmonicAuto = false; // next-Phrase preference; source stays concrete 0/1
 };
 
 struct DrumFX {
@@ -376,6 +417,20 @@ struct Scene {
   Bank<DrumPatternSet> drumBanks[kBankCount];
   Bank<SynthPattern> synthABanks[kBankCount];
   Bank<SynthPattern> synthBBanks[kBankCount];
+
+  // M1: which representation each resident synth slot holds. Sized to the
+  // resident page, because that is where the patterns it describes live -- a
+  // kind must never travel separately from the material it names.
+  //
+  // Off-page slots read as Pattern today, which is true by construction while
+  // nothing can promote a slot. M2 introduces promotion and owes the page file
+  // the same field; that obligation is recorded there, not assumed away here.
+  static constexpr int kMaterialVoices = 2;
+  static constexpr int kMaterialSlotsPerVoice =
+      kBankCount * Bank<SynthPattern>::kPatterns;   // 16
+  GroovePuterMaterial::MaterialSlotDescriptor
+      materialSlots[kMaterialVoices][kMaterialSlotsPerVoice]{};
+
   SamplerPadState samplerPads[16];
   // OFF preserves pad assignments and must survive an explicit project save.
   bool samplerEnabled = true;
@@ -386,6 +441,9 @@ struct Scene {
   Song songs[2];
   PhraseCore::PhraseBank phraseBank;
   int activeSongSlot = 0;
+  // Song row markers 1..4 (-1 = empty). Scene metadata: saved with the project,
+  // not captured by Song undo.
+  int16_t songMarks[4] = {-1, -1, -1, -1};
   GrooveboxMode mode = GrooveboxMode::Minimal;
   uint8_t grooveFlavor = 0;
   float masterVolume = 0.6f;  // Default volume
@@ -403,6 +461,71 @@ struct Scene {
       1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f // Drums
   };
 };
+
+// Mix C: fader defaults for a NEW scene only (wipeToZero, loadDefaultScene). Synth lanes sit
+// ~16 dB under the drums at 1.0/1.0; 1.5 is the fader maximum, drums at 0.45 bring the
+// difference to about -8 dB. DSP gain is unchanged. This is NOT what the loaders use: a scene
+// file without "trackVolumes" keeps loading at 1.0 so existing projects sound as before.
+constexpr float kNewSceneSynthVolume = 1.5f;
+constexpr float kNewSceneDrumVolume = 0.45f;
+
+inline void applyNewSceneMix(Scene& scene) {
+  for (int i = 0; i < (int)VoiceId::Count; ++i) {
+    scene.trackVolumes[i] =
+        i <= (int)VoiceId::SynthB ? kNewSceneSynthVolume : kNewSceneDrumVolume;
+  }
+}
+
+namespace GroovePuterMaterial {
+
+// A flat comma-separated list, synth A then synth B. The scene document is
+// JSON, so a scene written before this existed simply has no such key and
+// decode() is handed nothing -- which is exactly the legacy case, and it
+// resolves to Pattern everywhere without needing a version number.
+inline bool encodeKinds(const Scene& scene, std::string& out) {
+  out.clear();
+  char buffer[8];
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      if (!out.empty()) out.push_back(',');
+      std::snprintf(buffer, sizeof(buffer), "%d",
+                    static_cast<int>(scene.materialSlots[voice][slot].kind));
+      out += buffer;
+    }
+  }
+  return true;
+}
+
+// Missing or short input leaves the remaining slots on Pattern. A value that is
+// not a known kind decodes as Pattern too, rather than being stored as an
+// unknown that later code would have to guess about.
+inline bool decodeKinds(const char* encoded, Scene& scene) {
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene.materialSlots[voice][slot].kind = MaterialKind::Pattern;
+    }
+  }
+  if (encoded == nullptr) return true;
+
+  int index = 0;
+  const char* cursor = encoded;
+  while (*cursor != '\0' &&
+         index < Scene::kMaterialVoices * Scene::kMaterialSlotsPerVoice) {
+    char* end = nullptr;
+    const long value = std::strtol(cursor, &end, 10);
+    if (end == cursor) break;
+    scene.materialSlots[index / Scene::kMaterialSlotsPerVoice]
+                       [index % Scene::kMaterialSlotsPerVoice].kind =
+        kindFromPersistedValue(static_cast<int>(value));
+    ++index;
+    cursor = end;
+    while (*cursor == ',' || *cursor == ' ') ++cursor;
+  }
+  return true;
+}
+
+}  // namespace GroovePuterMaterial
+
 
 // Shared transaction storage for scene parsing and pattern-page validation.
 // Both operations run synchronously through the UI/boot path, and neither may
@@ -599,7 +722,9 @@ public:
   void setSynthStep(int synthIdx, int step, int note, bool slide, bool accent);
 
   std::string dumpCurrentScene() const;
-  bool loadScene(const std::string& json);
+  bool loadScene(const std::string& json, bool restoreResidentPage = false,
+                 const std::function<bool()>& acknowledge = {},
+                 const SceneSynthPreparation& prepare = {});
 
   void setDrumMute(int voiceIdx, bool mute);
   bool getDrumMute(int voiceIdx) const;
@@ -634,6 +759,7 @@ public:
   void clearSongPattern(int position, SongTrack track);
   int songPattern(int position, SongTrack track) const;
   int songPatternAtSlot(int slot, int position, SongTrack track) const;
+  bool songCellStepsOverrideAtSlot(int slot, int position, int voice) const;
   int songLengthAtSlot(int slot) const;
   void setSongLength(int length);
   int songLength() const;
@@ -668,7 +794,9 @@ public:
   template <typename TReader>
   bool loadSceneJson(TReader&& reader);
   template <typename TReader>
-  bool loadSceneEvented(TReader&& reader);
+  bool loadSceneEvented(TReader&& reader, bool restoreResidentPage = false,
+                        const std::function<bool()>& acknowledge = {},
+                 const SceneSynthPreparation& prepare = {});
 
   // static constexpr size_t sceneJsonCapacity();
 
@@ -684,7 +812,9 @@ private:
   void clearSongData(Song& song) const;
   void buildSceneDocument(ArduinoJson::JsonDocument& doc) const;
   bool applySceneDocument(const ArduinoJson::JsonDocument& doc);
-  bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar);
+  bool loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
+      bool restoreResidentPage, const std::function<bool()>& acknowledge,
+      const SceneSynthPreparation& prepare);
 
   Scene* scene_;
   int drumPatternIndex_ = 0;
@@ -982,6 +1112,9 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
       if (!writeInt(s.positions[i].patterns[2])) return false;
       if (!writeLiteral(",\"voice\":")) return false;
       if (!writeInt(s.positions[i].patterns[3])) return false;
+      // Per-cell STEPS override: written only when set (older files lack them).
+      if (s.stepsOverrideAt(0, i) && !writeLiteral(",\"as\":1")) return false;
+      if (s.stepsOverrideAt(1, i) && !writeLiteral(",\"bs\":1")) return false;
       if (!writeChar('}')) return false;
     }
     if (!writeChar(']')) return false;
@@ -1009,6 +1142,12 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(clampSongPosition(songPosition_))) return false;
   if (!writeLiteral(",\"activeSongSlot\":")) return false;
   if (!writeInt(scene_->activeSongSlot)) return false;
+  static const char* const kSongMarkKeys[4] = {
+      ",\"songMark0\":", ",\"songMark1\":", ",\"songMark2\":", ",\"songMark3\":"};
+  for (int i = 0; i < 4; ++i) {
+    if (!writeLiteral(kSongMarkKeys[i])) return false;
+    if (!writeInt(scene_->songMarks[i])) return false;
+  }
   if (!writeLiteral(",\"loopMode\":")) return false;
   if (!writeBool(loopMode_)) return false;
   if (!writeLiteral(",\"loopStart\":")) return false;
@@ -1110,6 +1249,10 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   if (!writeInt(scene_->genre.rhythmSelectionMode)) return false;
   if (!writeLiteral(",\"rid\":")) return false;
   if (!writeInt(scene_->genre.rhythmArchetypeId)) return false;
+  if (!writeLiteral(",\"hsm\":")) return false;
+  if (!writeInt(scene_->genre.harmonicStrategy)) return false;
+  if (scene_->genre.harmonicAuto &&
+      !writeLiteral(",\"hma\":true")) return false;
   if (!writeChar('}')) return false;
 
   if (!writeLiteral(",\"generatorParams\":{\"minNotes\":")) return false;
@@ -1251,6 +1394,16 @@ bool SceneManager::writeSceneJson(TWriter&& writer) const {
   }
   if (!writeChar(']')) return false;
 
+  // M1: which representation each resident synth slot holds. A scene written
+  // before this existed simply lacks the key and decodes as all Pattern.
+  if (!writeLiteral(",\"matKind\":\"")) return false;
+  {
+    std::string kinds;
+    GroovePuterMaterial::encodeKinds(*scene_, kinds);
+    if (!writeLiteral(kinds.c_str())) return false;
+  }
+  if (!writeLiteral("\"")) return false;
+
   if (!writeLiteral(",\"customPhrases\":[")) return false;
   for (int i = 0; i < Scene::kMaxCustomPhrases; ++i) {
       if (i > 0 && !writeChar(',')) return false;
@@ -1273,10 +1426,12 @@ bool SceneManager::loadSceneJson(TReader&& reader) {
 }
 
 template <typename TReader>
-bool SceneManager::loadSceneEvented(TReader&& reader) {
+bool SceneManager::loadSceneEvented(TReader&& reader, bool restoreResidentPage,
+                                    const std::function<bool()>& acknowledge,
+                                    const SceneSynthPreparation& prepare) {
   JsonVisitor::NextChar nextChar = [&reader]() -> int { 
     return reader.read();
   };
-  return loadSceneEventedWithReader(nextChar);
+  return loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge, prepare);
 }
 #endif // SCENES_H

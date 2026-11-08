@@ -33,7 +33,7 @@ arduino-cli monitor -p <PORT> -c baudrate=115200
 - `B` toggles `PAT:A/B` without changing an existing Song cell.
 - `Alt+B` explicitly flips the bank of an already stored Song reference or selection.
 - `Ctrl+B` remains the independent play Song slot A/B control.
-- Shift/Ctrl selection remains inside one visible track rectangle and never changes edit Song slot.
+- Ctrl selection remains inside one visible track rectangle and never changes edit Song slot.
 - Q..I writes from the visible `PAT:A/B` assignment context.
 - Status shows edit Song slot, play Song slot, and `PAT:A/B` assignment context.
 - During Song playback the active playback row has a full-row highlight and a `>` marker. The cell cursor remains separately visible.

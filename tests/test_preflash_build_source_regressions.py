@@ -40,17 +40,26 @@ def test_desktop_links_phrase_evolution_dependencies() -> None:
 
 def test_scene_event_reader_has_no_dead_byte_counter() -> None:
     scenes = (ROOT / "scenes.h").read_text(encoding="utf-8")
-    start = scenes.index("bool SceneManager::loadSceneEvented(TReader&& reader)")
+    start = scenes.index("bool SceneManager::loadSceneEvented(TReader&& reader,")
     end = scenes.index("#endif // SCENES_H", start)
     block = scenes[start:end]
     require("bytesRead" not in block,
             "evented Scene reader must not retain a write-only byte counter")
 
 
+def test_memory_baseline_preserves_source_date_in_staged_tree() -> None:
+    script = (ROOT / "scripts/build_cardputer_memory_baseline.sh").read_text(encoding="utf-8")
+    require('export SOURCE_DATE_EPOCH=' in script and
+            'git -C "${PROJECT_ROOT}" log -1 --format=%ct HEAD' in script and
+            script.index('export SOURCE_DATE_EPOCH=') < script.index('bash "${SOURCE_ROOT}/scripts/build.sh"'),
+            "the source commit date must be exported before building the copied tree without .git")
+
+
 def main() -> None:
     test_generation_headers_use_alias_safe_guards()
     test_desktop_links_phrase_evolution_dependencies()
     test_scene_event_reader_has_no_dead_byte_counter()
+    test_memory_baseline_preserves_source_date_in_staged_tree()
     print("Pre-flash build source regressions: PASS")
 
 

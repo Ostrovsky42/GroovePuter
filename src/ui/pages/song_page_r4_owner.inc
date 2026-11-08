@@ -1,3 +1,5 @@
+#include "song_input_policy.h"
+
 namespace {
 char normalizedSongR4Key(const UIEvent& event) {
   char key = event.key;
@@ -24,6 +26,16 @@ bool SongPage::undoPreparedSongState() {
   using GroovePuterUndo::UndoKind;
   using GroovePuterUndo::UndoResult;
   auto& owner = GroovePuterUndo::undoOwner();
+  if (owner.hasUndo() && owner.kind() == UndoKind::Generation && materialTakeUndoOwned()) {
+    // A take written from SONG FORM (T) is undone here, through the same owner MATERIAL uses.
+    const UndoResult result = undoLastMaterialTake(mini_acid_, audio_guard_);
+    if (result == UndoResult::Restored) {
+      showToast("UNDO: TAKE", 900);
+      return true;
+    }
+    showToast("UNDO: TAKE EXPIRED", 900);
+    return true;
+  }
   if (!owner.hasUndo() || owner.kind() != UndoKind::Song) return false;
 
   SongUndoPayload retained{};
@@ -80,9 +92,69 @@ bool SongPage::undoPreparedSongState() {
 bool SongPage::handleEvent(UIEvent& ui_event) {
   using namespace GroovePuterUndo;
 
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && !ui_event.alt &&
+      !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'f' || ui_event.key == 'F')) {
+    // The selection stays: it is the FORM source block.
+    form_view_ = !form_view_;
+    UI::showToast(form_view_ ? "SONG: FORM" : "SONG: GRID", 600);
+    return true;
+  }
+  if (form_view_ && ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    return handleFormEvent(ui_event);
+  }
+
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_UNDO) {
       return undoPreparedSongState();
+    }
+
+    // Opt on a Synth A/B cell: flip that cell's persistent source override
+    // (MELODY <-> STEPS) through the Song undo receipt. It never touches the
+    // live voice source; the synth page owns the temporary switch.
+    if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+      bool valid = false;
+      const SongTrack track = trackForColumn(cursorTrack(), valid);
+      if (!valid || (track != SongTrack::SynthA && track != SongTrack::SynthB)) {
+        showToast("OPT: ON SYNTH A/B COLUMN", 900);
+        return true;
+      }
+      const int voice = track == SongTrack::SynthA ? 0 : 1;
+      const char label = voice == 0 ? 'A' : 'B';
+      const int row = cursorRow();
+      const SceneManager& manager = mini_acid_.sceneManager();
+      const Song& source = manager.currentScene().songs[manager.activeSongSlot()];
+      const int pattern = SongEdit::patternAt(source, row, track);
+      char toast[40];
+      if (pattern < 0) {
+        std::snprintf(toast, sizeof(toast), "%c: EMPTY CELL", label);
+        showToast(toast, 900);
+        return true;
+      }
+      const auto kind =
+          mini_acid_.songCellMaterialKind(voice, static_cast<int16_t>(pattern));
+      if (kind == MiniAcid::SongCellMaterialKind::Unknown) {
+        std::snprintf(toast, sizeof(toast), "%c: CELL ON OTHER PAGE", label);
+        showToast(toast, 900);
+        return true;
+      }
+      if (kind != MiniAcid::SongCellMaterialKind::Melody) {
+        std::snprintf(toast, sizeof(toast), "%c %c%d: NO MELODY (ALT+N ON STEPS)",
+                      label, static_cast<char>('A' + songPatternBank(pattern)),
+                      songPatternIndexInBank(pattern) + 1);
+        showToast(toast, 1200);
+        return true;
+      }
+      const bool nowSteps = !SongEdit::stepsOverrideAt(source, row, track);
+      if (!commitSongMutation([&](Song& song) {
+            SongEdit::setStepsOverride(song, row, track, nowSteps);
+          })) {
+        return true;  // busy or unchanged: commitSongMutation already toasted
+      }
+      std::snprintf(toast, sizeof(toast), "ROW %02d %c: %s", row + 1, label,
+                    nowSteps ? "STEPS" : "MELODY");
+      showToast(toast, 1000);
+      return true;
     }
 
     if (ui_event.app_event_type == GROOVEPUTER_APP_EVENT_CUT ||
@@ -96,11 +168,13 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         const int slot = manager.activeSongSlot();
         const Song& source = manager.currentScene().songs[slot];
         if (wholeSongScope) {
-          g_song_slot_clipboard.song = source;
-          g_song_slot_clipboard.source_slot = slot;
-          g_song_slot_clipboard.has_song = true;
-          commitSongMutation([&](Song& song) { SongEdit::reset(song); });
-          showToast("Song cut", 900);
+          const Song copied = source;
+          if (commitSongMutation([&](Song& song) { SongEdit::reset(song); })) {
+            g_song_slot_clipboard.song = copied;
+            g_song_slot_clipboard.source_slot = slot;
+            g_song_slot_clipboard.has_song = true;
+            showToast("Song cut  CTRL+Z UNDO", 900);
+          }
           return true;
         }
         if (!trackValid) return false;
@@ -198,14 +272,19 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
             }
           }
         });
+        showToast("PASTED AREA  CTRL+Z UNDO", 1000);
         if (has_selection_) clearSelection();
         return true;
       }
-      if (!g_song_pattern_clipboard.has_pattern) return false;
+      if (!g_song_pattern_clipboard.has_pattern) {
+        showToast("CLIPBOARD EMPTY", 900);
+        return true;
+      }
       const int pattern = g_song_pattern_clipboard.pattern_index;
       commitSongMutation([&](Song& song) {
         SongEdit::setPattern(song, cursorRow(), focusedTrack, pattern);
       });
+      showToast("PASTED CELL", 800);
       if (has_selection_) clearSelection();
       return true;
     }
@@ -215,6 +294,14 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return handleEventLegacyUnowned(ui_event);
+  }
+
+  if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
+    if (UIInput::isTab(ui_event)) {
+      showToast("ALT+J: MATERIAL AT THIS ROW", 900);
+      return true;
+    }
+    if (ui_event.key == '[' || ui_event.key == ']') return true;
   }
 
   // Generation owns its existing PREPARE/commit path. Queued reverse belongs
@@ -230,8 +317,18 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
   }
 
   const int nav = UIInput::navCode(ui_event);
-  if (ui_event.alt && (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) &&
-      !cursorOnPlayheadLabel()) {
+  const bool verticalArrow =
+      nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
+  const auto altVerticalRoute =
+      GroovePuterSongInput::classifyAltVerticalRoute(
+          ui_event.alt, ui_event.ctrl, verticalArrow,
+          cursorOnPlayheadLabel());
+  if (altVerticalRoute ==
+      GroovePuterSongInput::AltVerticalRoute::DelegateLegacy) {
+    return handleEventLegacyUnowned(ui_event);
+  }
+  if (altVerticalRoute ==
+      GroovePuterSongInput::AltVerticalRoute::PatternAdjust) {
     bool valid = false;
     const SongTrack track = trackForColumn(cursorTrack(), valid);
     if (!valid) return false;
@@ -304,7 +401,9 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   if (ui_event.ctrl && !ui_event.alt && keyM) {
     const int row = cursorRow();
-    commitSongMutation([&](Song& song) { SongEdit::deleteRow(song, row); });
+    if (!commitSongMutation([&](Song& song) { SongEdit::deleteRow(song, row); })) {
+      return true;  // refusal already showed its toast (SONG BUSY) or nothing changed
+    }
     cursor_row_ = clampCursorRow(cursor_row_);
     char toast[32];
     std::snprintf(toast, sizeof(toast), "DEL row %d", row + 1);
@@ -370,8 +469,22 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
 
   const bool backspace = ui_event.key == '\b' || ui_event.key == 0x7F;
   if (ui_event.alt && backspace) {
-    commitSongMutation([&](Song& song) { SongEdit::reset(song); });
-    showToast("Song Cleared", 900);
+    showToast("CTRL+BKSP CLEARS SONG", 1000);
+    return true;
+  }
+  if (ui_event.ctrl && !ui_event.alt && backspace) {
+    const Song& current = mini_acid_.sceneManager().currentScene().songs[
+        mini_acid_.sceneManager().activeSongSlot()];
+    Song cleared = current;
+    SongEdit::reset(cleared);
+    if (GroovePuterUndo::sameSong(current, cleared)) {
+      showToast("Song already empty", 900);
+      return true;
+    }
+    // A refusal (SONG BUSY) already showed its own toast; do not replace it.
+    if (commitSongMutation([&](Song& song) { SongEdit::reset(song); })) {
+      showToast("Song Cleared  CTRL+Z UNDO", 1000);
+    }
     return true;
   }
   if (!ui_event.alt && (backspace || ui_event.key == '\t')) {

@@ -1,0 +1,26 @@
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_unique'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_unique/kick.wav legacy=1199302339 ref=2cdcebd21e719890
+SampleIndex::scanDirectory: Found 1 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_legacy'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_legacy/snare.wav legacy=3553194422 ref=22b7d9d9ecc39347
+SampleIndex::scanDirectory: Found 1 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_collision'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_collision/5oetw2k1.wav legacy=3960902837 ref=b6835bb94c19d737
+SampleIndex: Found: /tmp/grooveputer_sampler_d_collision/qp363n87.wav legacy=3960902837 ref=7dd31ef73fbfd3e3
+SampleIndex::scanDirectory: Found 2 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_malformed'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_malformed/hat.wav legacy=2031548362 ref=09b0727a2e1ae769
+SampleIndex::scanDirectory: Found 1 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_missing_ref'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_missing_ref/clap.wav legacy=3978492543 ref=b4dba5d6727eb79f
+SampleIndex::scanDirectory: Found 1 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_missing_ref'...
+SampleIndex::scanDirectory: Found 0 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_missing_ref'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_missing_ref/clap.wav legacy=3978492543 ref=b4dba5d6727eb79f
+SampleIndex::scanDirectory: Found 1 files
+SampleIndex::scanDirectory: Scanning '/tmp/grooveputer_sampler_d_stream'...
+SampleIndex: Found: /tmp/grooveputer_sampler_d_stream/clap.wav legacy=3978492543 ref=20d11cd2481d3515
+SampleIndex::scanDirectory: Found 1 files
+sampler persistence source regressions passed
+sampler persistence ownership tests passed

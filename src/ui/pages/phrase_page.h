@@ -11,6 +11,8 @@
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 
+#include "material_take.h"
+
 class PhrasePage : public IPage {
  public:
   // `coreMode` selects which of the two independently-reachable pages this
@@ -95,7 +97,8 @@ class PhrasePage : public IPage {
   // different objects -- see spec sections 1-2. TO placement is a two-mode
   // state machine (section 7), never seeded from transport position.
   enum class PlacementMode : uint8_t { Append, Explicit };
-  enum class Admissibility : uint8_t { Free, Occupied, NoRoom };
+  // Replace: a backing run exists only through slots the musician allowed to be replaced.
+  enum class Admissibility : uint8_t { Free, Occupied, NoRoom, NoSlots, Replace };
   enum class ProductFocus : uint8_t { Length, Depth, To, Bar };
 
   struct BarActivity {
@@ -107,6 +110,18 @@ class PhrasePage : public IPage {
 
   void drawProductView(IGfx& gfx);
   bool handleProductEvent(UIEvent& ui_event);
+  bool growKeptPhrase();
+
+  // ALLOW REPLACEMENT (MATERIAL, key R): the musician chooses unused Pattern slots that a LATER
+  // generation may replace. Marking erases nothing and starts nothing; see docs/pml.
+  // MAKE ROOM (plain R): one question for the common case, covering only takes generated in this
+  // session and not edited since; S opens the slot-by-slot view for everything else.
+  void drawRoomView(IGfx& gfx);
+  bool handleRoomEvent(UIEvent& ui_event);
+  void drawReplaceView(IGfx& gfx);
+  bool handleReplaceEvent(UIEvent& ui_event);
+  bool replaceEnter();
+  void replaceLeave();
   void cycleRequestedLength(int delta);
   void cycleProductBar(int delta);
   bool focusProductBar();
@@ -118,9 +133,10 @@ class PhrasePage : public IPage {
   void adjustToField(int delta);
   bool handleToEnter();
 
-  // FREE/OCCUPIED/NO ROOM mirrors the exact predicate generation itself
-  // uses (PhraseGenerator::songRowsAreAvailable + Song::kMaxPositions) --
-  // it must never diverge from what G will actually do.
+  // FREE/OCCUPIED/NO ROOM/NO SLOTS mirrors the allocation preconditions G
+  // can prove without executing musical generation: Song range/occupancy plus
+  // a safe contiguous backing Pattern run on the current page. It must never
+  // promise FREE when G is already known to be impossible for capacity reasons.
   Admissibility admissibilityFor(int row, int bars) const;
 
   void cycleProductFocus(int delta);
@@ -166,6 +182,13 @@ class PhrasePage : public IPage {
   const bool core_mode_;
 
   uint8_t product_bar_cursor_ = 0;
+
+  // ALLOW REPLACEMENT view state (product view only).
+  bool room_view_ = false;            // MAKE ROOM question
+  bool replace_view_ = false;         // slot-by-slot view
+  bool replace_confirming_ = false;   // the "Undo will not restore" confirmation is showing
+  bool replace_confirmed_ = false;    // confirmed once during this visit to the view
+  uint8_t replace_cursor_ = 0;
   ProductFocus product_focus_ = ProductFocus::Length;
 
   // NEXT REQUEST placement session state (product view only). Discarded

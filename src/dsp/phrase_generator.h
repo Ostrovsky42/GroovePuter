@@ -2,6 +2,7 @@
 
 #include "../../scenes.h"
 #include "src/dsp/song_pattern_materializer.h"
+#include "src/state/material_slot_access.h"
 
 #include <algorithm>
 #include <cstdint>
@@ -175,6 +176,11 @@ inline bool localSlotIsSafeForPhrase(const Scene& scene,
   if (pageIndex < 0 || pageIndex >= kMaxPages ||
       !localSlotIsEmpty(scene, localSlot)) {
     return false;
+  }
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    if (!GroovePuterMaterial::residentSlotIsFree(scene, voice, localSlot)) {
+      return false;
+    }
   }
   const int bank = localSlot / Bank<SynthPattern>::kPatterns;
   const int index = localSlot % Bank<SynthPattern>::kPatterns;

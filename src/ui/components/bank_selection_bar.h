@@ -24,6 +24,8 @@ class BankSelectionBarComponent : public Component {
   void setState(const State& state);
   void setCallbacks(Callbacks callbacks);
   int barHeight(IGfx& gfx) const;
+  // Width of the right-aligned label + bank boxes, for sharing a row.
+  int barWidth(IGfx& gfx) const;
 
   bool handleEvent(UIEvent& ui_event) override;
   bool handleEventLegacy(UIEvent& ui_event) { return handleEvent(ui_event); }

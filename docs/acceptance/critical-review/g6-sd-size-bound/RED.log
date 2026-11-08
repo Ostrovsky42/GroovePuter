@@ -1,0 +1,2 @@
+G6_SD_READ size=1301 accepted=1 capacity=1301
+gp-g6-read-bound-red: tests/test_g6_melody_read_size.cpp:16: int main(): Assertion `!loaded' failed.

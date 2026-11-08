@@ -2,7 +2,6 @@
 #include "ui_utils.h"
 #include "ui_widgets.h"
 #include "ui_theme.h"
-#include "ui_active_page_title.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -19,87 +18,34 @@ namespace UI {
 
     // Global overlay state
     WaveformOverlayState waveformOverlay;
-    VisualStyle currentStyle = VisualStyle::RETRO_CLASSIC;
+    // CLEAN is the only product theme (see sanitizeVisualStyle).
+    VisualStyle currentStyle = VisualStyle::MINIMAL;
+    bool hintOverlayActive = false;
 
     // Internal state for the compact global audio waveform.
     namespace {
+#if GROOVEPUTER_ENABLE_WAVEFORM
         constexpr int kOverlayMaxPoints = 256;
         int16_t overlayWave[kOverlayMaxPoints];
         int overlayLength = 0;
 
+#endif
+        bool g_hintOverlayHeld = false;
+        uint32_t g_hPressStartMs = 0;
+        bool g_hintOverlayTimedActive = false;
+        uint32_t g_hintOverlayTimedUntilMs = 0;
+
         char gToastMsg[64] = {0};
         unsigned long gToastEndMs = 0;
 
+        char gInfoLeft[64] = {0};
+        char gInfoRight[32] = {0};
+        bool gInfoValid = false;
+
         UiStatusSnapshot gStatusSnapshot{};
-        UiStatusContext gStatusContext = UiStatusContext::Unknown;
         char gStatusLine[48] = {0};
         bool gStatusInitialized = false;
-
-        bool titleContains(const char* title, const char* token) {
-            return title != nullptr && token != nullptr &&
-                   std::strstr(title, token) != nullptr;
-        }
-
-        UiStatusContext statusContextForTitle(const char* title) {
-            if (titleContains(title, "MIDI PLAYER")) {
-                return UiStatusContext::Player;
-            }
-            if (titleContains(title, "MIDI KEYBOARD") ||
-                titleContains(title, "PERFORM")) {
-                return UiStatusContext::Perform;
-            }
-            if (titleContains(title, "SYNTH A SOUND") ||
-                titleContains(title, "SYNTH A PARAM") ||
-                titleContains(title, "303A PARAM")) {
-                return UiStatusContext::SoundA;
-            }
-            if (titleContains(title, "SYNTH B SOUND") ||
-                titleContains(title, "SYNTH B PARAM") ||
-                titleContains(title, "303B PARAM")) {
-                return UiStatusContext::SoundB;
-            }
-            if (titleContains(title, "SYNTH A") ||
-                titleContains(title, "303A")) {
-                return UiStatusContext::SynthA;
-            }
-            if (titleContains(title, "SYNTH B") ||
-                titleContains(title, "303B")) {
-                return UiStatusContext::SynthB;
-            }
-            if (titleContains(title, "FEEL") ||
-                titleContains(title, "TEXTURE")) {
-                return UiStatusContext::Feel;
-            }
-            if (titleContains(title, "MODE") ||
-                titleContains(title, "FLAVOR") ||
-                titleContains(title, "GROOVE LAB")) {
-                return UiStatusContext::Mode;
-            }
-            if (titleContains(title, "GENRE")) {
-                return UiStatusContext::Genre;
-            }
-            if (titleContains(title, "DRUM")) {
-                return UiStatusContext::Drums;
-            }
-            if (titleContains(title, "SONG") ||
-                titleContains(title, "ARRANGE")) {
-                return UiStatusContext::Song;
-            }
-            if (titleContains(title, "PROJECT") ||
-                titleContains(title, "SETUP")) {
-                return UiStatusContext::Project;
-            }
-            if (titleContains(title, "ADV") ||
-                titleContains(title, "GENERATOR")) {
-                return UiStatusContext::Generator;
-            }
-            if (titleContains(title, "OVERVIEW") ||
-                titleContains(title, "PATTERN") ||
-                titleContains(title, "SEQUENCER HUB")) {
-                return UiStatusContext::Overview;
-            }
-            return UiStatusContext::Unknown;
-        }
+        UiShellFrameModel* gShellFrameModel = nullptr;
 
         uint16_t statusCount(uint32_t value) {
             if (value == 0) return 1;
@@ -136,9 +82,36 @@ namespace UI {
             return UiStatusState::Stop;
         }
 
+        UiSequencedSource uiSequencedSourceForEngine(
+            MiniAcid::SequencedSource source) {
+            return source == MiniAcid::SequencedSource::Phrase
+                ? UiSequencedSource::Phrase
+                : UiSequencedSource::Pattern;
+        }
+
+        UiSequencedSource sequencedSourceForContext(
+            MiniAcid& miniAcid,
+            UiStatusContext context) {
+            switch (context) {
+                case UiStatusContext::SynthA:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(0));
+                case UiStatusContext::SynthB:
+                    return uiSequencedSourceForEngine(
+                        miniAcid.currentSequencedSource(1));
+                case UiStatusContext::Drums:
+                    return UiSequencedSource::Pattern;
+                default:
+                    return UiSequencedSource::NotApplicable;
+            }
+        }
+
         void populatePatternAddress(UiStatusSnapshot& status,
                                     MiniAcid& miniAcid) {
-            if (status.source != UiStatusSource::Pattern) return;
+            if (status.routing.sequencedSource() !=
+                UiSequencedSource::Pattern) {
+                return;
+            }
 
             int bank = -1;
             int slot = -1;
@@ -167,10 +140,23 @@ namespace UI {
             status.patternSlot = static_cast<uint8_t>(address.slot);
         }
 
-        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid) {
+        UiStatusSnapshot buildUiStatusSnapshot(MiniAcid& miniAcid,
+                                               UiStatusContext context) {
             UiStatusSnapshot status{};
-            status.context = gStatusContext;
+            status.context = context;
+            status.bpm = normalizeUiStatusBpm(static_cast<int>(miniAcid.bpm()));
             status.liveMixLocked = miniAcid.liveMixModeEnabled();
+
+            const UiSequencedSource sequencedSource =
+                sequencedSourceForContext(miniAcid, context);
+            const UiTransportOwner defaultTransportOwner =
+                miniAcid.songModeEnabled()
+                    ? UiTransportOwner::Song
+                    : UiTransportOwner::Cycle;
+            status.routing = UiStatusRouting{
+                sequencedSource,
+                defaultTransportOwner,
+            };
 
             const GroovePuterMidi::TransportClockRuntimeSnapshot clock =
                 GroovePuterMidi::transportClockRuntime().snapshot();
@@ -189,11 +175,15 @@ namespace UI {
                     playerPageSelected &&
                     smf.state != GroovePuterMidi::SmfPlayerState::Unloaded;
                 if (smfStateOwnsStatus(smf.state) || loadedPlayerSelected) {
-                    status.source = UiStatusSource::Smf;
+                    status.routing = UiStatusRouting{
+                        sequencedSource,
+                        UiTransportOwner::Smf,
+                    };
                     status.state = uiStateForSmf(smf.state);
                     status.bar = statusCount(smf.bar);
                     status.totalBars = statusCount(smf.totalBars);
                     status.output = UiStatusOutput::Midi;
+                    populatePatternAddress(status, miniAcid);
                     if (smf.tempoMode == GroovePuterMidi::SmfTempoMode::Original) {
                         status.clock = UiStatusClock::File;
                     }
@@ -201,16 +191,13 @@ namespace UI {
                 }
             }
 
-            status.source = miniAcid.songModeEnabled()
-                ? UiStatusSource::Song
-                : UiStatusSource::Pattern;
             status.state = miniAcid.isPlaying()
                 ? UiStatusState::Play
                 : UiStatusState::Stop;
             status.output = UiStatusOutput::InternalAudio;
             populatePatternAddress(status, miniAcid);
 
-            if (status.source == UiStatusSource::Song) {
+            if (defaultTransportOwner == UiTransportOwner::Song) {
                 status.bar = statusOneBasedIndex(miniAcid.songPlayheadPosition());
                 status.totalBars = statusCount(
                     static_cast<uint32_t>(miniAcid.songLength() > 0
@@ -227,19 +214,20 @@ namespace UI {
         }
     }
 
-    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
-        gStatusContext = statusContextForTitle(title);
-
-        char sceneStr[16];
-        snprintf(sceneStr, sizeof(sceneStr), "%02d", mini_acid.currentScene() + 1);
-        
-        LayoutManager::drawHeader(gfx, sceneStr, (int)mini_acid.bpm(), 
-                                 title, mini_acid.isRecording());
+    UiStatusSnapshot captureUiStatusSnapshot(MiniAcid& mini_acid,
+                                             UiStatusContext context) {
+        return buildUiStatusSnapshot(mini_acid, context);
     }
 
-    void drawStatusChrome(IGfx& gfx, MiniAcid& mini_acid) {
-        gStatusContext = statusContextForTitle(UI::activePageTitle());
-        const UiStatusSnapshot status = buildUiStatusSnapshot(mini_acid);
+    void drawStandardHeader(IGfx& gfx, MiniAcid& mini_acid, const char* title) {
+        // U1F: pages no longer own global header pixels or re-read live
+        // status truth while composing their body.
+        (void)gfx;
+        (void)mini_acid;
+        (void)title;
+    }
+
+    void drawStatusChrome(IGfx& gfx, const UiStatusSnapshot& status) {
         if (!gStatusInitialized || status != gStatusSnapshot) {
             gStatusSnapshot = status;
             formatUiStatusLine(status, gStatusLine, sizeof(gStatusLine));
@@ -259,9 +247,9 @@ namespace UI {
             divider = IGfxColor(AmberTheme::TEXT_DIM);
         }
 
-        // The current renderer redraws every page each UI frame. Keep the
-        // expensive status derivation and formatting change-driven, then paint
-        // only the already-reserved 16-pixel header over the page header.
+        // The current renderer redraws every page each UI frame. Keep status
+        // derivation outside the draw path, then paint only the already-
+        // reserved 16-pixel header from the captured frame snapshot.
         gfx.fillRect(Layout::HEADER.x,
                      Layout::HEADER.y,
                      Layout::HEADER.w,
@@ -280,15 +268,94 @@ namespace UI {
                                  gStatusLine);
     }
 
-    void drawLiveMixLockBadge(IGfx& gfx, MiniAcid& mini_acid) {
+    void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status) {
         // Compatibility hook: MiniAcidDisplay already invokes this once after
-        // every page. Keeping the call site avoids touching page bounds or the
-        // global input/transport flow in Wave 1 A1.
-        drawStatusChrome(gfx, mini_acid);
+        // every page. U1C makes that call render-only; U2 removes the competing
+        // page/global header ownership itself.
+        drawStatusChrome(gfx, status);
+    }
+
+    void beginShellFrameModel(UiShellFrameModel& model) {
+        model.clear();
+        gShellFrameModel = &model;
+        gInfoValid = false;
+        gInfoLeft[0] = '\0';
+        gInfoRight[0] = '\0';
+    }
+
+    void endShellFrameModel() {
+        gShellFrameModel = nullptr;
+    }
+
+    void publishShellFooter(const char* left, const char* right) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->setFooter(left, right);
+    }
+
+    void publishShellInfo(const char* left, const char* right) {
+        if (left) {
+            std::strncpy(gInfoLeft, left, sizeof(gInfoLeft) - 1);
+            gInfoLeft[sizeof(gInfoLeft) - 1] = '\0';
+        } else {
+            gInfoLeft[0] = '\0';
+        }
+        if (right) {
+            std::strncpy(gInfoRight, right, sizeof(gInfoRight) - 1);
+            gInfoRight[sizeof(gInfoRight) - 1] = '\0';
+        } else {
+            gInfoRight[0] = '\0';
+        }
+        gInfoValid = (left != nullptr || right != nullptr);
+    }
+
+    void publishShellFeelOverlay(bool visible) {
+        if (gShellFrameModel == nullptr) return;
+        gShellFrameModel->feelOverlay = visible;
+    }
+
+    void drawShellFooter(IGfx& gfx, const UiFooterModel& footer) {
+        if (!hintOverlayActive) {
+            const ThemePalette p = themePalette();
+            gfx.fillRect(Layout::FOOTER.x, Layout::FOOTER.y, Layout::FOOTER.w, Layout::FOOTER.h, p.background);
+            gfx.drawLine(Layout::FOOTER.x, Layout::FOOTER.y,
+                         Layout::FOOTER.x + Layout::FOOTER.w - 1, Layout::FOOTER.y,
+                         p.panel);
+
+            const int y = Layout::FOOTER.y + 3;
+            if (gInfoValid) {
+                if (gInfoLeft[0] != '\0') {
+                    gfx.setTextColor(p.text);
+                    int maxW = Layout::FOOTER.w - 8;
+                    if (gInfoRight[0] != '\0') {
+                        maxW -= (gfx.textWidth(gInfoRight) + 8);
+                    }
+                    Widgets::drawClippedText(gfx, Layout::FOOTER.x + 4, y, maxW, gInfoLeft);
+                }
+                if (gInfoRight[0] != '\0') {
+                    gfx.setTextColor(p.secondary);
+                    int tw = gfx.textWidth(gInfoRight);
+                    gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, gInfoRight);
+                }
+            } else {
+                if (gStatusSnapshot.dirty) {
+                    gfx.setTextColor(p.accent);
+                    gfx.drawText(Layout::FOOTER.x + 4, y, "* MODIFIED");
+                }
+                gfx.setTextColor(p.secondary);
+                const char* hPrompt = "ALT+H HELP";  // plain H is page-local (Melody chord)
+                int tw = gfx.textWidth(hPrompt);
+                gfx.drawText(Layout::FOOTER.x + Layout::FOOTER.w - 4 - tw, y, hPrompt);
+            }
+            return;
+        }
+        LayoutManager::drawFooter(gfx,
+                                  footer.valid ? footer.left : "",
+                                  footer.valid ? footer.right : "");
     }
 
     void drawStandardFooter(IGfx& gfx, const char* left, const char* right) {
-        LayoutManager::drawFooter(gfx, left, right);
+        (void)gfx;
+        publishShellFooter(left, right);
     }
 
     void drawVerticalList(IGfx& gfx, int x, int y, int width,
@@ -336,6 +403,7 @@ namespace UI {
     }
 
     void drawWaveformOverlay(IGfx& gfx, MiniAcid& mini_acid) {
+#if GROOVEPUTER_ENABLE_WAVEFORM
         if (!waveformOverlay.enabled) return;
 
         // The waveform shares the reserved performance strip without entering
@@ -402,6 +470,10 @@ namespace UI {
         // frame, so a ghost layer only masks motion on the physical display.
         IGfxColor waveColor = WAVE_COLORS[waveformOverlay.colorIndex % NUM_WAVE_COLORS];
         drawWave(overlayWave, overlayLength, waveColor);
+#else
+        (void)gfx;
+        (void)mini_acid;
+#endif
     }
 
     void drawMutesOverlay(IGfx& gfx, MiniAcid& mini_acid) {
@@ -528,9 +600,11 @@ namespace UI {
         if (tb > 2) tb = 2;
 
         const char* gridStr = (grid == 8) ? "1/8" : (grid == 32) ? "1/32" : "1/16";
-        const char* tbStr = (tb == 0) ? "H" : (tb == 2) ? "D" : "N";
-        char buf[20];
-        snprintf(buf, sizeof(buf), "G%s T%s L%dB", gridStr, tbStr, bars);
+        // Readable without a legend: "1/16 1BAR", plus x.5 / x2 when the
+        // timebase is half or double (it read "G1/16 TN L1B").
+        const char* tbStr = (tb == 0) ? " x.5" : (tb == 2) ? " x2" : "";
+        char buf[24];
+        snprintf(buf, sizeof(buf), "%s %dBAR%s", gridStr, bars, tbStr);
 
         const int x = Layout::CONTENT_PAD_X;
         const int y = Layout::PERFORMANCE_HUD.y;
@@ -553,7 +627,8 @@ namespace UI {
         gfx.drawText(x, y, buf);
     }
 
-    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse) {
+    void drawPerformanceHud(IGfx& gfx, MiniAcid& mini_acid, bool feelPulse,
+                            bool showFeelOverlay) {
         const ThemePalette palette = themePalette();
         gfx.fillRect(Layout::PERFORMANCE_HUD.x,
                      Layout::PERFORMANCE_HUD.y,
@@ -561,7 +636,7 @@ namespace UI {
                      Layout::PERFORMANCE_HUD.h,
                      palette.background);
         drawWaveformOverlay(gfx, mini_acid);
-        drawFeelOverlay(gfx, mini_acid, feelPulse);
+        if (showFeelOverlay) drawFeelOverlay(gfx, mini_acid, feelPulse);
         // Mutes are intentionally last so their digits remain the topmost,
         // readable layer even while the waveform is moving.
         drawMutesOverlay(gfx, mini_acid);
@@ -602,15 +677,70 @@ namespace UI {
 
     void drawToast(IGfx& gfx) {
         if (millis() < gToastEndMs) {
+            const ThemePalette p = themePalette();
             int w = gfx.width();
             int tw = gfx.textWidth(gToastMsg);
             int x = (w - tw) / 2;
             int y = gfx.height() - 25;
-            gfx.fillRect(x - 4, y - 2, tw + 8, 11, COLOR_BLACK);
-            gfx.drawRect(x - 4, y - 2, tw + 8, 11, COLOR_KNOB_2);
+            gfx.fillRect(x - 4, y - 2, tw + 8, 11, p.background);
+            gfx.drawRect(x - 4, y - 2, tw + 8, 11, p.accent);
             gfx.setTextColor(COLOR_WHITE);
             gfx.drawText(x, y, gToastMsg);
         }
+    }
+
+    void setHintOverlayActive(bool active) {
+        hintOverlayActive = active;
+        if (!active) {
+            g_hintOverlayHeld = false;
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+    }
+
+    bool dismissHintOverlay() {
+        g_hintOverlayTimedActive = false;
+        g_hintOverlayTimedUntilMs = 0;
+        if (hintOverlayActive) {
+            hintOverlayActive = false;
+            return true;
+        }
+        return false;
+    }
+
+    bool updateHintOverlay(bool hHeld, uint32_t nowMs) {
+        if (hHeld && !g_hintOverlayHeld) {
+            g_hPressStartMs = nowMs;
+        } else if (!hHeld && g_hintOverlayHeld) {
+            const uint32_t holdDuration = nowMs - g_hPressStartMs;
+            if (holdDuration < 350) {
+                // Short press (single click / tap): toggle or activate for 5 seconds
+                if (g_hintOverlayTimedActive && static_cast<int32_t>(g_hintOverlayTimedUntilMs - nowMs) > 0) {
+                    g_hintOverlayTimedActive = false;
+                    g_hintOverlayTimedUntilMs = 0;
+                } else {
+                    g_hintOverlayTimedActive = true;
+                    g_hintOverlayTimedUntilMs = nowMs + 5000;
+                }
+            } else {
+                // Long press (hold): immediately dismiss on release
+                g_hintOverlayTimedActive = false;
+                g_hintOverlayTimedUntilMs = 0;
+            }
+        }
+        g_hintOverlayHeld = hHeld;
+
+        if (g_hintOverlayTimedActive && static_cast<int32_t>(nowMs - g_hintOverlayTimedUntilMs) >= 0) {
+            g_hintOverlayTimedActive = false;
+            g_hintOverlayTimedUntilMs = 0;
+        }
+
+        const bool shouldBeActive = hHeld || g_hintOverlayTimedActive;
+        if (shouldBeActive != hintOverlayActive) {
+            hintOverlayActive = shouldBeActive;
+            return true;
+        }
+        return false;
     }
 
 }

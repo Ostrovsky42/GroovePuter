@@ -59,7 +59,11 @@ void testEveryRhythmIdentity() {
         requestFor(static_cast<MelodicRhythmId>(value)));
     assert(result.status == MelodicMotifStatus::Ok);
     assert(result.plan.rhythmId == static_cast<MelodicRhythmId>(value));
-    assert(countOnsets(result.plan.onsets) <= 4);
+    // Stage 11 hook cells carry 1-4 onsets; the 0.9.18 lead lines carry up
+    // to eight (a melody, not a hook).
+    const bool leadLine = value >= static_cast<uint8_t>(MelodicRhythmId::RunningLine);
+    assert(countOnsets(result.plan.onsets) <= (leadLine ? 8 : 4));
+    assert(countOnsets(result.plan.onsets) >= 1);
     assert(std::strcmp(melodicRhythmName(result.plan.rhythmId), "INVALID") != 0);
   }
 }

@@ -23,6 +23,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 SOURCE_DIRTY="$(git -C "${PROJECT_ROOT}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+# The copied build tree has no .git, so resolve the reproducible timestamp here.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  export SOURCE_DATE_EPOCH="$(git -C "${PROJECT_ROOT}" log -1 --format=%ct HEAD)"
+fi
 TEMP_ROOT="$(mktemp -d /tmp/grooveputer-memory-baseline.XXXXXX)"
 SOURCE_ROOT="${TEMP_ROOT}/GroovePuter"
 
@@ -52,6 +56,7 @@ case "${PROFILE}" in
     ;;
 esac
 export BUILD_PATH="${BUILD_PATH:-${PROJECT_ROOT}/build/cardputer-memory-baseline-${PROFILE}-${IMAGE_KIND}}"
+MEMORY_BASELINE_FS1="${MEMORY_BASELINE_FS1:-0}"
 
 printf 'Memory baseline profile: %s\n' "${PROFILE}"
 printf 'Memory baseline image: %s\n' "${IMAGE_KIND}"
@@ -61,7 +66,12 @@ printf 'FQBN: %s\n' "${FQBN}"
 printf 'Temporary source: %s\n' "${SOURCE_ROOT}"
 printf 'Build output: %s\n' "${BUILD_PATH}"
 
-bash "${SOURCE_ROOT}/scripts/build.sh" "$@"
+if [[ "${MEMORY_BASELINE_FS1}" == "1" ]]; then
+  printf 'Memory baseline filesystem: FS1 dynamic FatFs buffers\n'
+  bash "${SOURCE_ROOT}/scripts/build_cardputer_dynbuffers.sh" "$@"
+else
+  bash "${SOURCE_ROOT}/scripts/build.sh" "$@"
+fi
 
 EXPECTED_ELF="${BUILD_PATH}/GroovePuter.ino.elf"
 if [[ -f "${EXPECTED_ELF}" ]]; then

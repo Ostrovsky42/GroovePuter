@@ -44,7 +44,7 @@ require(CPP, '"DR"', "Drums preview label is missing")
 # Honest reference semantics and separate next-capture controls.
 require(CPP, '"REF MUT"', "Mutable reference storage badge is missing")
 require(CPP, '"REF LINKED"', "Linked reference warning is missing")
-require(CPP, '"CAP %uB %s  GEN %uB  P:%s"',
+require(CPP, '"CAP %uB %s  NEW %uB  P:%s"',
         "Next capture settings must be visibly separate from saved metadata, "
         "and distinct from the Generated Phrase request-bars owner")
 if any(term in CPP for term in ('"COPIED"', '"RECORDED"', '"EXTRACTED"')):
@@ -72,8 +72,8 @@ for needle in (
     "case 'd': return deriveFromParent();",
     "case 'w': return writeToCurrentRow(ui_event.alt);",
     "return clearCurrentSlot();",
-    '"1-4:SLOT L/R:BAR U/D:CAPLEN"',
-    '"G:GEN ENT/D/W"',
+    '"1-4:SLOT [L/R]BAR [U/D]LEN"',
+    '"G:NEW ENT/D/W"',
 ):
     require(CPP, needle, f"Phrase UI command/legend regression: {needle}")
 # Ctrl+arrow TO/8-bar destination shortcuts still exist in CORE handleEvent;
@@ -107,7 +107,7 @@ if '"STOP PLAYBACK FOR PHRASE"' in CPP:
     raise AssertionError("D2 Phrase G must not retain the old PLAY rejection")
 require(CPP, "!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lower == 'g'",
         "only plain G may own generated Phrase materialization")
-require(CPP, "static_cast<int>(songStart) + phraseResult.bars",
+require(CPP, "static_cast<int>(songStart) + static_cast<uint8_t>(out.bars)",
         "successful generated Phrase must advance TO by generated length")
 if "mini_acid_.stop()" in CPP or "mini_acid_.start()" in CPP:
     raise AssertionError("Phrase G must not hide stop/generate/restart transport ownership")
@@ -188,10 +188,12 @@ require(INSERT, "finalLength > Song::kMaxPositions",
 require(DISPLAY, "page_index_ != WorkflowPages::kPhraseCore",
         "global Alt+W must exclude PHRASE CORE so REPLACE is reachable")
 waveform_start = DISPLAY.index("if (event.alt && (event.key == 'w' || event.key == 'W')")
-waveform_block = DISPLAY[waveform_start:waveform_start + 260]
+waveform_block = DISPLAY[waveform_start:waveform_start + 420]
 require(waveform_block, "page_index_ != WorkflowPages::kPhraseCore",
         "Phrase Core exclusion must belong to the global waveform Alt+W condition")
-require(waveform_block, "UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled",
+require(waveform_block, "GROOVEPUTER_ENABLE_WAVEFORM &&",
+        "global Alt+W must honor the compile-time waveform capability")
+require(waveform_block, "UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && !UI::waveformOverlay.enabled",
         "non-Phrase Alt+W must still toggle the waveform overlay")
 
 require(HELP, '"Ctrl+L/R    Move TO row +/-1"',

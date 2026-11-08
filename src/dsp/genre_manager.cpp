@@ -158,6 +158,10 @@ const GenreRecipeDef kGenreRecipes[] = {
     {kMinimalSleepRecipeId, "Minimal Sleep", {}, false, {}},
     {kGoldenEraRecipeId, "Golden Era", {}, false, {}},
     {kDustyJazzRecipeId, "Dusty Jazz", {}, false, {}},
+    {kDnbAtmosRecipeId, "Atmos", {}, false, {}},
+    {kDnbFunkRecipeId, "Funk", {}, false, {}},
+    {kDnbDanceRecipeId, "Dance", {}, false, {}},
+    {kDnbNeuroRecipeId, "Neuro", {}, false, {}},
 };
 
 const GenreRecipeDef* findRecipe(GenreRecipeId id) {
@@ -228,8 +232,11 @@ constexpr GenreBehavior kBehaviorElectro =
     {0xAA55, 3, 3, true, true, false, false, {0.2f, 0.60f, 0.30f, 0.75f, 0.20f}};
 constexpr GenreBehavior kBehaviorRave =
     {0xFFFF, 6, 1, true, true, true, false, {0.0f, 0.78f, 0.32f, 0.80f, 0.50f}};
+// stepMask convention: bit = step (bit 0 = step 0), read by stepAllowed() in
+// mode_manager.cpp. Drum templates use the opposite order (bit 15 = step 0).
+// 0x4444 = steps 2/6/10/14, the offbeat 8ths; 0xAAAA would be odd 16ths.
 constexpr GenreBehavior kBehaviorReggae =
-    {0xAAAA, 4, 0, true, false, false, true, {1.0f, 0.28f, 0.40f, 0.55f, 0.18f}};
+    {0x4444, 4, 0, true, false, false, true, {1.0f, 0.28f, 0.40f, 0.55f, 0.18f}};
 constexpr GenreBehavior kBehaviorTripHop =
     {0xF0F0, 4, 2, true, false, false, true, {0.2f, 0.45f, 0.25f, 0.55f, 0.30f}};
 constexpr GenreBehavior kBehaviorBroken =
@@ -246,15 +253,13 @@ const GenerativeParams kGenerativePresets[kGenerativeModeCount] = {
     kPresetBroken, kPresetBroken, kPresetTripHop,
 };
 
-const GenrePreset kGenrePresets[8] = {
-    {GenerativeMode::Acid, "Classic Acid"},
-    {GenerativeMode::Outrun, "Outrun Lead"},
-    {GenerativeMode::Darksynth, "Darksynth Bass"},
-    {GenerativeMode::Outrun, "Synthwave"},
-    {GenerativeMode::Electro, "EBM"},
-    {GenerativeMode::Rave, "Rave Acid"},
-    {GenerativeMode::Darksynth, "Hotline"},
-    {GenerativeMode::Electro, "Detroit"},
+const GenrePreset kGenrePresets[6] = {
+    {"Classic Acid", GenerativeMode::Acid, kBaseRecipeId},
+    {"Rave Acid", GenerativeMode::Rave, kBaseRecipeId},
+    {"Synthwave", GenerativeMode::Outrun, kBaseRecipeId},
+    {"EBM", GenerativeMode::Electro, kBaseRecipeId},
+    {"Detroit", GenerativeMode::Techno, kBaseRecipeId},
+    {"Darksynth", GenerativeMode::Darksynth, kBaseRecipeId},
 };
 
 namespace GenreCatalog {

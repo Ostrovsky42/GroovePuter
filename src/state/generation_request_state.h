@@ -12,14 +12,19 @@ namespace GroovePuterState {
 // musical content: generated patterns are already persisted in Scene, while
 // the level is an instruction for future G / phrase-audition requests.
 //
-// P2 is the compatibility default because live production was hard-coded to P2
-// before the selector existed. Persistence is deliberately deferred: changing
+// P3 (REWORK) is the default since 0.9.17: DEVELOP (D on MATERIAL) can only
+// grow a P3 take, and an action that refuses on default settings is not a
+// finished feature (P0_MUSICAL_PLAY_SPEC section 2.4). This deliberately changes
+// what a default G makes. Persistence is deliberately deferred: changing
 // P-level must never perform synchronous flash/NVS writes on the input path.
+inline constexpr GroovePuterRhythm::RealizationLevel kDefaultGenerationLevel =
+    GroovePuterRhythm::RealizationLevel::P3Transformation;
+
 inline GroovePuterRhythm::RealizationLevel sanitizeGenerationLevel(uint8_t raw) {
     using GroovePuterRhythm::RealizationLevel;
     return raw < static_cast<uint8_t>(RealizationLevel::Count)
         ? static_cast<RealizationLevel>(raw)
-        : RealizationLevel::P2Variation;
+        : kDefaultGenerationLevel;
 }
 
 inline const char* generationLevelCode(
@@ -44,6 +49,21 @@ inline const char* generationLevelShortName(
         case RealizationLevel::Count: break;
     }
     return "P2 VAR";
+}
+
+// Musician-facing projection of the same bounded realization policy. The
+// technical P-level remains stable for internal contracts and tests; UI speaks
+// in terms of the musical decision the player is making.
+inline const char* generationStyleName(
+        GroovePuterRhythm::RealizationLevel level) {
+    using GroovePuterRhythm::RealizationLevel;
+    switch (sanitizeGenerationLevel(static_cast<uint8_t>(level))) {
+        case RealizationLevel::P1Canonical: return "P1";
+        case RealizationLevel::P2Variation: return "P2";
+        case RealizationLevel::P3Transformation: return "P3";
+        case RealizationLevel::Count: break;
+    }
+    return "P2";
 }
 
 inline GroovePuterRhythm::RealizationLevel nextGenerationLevel(
@@ -73,8 +93,7 @@ struct GenerationAttemptAllocation {
 
 namespace generation_request_detail {
 inline GroovePuterRhythm::RealizationLevel& levelStorage() {
-    static GroovePuterRhythm::RealizationLevel level =
-        GroovePuterRhythm::RealizationLevel::P2Variation;
+    static GroovePuterRhythm::RealizationLevel level = kDefaultGenerationLevel;
     return level;
 }
 

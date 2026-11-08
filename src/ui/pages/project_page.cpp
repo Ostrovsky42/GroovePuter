@@ -1,5 +1,7 @@
 #include "project_page.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
+#include "../led_manager.h"
 #include <algorithm>
 #include <vector>
 #ifdef ARDUINO
@@ -13,6 +15,7 @@
 #include <cctype>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <new>
 
 #include "../layout_manager.h"
@@ -20,10 +23,19 @@
 #include "../help_dialog_frames.h"
 #include "../ui_widgets.h"
 #include "../midi_device_profile_ui.h"
+#include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_usb_host_midi.h"
+#include "src/platform/battery_status.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/ui/save_probe.h"
+#include "../project_page_ux.h"
+#include "../hub_midi_bar_strip.h"
+#include "../ui_utils.h"
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
+namespace InputUi = GroovePuterUi::MidiInputUi;
 std::string generateMemorableName() {
   static const char* adjectives[] = {
     "bright", "calm", "clear", "cosmic", "crisp", "deep", "dusty", "electric",
@@ -63,69 +75,26 @@ static const TapeColor TAPE_PALETTE[] = {
 
 static const char* LED_MODE_NAMES[] = {"Off", "StepTrig", "Beat", "MuteState"};
 static const char* VOICE_ID_NAMES[] = {"303A", "303B", "Kick", "Snare", "HatC", "HatO", "TomM", "TomH", "Rim", "Clap"};
-static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90};
+// Raw 0..255 LED brightness steps (the scene stores the raw value; the UI shows a percentage).
+// The ladder reaches full scale: it used to stop at 90 (35%).
+static const uint8_t BRI_STEPS[] = {10, 25, 40, 60, 90, 130, 180, 255};
+static constexpr int BRI_STEP_COUNT = static_cast<int>(sizeof(BRI_STEPS) / sizeof(BRI_STEPS[0]));
 static const uint16_t FLASH_STEPS[] = {20, 40, 60, 90};
 
-const char* styleShortName(VisualStyle style) {
-  switch (style) {
-    case VisualStyle::MINIMAL: return "MINI";
-    case VisualStyle::RETRO_CLASSIC: return "RETRO";
-    case VisualStyle::AMBER: return "AMBER";
-    default: return "RETRO";
-  }
-}
-
+// The Theme row keeps its place in the list but shares the single-theme
+// selector: CLEAN is the only product theme.
 VisualStyle nextStyle(VisualStyle style) {
-  switch (style) {
-    case VisualStyle::MINIMAL: return VisualStyle::RETRO_CLASSIC;
-    case VisualStyle::RETRO_CLASSIC: return VisualStyle::AMBER;
-    case VisualStyle::AMBER: return VisualStyle::MINIMAL;
-    default: return VisualStyle::MINIMAL;
-  }
+  return UI::nextThemeStyle(style);
 }
 
 VisualStyle prevStyle(VisualStyle style) {
-  switch (style) {
-    case VisualStyle::MINIMAL: return VisualStyle::AMBER;
-    case VisualStyle::RETRO_CLASSIC: return VisualStyle::MINIMAL;
-    case VisualStyle::AMBER: return VisualStyle::RETRO_CLASSIC;
-    default: return VisualStyle::MINIMAL;
-  }
-}
-
-const char* grooveModeName(GrooveboxMode mode) {
-  switch (mode) {
-    case GrooveboxMode::Acid: return "ACID";
-    case GrooveboxMode::Minimal: return "MINIMAL";
-    case GrooveboxMode::Breaks: return "BREAKS";
-    case GrooveboxMode::Dub: return "DUB";
-    case GrooveboxMode::Electro: return "ELECTRO";
-    default: return "MINIMAL";
-  }
-}
-
-const char* grooveFlavorName(GrooveboxMode mode, int flavor) {
-  if (flavor < 0) flavor = 0;
-  if (flavor > 4) flavor = 4;
-  static const char* acid[5] = {"CLASSIC", "SHARP", "DEEP", "RUBBER", "RAVE"};
-  static const char* minimal[5] = {"TIGHT", "WARM", "AIRY", "DRY", "HYPNO"};
-  static const char* breaks[5] = {"NUSKOOL", "SKITTER", "ROLLER", "CRUNCH", "LIQUID"};
-  static const char* dub[5] = {"HEAVY", "SPACE", "STEPPERS", "TAPE", "FOG"};
-  static const char* electro[5] = {"ROBOT", "ZAP", "BOING", "MIAMI", "INDUS"};
-  switch (mode) {
-    case GrooveboxMode::Acid: return acid[flavor];
-    case GrooveboxMode::Minimal: return minimal[flavor];
-    case GrooveboxMode::Breaks: return breaks[flavor];
-    case GrooveboxMode::Dub: return dub[flavor];
-    case GrooveboxMode::Electro: return electro[flavor];
-    default: return minimal[flavor];
-  }
+  return UI::previousThemeStyle(style);
 }
 
 const char* sectionName(int section) {
   switch (section) {
     case 0: return "SCENES";
-    case 1: return "GROOVE";
+    case 1: return "DEVICE";
     case 2: return "LED";
     case 3: return "MIDI";
     default: return "SCENES";
@@ -138,17 +107,17 @@ void sectionRange(int section, int& first, int& last) {
       first = (int)ProjectPage::MainFocus::Load;
       last = (int)ProjectPage::MainFocus::ClearProject;
       return;
-    case 1: // groove
+    case 1: // device
       first = (int)ProjectPage::MainFocus::VisualStyle;
       last = (int)ProjectPage::MainFocus::Volume;
       return;
     case 2: // led
       first = (int)ProjectPage::MainFocus::LedMode;
-      last = (int)ProjectPage::MainFocus::LedFlash;
+      last = (int)ProjectPage::MainFocus::LedTest;
       return;
     case 3: // midi
-      first = (int)ProjectPage::MainFocus::MidiDevice;
-      last = (int)ProjectPage::MainFocus::MidiDevice;
+      first = (int)ProjectPage::MainFocus::UsbRole;
+      last = (int)ProjectPage::MainFocus::MidiInputTarget;
       return;
     default:
       first = 0;
@@ -206,6 +175,87 @@ void ProjectPage::openSaveDialog() {
   save_dialog_focus_ = SaveDialogFocus::Input;
   save_name_ = mini_acid_.currentSceneName();
   if (save_name_.empty()) save_name_ = generateMemorableName();
+  name_caret_ = static_cast<uint8_t>(save_name_.size());
+}
+
+// Enter on the Save row: save under the current name; only an unnamed
+// project falls through to the name prompt.
+bool ProjectPage::saveOwnName() {
+  const std::string current = mini_acid_.currentSceneName();
+  if (current.empty()) {
+    openSaveDialog();
+    return true;
+  }
+  save_name_ = current;
+  return saveCurrentScene();
+}
+
+void ProjectPage::openRenameDialog() {
+  if (scenes_.empty() || selection_index_ < 0 ||
+      selection_index_ >= static_cast<int>(scenes_.size())) return;
+  dialog_type_ = DialogType::Rename;
+  save_dialog_focus_ = SaveDialogFocus::Input;
+  save_name_ = scenes_[selection_index_];
+  name_caret_ = static_cast<uint8_t>(save_name_.size());
+}
+
+// Rename the project at selection_index_ to save_name_. The scene file, its
+// autosave and its pattern pages move; nothing about the formats changes.
+bool ProjectPage::renameSelectedScene() {
+  if (selection_index_ < 0 || selection_index_ >= static_cast<int>(scenes_.size())) {
+    dialog_type_ = DialogType::Load;
+    return true;
+  }
+  const std::string oldName = scenes_[selection_index_];
+  const std::string newName = save_name_;
+  if (newName.empty()) { UI::showToast("Name is empty", 1200); return true; }
+  if (ProjectUx::nameUsedByOther(scenes_, newName, selection_index_)) {
+    UI::showToast("Name already used", 1200);
+    return true;
+  }
+  if (newName == oldName) { dialog_type_ = DialogType::Load; return true; }
+
+  const std::string oldPath = "/scenes/" + oldName + ".json";
+  const std::string oldAuto = "/scenes/" + oldName + ".auto.json";
+  const std::string newPath = "/scenes/" + newName + ".json";
+  const std::string newAuto = "/scenes/" + newName + ".auto.json";
+  bool ok = false;
+  if (oldName == mini_acid_.currentSceneName()) {
+    // The open project: Save As writes the new scene and copies pages and
+    // makes it current; the old files are then removed.
+    bool saved = false;
+    const auto saveUnderGuard = [&]() { saved = mini_acid_.saveSceneAs(newName); };
+    if (audio_guard_) audio_guard_(saveUnderGuard);
+    else saveUnderGuard();
+    if (saved) {
+      SD.remove(oldPath.c_str());
+      SD.remove(oldAuto.c_str());
+      PatternPagingService::clearProjectPages(oldName);
+      ok = true;
+    }
+  } else if (SD.rename(oldPath.c_str(), newPath.c_str())) {
+    if (SD.exists(oldAuto.c_str())) SD.rename(oldAuto.c_str(), newAuto.c_str());
+    if (PatternPagingService::copyProjectPages(oldName, newName)) {
+      PatternPagingService::clearProjectPages(oldName);
+      ok = true;
+    } else {
+      SD.rename(newPath.c_str(), oldPath.c_str());
+      if (SD.exists(newAuto.c_str())) SD.rename(newAuto.c_str(), oldAuto.c_str());
+    }
+  }
+  dialog_type_ = DialogType::Load;
+  save_dialog_focus_ = SaveDialogFocus::Input;
+  if (!ok) {
+    UI::showToast("Rename failed", 1400);
+    return true;
+  }
+  refreshScenes();
+  for (size_t i = 0; i < scenes_.size(); ++i) {
+    if (scenes_[i] == newName) { selection_index_ = static_cast<int>(i); break; }
+  }
+  ensureSelectionVisible(10);
+  UI::showToast("Project renamed", 1000);
+  return true;
 }
 
 void ProjectPage::openImportMidiDialog() {
@@ -233,7 +283,6 @@ void ProjectPage::openMidiAdvanceDialog() {
   }
 
   midi_selected_path_ = selectedPath;
-  dialog_type_ = DialogType::MidiAdvance;
   midi_advance_focus_ = MidiAdvanceFocus::Mode;
   midi_adv_scroll_ = 0;
 
@@ -242,15 +291,189 @@ void ProjectPage::openMidiAdvanceDialog() {
   MidiImporter::ScanResult& midiScan =
       GroovePuterUi::midiFileManager().beginImportScan();
   midiScan = importer.scanFile(midi_selected_path_);
-  if (midiScan.valid) {
-    autoRouteMidi();
-    if (midiScan.estimatedBars > 0) {
-      midi_import_length_bars_ = midiScan.estimatedBars;
-    }
+  if (!midiScan.valid) {
+    returnToMidiBrowser();
+    UI::showToast("IMPORT: NO NOTES IN FILE", 1200);
+    return;
   }
+  midi_import_length_bars_ = midiScan.estimatedBars > 0 ? midiScan.estimatedBars : 16;
+  midi_import_screen_.reset(new (std::nothrow) MidiImportScreen::State());
+  if (!midi_import_screen_) {
+    returnToMidiBrowser();
+    UI::showToast("IMPORT: OUT OF MEMORY", 1200);
+    return;
+  }
+  MidiImportScreen::reset(*midi_import_screen_, midiScan.estimatedBars);
+  for (int i = 0; i < 16; ++i) {
+    const auto& ci = midiScan.channels[i];
+    if (!ci.used()) continue;
+    MidiImportScreen::addRow(*midi_import_screen_, static_cast<uint8_t>(i + 1),
+                             ci.noteCount, ci.minNote, ci.maxNote,
+                             ci.trackName, ci.barMask);
+  }
+  MidiImportScreen::assignInitialTargets(*midi_import_screen_);
+  dialog_type_ = DialogType::MidiImportTracks;
+}
+
+// Targets -> channel masks and the bar range -> importer settings.
+void ProjectPage::applyMidiImportScreen() {
+  const MidiImportScreen::Masks m = MidiImportScreen::buildMasks(*midi_import_screen_);
+  midi_mask_a_ = m.a;
+  midi_mask_b_ = m.b;
+  midi_mask_d_ = m.d;
+  MidiImportScreen::rangeToSettings(*midi_import_screen_, midi_import_from_bar_,
+                                    midi_import_length_bars_);
+}
+
+bool ProjectPage::handleMidiImportTracks(UIEvent& ui_event) {
+  if (!midi_import_screen_) { returnToMidiBrowser(); return true; }
+  MidiImportScreen::State& st = *midi_import_screen_;
+  constexpr uint8_t kVisible = 7;
+  if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
+    returnToMidiBrowser();
+    return true;
+  }
+  if (ui_event.scancode == GROOVEPUTER_UP) { MidiImportScreen::moveRow(st, -1, kVisible); return true; }
+  if (ui_event.scancode == GROOVEPUTER_DOWN) { MidiImportScreen::moveRow(st, 1, kVisible); return true; }
+  if (ui_event.scancode == GROOVEPUTER_LEFT) { MidiImportScreen::moveBar(st, -1); return true; }
+  if (ui_event.scancode == GROOVEPUTER_RIGHT) { MidiImportScreen::moveBar(st, 1); return true; }
+  const char key = ui_event.key;
+  if (key == 't' || key == 'T') { MidiImportScreen::cycleTarget(st); return true; }
+  if (key == 's' || key == 'S') { MidiImportScreen::setRangeStart(st); return true; }
+  if (key == 'e' || key == 'E') { MidiImportScreen::setRangeEnd(st); return true; }
+  if (key == '\t') {
+    // Old settings dialog (profile, target pattern, APPEND), seeded from here.
+    applyMidiImportScreen();
+    midi_import_screen_.reset();
+    dialog_type_ = DialogType::MidiAdvance;
+    return true;
+  }
+  if (key == '\n' || key == '\r') {
+    const char clash = MidiImportScreen::clashSynth(st);
+    if (clash == 'A') { UI::showToast("IMPORT: TWO TRACKS ON A", 1200); return true; }
+    if (clash == 'B') { UI::showToast("IMPORT: TWO TRACKS ON B", 1200); return true; }
+    if (!MidiImportScreen::buildMasks(st).any()) {
+      UI::showToast("IMPORT: NO TRACK SELECTED", 1200);
+      return true;
+    }
+    applyMidiImportScreen();
+    return importMidiAtSelection();
+  }
+  return true;
+}
+
+void ProjectPage::drawMidiImportTracks(IGfx& gfx) {
+  using namespace MidiImportScreen;
+  if (!midi_import_screen_) return;
+  const State& st = *midi_import_screen_;
+  UI::publishShellInfo("T TARGET  S/E BARS  ENT IMPORT  ESC");
+
+  const int fh = gfx.fontHeight();
+  const int cw = gfx.textWidth("0");
+  const int rowH = fh + 2;
+  const int top = Layout::CONTENT.y;
+  const int xNum = 2;
+  const int xName = xNum + 3 * cw;
+  const int xCh = xName + 7 * cw;
+  const int xN = xCh + 3 * cw;
+  const int xRange = xN + 4 * cw;
+  const int xStrip = xRange + 8 * cw;
+  const int xTarget = Layout::SCREEN_W - 4 - 5 * cw;
+  const int stripW = xTarget - 4 - xStrip;
+  const int bars = st.fileBars;
+  const int cellW = std::max(1, stripW / std::max(1, bars));
+  char buf[24];
+
+  gfx.setTextColor(COLOR_LABEL);
+  gfx.drawText(xNum, top, "#");
+  gfx.drawText(xName, top, "NAME");
+  gfx.drawText(xCh, top, "CH");
+  gfx.drawText(xN, top, "N");
+  gfx.drawText(xRange, top, "RANGE");
+  std::snprintf(buf, sizeof(buf), "B%d %d-%d", st.barCursor + 1, st.rangeStart + 1, st.rangeEnd + 1);
+  gfx.drawText(xStrip, top, buf);
+  gfx.drawText(xTarget, top, "TARGET");
+
+  const int rowsTop = top + fh + 1;
+  const int visible = 7;
+  uint8_t cells[kMaxBars];
+  for (int v = 0; v < visible; ++v) {
+    const int i = st.scroll + v;
+    if (i >= st.count) break;
+    const Row& r = st.rows[i];
+    const int y = rowsTop + v * rowH;
+    if (i == st.cursor) gfx.fillRect(0, y - 1, Layout::SCREEN_W - 3, rowH, COLOR_PANEL);
+
+    IGfxColor tc = COLOR_MUTED;
+    if (r.target == Target::A) tc = COLOR_SYNTH_A;
+    else if (r.target == Target::B) tc = COLOR_SYNTH_B;
+    else if (r.target == Target::Drums) tc = COLOR_WARN;
+    const bool clash = rowClashes(st, static_cast<uint8_t>(i));
+
+    gfx.setTextColor(COLOR_TEXT);
+    std::snprintf(buf, sizeof(buf), "%d", i + 1);
+    gfx.drawText(xNum, y, buf);
+    if (clash) {
+      gfx.setTextColor(COLOR_RED);
+      gfx.drawText(0, y, "!");
+    }
+    gfx.setTextColor(COLOR_TEXT);
+    gfx.drawText(xName, y, r.name[0] ? r.name : "-");
+    std::snprintf(buf, sizeof(buf), "%d", r.channel);
+    gfx.drawText(xCh, y, buf);
+    if (r.noteCount < 1000) std::snprintf(buf, sizeof(buf), "%d", r.noteCount);
+    else std::snprintf(buf, sizeof(buf), "%dk", std::min(r.noteCount / 1000, 99));
+    gfx.drawText(xN, y, buf);
+    char n1[8], n2[8];
+    formatNoteName(r.minNote, n1, sizeof(n1));
+    formatNoteName(r.maxNote, n2, sizeof(n2));
+    std::snprintf(buf, sizeof(buf), "%s-%s", n1, n2);
+    gfx.drawText(xRange, y, buf);
+
+    const uint8_t n = HubMidiBarStrip::fill(r.barMask, bars, static_cast<uint8_t>(bars), cells, sizeof(cells));
+    for (uint8_t c = 0; c < n; ++c) {
+      const bool inRange = c >= st.rangeStart && c <= st.rangeEnd;
+      IGfxColor col = COLOR_GRAY;
+      if (cells[c] == HubMidiBarStrip::kCellNotes) col = inRange ? tc : COLOR_LIGHT_GRAY;
+      gfx.fillRect(xStrip + c * cellW, y, std::max(1, cellW - (cellW > 2 ? 1 : 0)), fh, col);
+    }
+    gfx.setTextColor(clash ? COLOR_RED : tc);
+    gfx.drawText(xTarget, y, targetLabel(r.target));
+  }
+  if (st.count == 0) {
+    gfx.setTextColor(COLOR_MUTED);
+    gfx.drawText(xNum, rowsTop, "NO TRACKS");
+  }
+  // Bar cursor: a hollow column over all rows.
+  const int shown = std::min<int>(st.count - st.scroll, visible);
+  if (shown > 0) {
+    gfx.drawRect(xStrip + st.barCursor * cellW - 1, rowsTop - 1, cellW + 1,
+                 shown * rowH, COLOR_TEXT);
+  }
+  if (st.count > visible) {
+    const int sbH = visible * rowH;
+    const int knobH = std::max(3, sbH * visible / st.count);
+    const int knobY = rowsTop + (sbH - knobH) * st.scroll / (st.count - visible);
+    gfx.fillRect(Layout::SCREEN_W - 2, rowsTop, 2, sbH, COLOR_PANEL);
+    gfx.fillRect(Layout::SCREEN_W - 2, knobY, 2, knobH, COLOR_ACCENT);
+  }
+
+  // Legend.
+  const int ly = rowsTop + visible * rowH + 1;
+  int lx = xNum;
+  auto seg = [&](IGfxColor c, const char* t) {
+    gfx.setTextColor(c);
+    gfx.drawText(lx, ly, t);
+    lx += gfx.textWidth(t) + cw;
+  };
+  seg(COLOR_SYNTH_A, "A=SYNTH A");
+  seg(COLOR_SYNTH_B, "B=SYNTH B");
+  seg(COLOR_WARN, "DRUMS");
+  seg(COLOR_MUTED, "SKIP");
 }
 
 void ProjectPage::returnToMidiBrowser() {
+  midi_import_screen_.reset();
   GroovePuterUi::midiFileManager().open();
   dialog_type_ = DialogType::ImportMidi;
 }
@@ -379,19 +602,92 @@ void ProjectPage::drawConfirmClearDialog(IGfx& gfx) {
 }
 
 bool ProjectPage::clearProject() {
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
+  bool cleared = false;
   withAudioGuard([&]() {
-    mini_acid_.sceneManager().wipeToZero();
+    cleared = mini_acid_.createNewSceneWithName(mini_acid_.currentSceneName());
   });
-  UI::showToast("Project cleared to zero");
+  if (!cleared) {
+    UI::showToast("PROJECT CLEAR FAILED", 1500);
+    return true;
+  }
+  GroovePuterState::markSceneSaveSucceeded();
+  UI::showToast(hadUserNext ? "PROJECT CLEARED; NEXT CLEARED"
+                            : "Project cleared to zero");
   closeDialog();
   return true;
 }
 
+namespace {
+const char* usbRoleLabel(UsbBootRole role) {
+    switch (role) {
+        case UsbBootRole::Device: return "COMPUTER";
+        case UsbBootRole::Host: return "KEYBOARD";
+        case UsbBootRole::Off: return "OFF";
+    }
+    return "COMPUTER";
+}
+
+UsbBootRole usbRoleStep(UsbBootRole role, int delta) {
+    // COMPUTER -> KEYBOARD -> OFF -> COMPUTER
+    int index = role == UsbBootRole::Device ? 0 : role == UsbBootRole::Host ? 1 : 2;
+    index = (index + (delta >= 0 ? 1 : 2)) % 3;
+    return index == 0 ? UsbBootRole::Device : index == 1 ? UsbBootRole::Host : UsbBootRole::Off;
+}
+
+UsbBootRole usbRoleFromPreview(uint8_t preview, UsbBootRole fallback) {
+    return preview <= static_cast<uint8_t>(UsbBootRole::Host)
+        ? static_cast<UsbBootRole>(preview) : fallback;
+}
+}  // namespace
+
+// USB role: choose COMPUTER / KEYBOARD / OFF with L/R, ENTER saves it (it does not change the running
+// role), a second ENTER restarts. A project with unsaved changes is never restarted from here.
+bool ProjectPage::activateUsbRole() {
+    if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+        UI::showToast("USB ROLE FIXED: COMPUTER", 1400);
+        return true;
+    }
+    const UsbBootRole pending = CardputerUsbRoleRuntime::pendingRole();
+    const UsbBootRole selected = usbRoleFromPreview(usb_role_preview_, pending);
+    if (selected != pending) {
+        if (!CardputerUsbRoleRuntime::setPendingRole(selected)) {
+            usb_role_preview_ = static_cast<uint8_t>(pending);
+            UI::showToast("USB ROLE NOT SAVED", 1600);
+            return true;
+        }
+        usb_role_preview_ = static_cast<uint8_t>(selected);
+        UI::showToast(CardputerUsbRoleRuntime::restartPending()
+                          ? "SAVED - ENTER TO RESTART"
+                          : "USB: ACTIVE", 1600);
+        return true;
+    }
+    if (!CardputerUsbRoleRuntime::restartPending()) {
+        UI::showToast("USB: ACTIVE", 900);
+        return true;
+    }
+    if (GroovePuterState::sceneRevisionSnapshot().dirty()) {
+        UI::showToast("SAVE PROJECT FIRST (SAVE AS)", 2000);
+        return true;
+    }
+    withAudioGuard([&]() {
+        if (mini_acid_.isPlaying()) mini_acid_.stop();
+        mini_acid_.allLiveNotesOff();
+    });
+    UI::showToast("RESTARTING...", 600);
+    CardputerUsbRoleRuntime::requestRebootWithRole(pending);
+    return true;
+}
+
 void ProjectPage::onEnter(int context) {
+  midi_import_screen_.reset();
   dialog_type_ = DialogType::None;
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
   midi_profile_preview_ = ProfileUi::kUnsetPreview;
+  usb_role_preview_ = 0xFF;
 }
 
 bool ProjectPage::importMidiAtSelection() {
@@ -488,34 +784,15 @@ bool ProjectPage::importMidiAtSelection() {
           ? lastPattern - startPattern + 1
           : 0;
 
-      int songPosition = sm.getSongPosition();
-      if (midi_import_append_) {
-        songPosition = sm.songLength();
-        const bool firstRowEmpty =
-            sm.songLength() == 1 &&
-            sm.songPattern(0, SongTrack::SynthA) < 0 &&
-            sm.songPattern(0, SongTrack::SynthB) < 0 &&
-            sm.songPattern(0, SongTrack::Drums) < 0 &&
-            sm.songPattern(0, SongTrack::Voice) < 0;
-        if (firstRowEmpty) songPosition = 0;
-      }
-
-      for (int i = 0; i < importedBars; ++i) {
-        const int targetPosition = songPosition + i;
-        const int patternIndex = startPattern + i;
-        if (targetPosition >= Song::kMaxPositions ||
-            patternIndex >= kMaxPatterns) {
-          break;
-        }
-        if (midi_mask_a_) {
-          sm.setSongPattern(targetPosition, SongTrack::SynthA, patternIndex);
-        }
-        if (midi_mask_b_) {
-          sm.setSongPattern(targetPosition, SongTrack::SynthB, patternIndex);
-        }
-        if (midi_mask_d_) {
-          sm.setSongPattern(targetPosition, SongTrack::Drums, patternIndex);
-        }
+      // The importer writes the scene (and pages) directly, bypassing the
+      // per-slot event cache and the selection the audio reads. Make the
+      // imported bars audible at once: Song rows, slot selection, pending
+      // activation and the runtime event bank (as scene load does).
+      if (!mini_acid_.publishMidiImport(startPattern, importedBars,
+                                        midi_mask_a_ != 0, midi_mask_b_ != 0,
+                                        midi_mask_d_ != 0,
+                                        midi_import_append_)) {
+        Serial.println("[ProjectPage] MIDI import: runtime bank rebuild failed");
       }
 
       persisted = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
@@ -539,6 +816,7 @@ bool ProjectPage::importMidiAtSelection() {
 }
 
 bool ProjectPage::deleteSelectionInDialog() {
+  delete_pending_ = false;
   if (dialog_focus_ != DialogFocus::List || dialog_type_ != DialogType::Load) {
     return true;
   }
@@ -567,19 +845,18 @@ bool ProjectPage::deleteSelectionInDialog() {
 }
 
 void ProjectPage::closeDialog() {
+  midi_import_screen_.reset();
   dialog_type_ = DialogType::None;
   dialog_focus_ = DialogFocus::List;
   save_dialog_focus_ = SaveDialogFocus::Input;
+  delete_pending_ = false;
 }
 
 
 void ProjectPage::moveSelection(int delta) {
   loadError_ = false; // Clear error on move
-  selection_index_ += delta;
-  if (selection_index_ < 0) selection_index_ = 0;
-  if (!scenes_.empty() && selection_index_ >= static_cast<int>(scenes_.size())) {
-    selection_index_ = static_cast<int>(scenes_.size()) - 1;
-  }
+  selection_index_ = ProjectUx::wrapIndex(
+      selection_index_, delta, static_cast<int>(scenes_.size()));
   ensureSelectionVisible(10); // Assuming 10 rows visible
 }
 
@@ -593,18 +870,14 @@ void ProjectPage::ensureSelectionVisible(int visibleRows) {
   }
   const int maxIdx = listCount - 1;
   selection_index_ = std::max(0, std::min(selection_index_, maxIdx));
-  if (scroll_offset_ > selection_index_) scroll_offset_ = selection_index_;
-  if (selection_index_ >= scroll_offset_ + visibleRows) {
-    scroll_offset_ = selection_index_ - visibleRows + 1;
-  }
-  const int maxScroll = std::max(0, maxIdx - visibleRows + 1);
-  scroll_offset_ = std::max(0, std::min(scroll_offset_, maxScroll));
+  scroll_offset_ = ProjectUx::windowStart(selection_index_, listCount,
+                                          visibleRows, scroll_offset_);
 }
 
 void ProjectPage::ensureMainFocusVisible(int visibleRows) {
   if (visibleRows < 1) visibleRows = 1;
   const int focus = static_cast<int>(main_focus_);
-  const int maxFocus = static_cast<int>(MainFocus::LedFlash);
+  const int maxFocus = static_cast<int>(MainFocus::MidiInputTarget);
   if (main_scroll_ < 0) main_scroll_ = 0;
   if (main_scroll_ > maxFocus) main_scroll_ = maxFocus;
   if (focus < main_scroll_) {
@@ -621,16 +894,31 @@ bool ProjectPage::loadSceneAtSelection() {
   if (scenes_.empty()) return true;
   if (selection_index_ < 0 || selection_index_ >= static_cast<int>(scenes_.size())) return true;
   bool loaded = false;
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   std::string name = scenes_[selection_index_];
-  withAudioGuard([&]() {
+  SAVE_PROBE_BEGIN("load", mini_acid_.isPlaying())
+  const auto loadSelectedScene = [&]() {
+    SAVE_PROBE_HOLD_BEGIN();
     loaded = mini_acid_.loadSceneByName(name);
-  });
+    SAVE_PROBE_HOLD_END();
+  };
+  // Load owns its success/recovery revision publication below. The generic
+  // withAudioGuard wrapper marks every action as a mutation, including a
+  // rejected Load that leaves the existing project unchanged.
+  if (audio_guard_) audio_guard_(loadSelectedScene);
+  else loadSelectedScene();
+  SAVE_PROBE_END(loaded);
   if (loaded) {
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
       GroovePuterState::markSceneMutated();
-      UI::showToast("Recovered unsaved project", 1800);
+      UI::showToast(hadUserNext ? "RECOVERED; NEXT CLEARED"
+                                : "Recovered unsaved project",
+                    1800);
     } else {
       GroovePuterState::markSceneLoadSucceeded();
+      if (hadUserNext) UI::showToast("PROJECT LOADED; NEXT CLEARED", 1600);
     }
     closeDialog();
   } else {
@@ -649,14 +937,27 @@ bool ProjectPage::saveCurrentScene() {
   const std::string name = save_name_;
   const GroovePuterState::SceneRevisionState revisionBefore =
       GroovePuterState::sceneRevisionSnapshot();
-  withAudioGuard([&]() {
+  // Save is not a mutation: withAudioGuard() would bump the scene revision and expire the
+  // retained Undo receipt (R5: Save does not expire Undo). Take the audio guard directly.
+  SAVE_PROBE_BEGIN("save-as", mini_acid_.isPlaying())
+  const auto saveUnderGuard = [&]() {
+    SAVE_PROBE_HOLD_BEGIN();
     saved = mini_acid_.saveSceneAs(name);
-  });
+    SAVE_PROBE_HOLD_END();
+  };
+  if (audio_guard_) audio_guard_(saveUnderGuard);
+  else saveUnderGuard();
+  SAVE_PROBE_END(saved);
   if (saved) {
     GroovePuterState::markSceneSaveSucceeded();
     closeDialog();
     refreshScenes();
-    UI::showToast("Project and songs saved");
+    const bool workingUnsaved = mini_acid_.hasModifiedWorking303Pattern(0) ||
+        mini_acid_.hasModifiedWorking303Pattern(1) ||
+        mini_acid_.hasUnsavedWorkingMelody(0) ||
+        mini_acid_.hasUnsavedWorkingMelody(1);
+    UI::showToast(workingUnsaved ? "PROJECT SAVED; WORKING UNSAVED"
+                                : "Project and songs saved");
   } else {
     GroovePuterState::restoreSceneRevision(revisionBefore);
     UI::showToast("Project save failed");
@@ -667,6 +968,9 @@ bool ProjectPage::saveCurrentScene() {
 bool ProjectPage::createNewScene() {
   randomizeSaveName();
   bool created = false;
+  const bool hadUserNext =
+      mini_acid_.hasPendingMaterial(0) || mini_acid_.hasPendingMaterial(1) ||
+      mini_acid_.isGoQueued(0) || mini_acid_.isGoQueued(1);
   const std::string name = save_name_;
   withAudioGuard([&]() {
     created = mini_acid_.createNewSceneWithName(name);
@@ -674,7 +978,8 @@ bool ProjectPage::createNewScene() {
   if (created) {
     GroovePuterState::markSceneSaveSucceeded();
     refreshScenes();
-    UI::showToast("Blank project created");
+    UI::showToast(hadUserNext ? "BLANK PROJECT; NEXT CLEARED"
+                              : "Blank project created");
   } else {
     UI::showToast("New project save failed");
   }
@@ -682,24 +987,22 @@ bool ProjectPage::createNewScene() {
 }
 
 bool ProjectPage::handleSaveDialogInput(char key) {
+  std::size_t caret = name_caret_;
+  bool handled = false;
   if (key == '\b') {
-    if (!save_name_.empty()) save_name_.pop_back();
-    return true;
+    ProjectUx::backspaceAtCaret(save_name_, caret);
+    handled = true;
+  } else if (key >= 32 && key < 127 && ProjectUx::nameCharAllowed(key)) {
+    ProjectUx::insertAtCaret(save_name_, caret, key);
+    handled = true;
   }
-  if (key >= 32 && key < 127) {
-    char c = key;
-    bool allowed = std::isalnum(static_cast<unsigned char>(c)) || c == '-' || c == '_';
-    if (allowed) {
-      if (save_name_.size() < 32) save_name_.push_back(c);
-      return true;
-    }
-  }
-  return false;
+  name_caret_ = static_cast<uint8_t>(caret);
+  return handled;
 }
 
 namespace {
 const char* getGMName(uint8_t program) {
-    if (program >= 0 && program <= 7) return "PIANO";
+    if (program <= 7) return "PIANO";
     if (program >= 8 && program <= 15) return "CHRMTIC";
     if (program >= 16 && program <= 23) return "ORGAN";
     if (program >= 24 && program <= 31) return "GUITAR";
@@ -925,6 +1228,18 @@ void ProjectPage::drawMidiAdvanceDialog(IGfx& gfx) {
 }
 
 
+bool ProjectPage::adjustMidiInput(int delta) {
+    const auto current = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+    auto next = current;
+    if (main_focus_ == MainFocus::MidiInputEnabled) next = InputUi::stepEnabled(current);
+    else if (main_focus_ == MainFocus::MidiInputChannel) next = InputUi::stepChannel(current, delta);
+    else if (main_focus_ == MainFocus::MidiInputTarget) next = InputUi::stepTarget(current, delta);
+    else return false;
+    if (!GroovePuterPlatform::setCardputerMidiInputRoutingConfig(next))
+        UI::showToast("MIDI input save failed", 1400);
+    return true;
+}
+
 bool ProjectPage::handleEvent(UIEvent& ui_event) {
     if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
@@ -949,6 +1264,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (dialog_type_ == DialogType::Load) {
+        if (delete_pending_) {
+            // Only Enter confirms; any other key (Esc included) cancels.
+            if (ui_event.key == '\n' || ui_event.key == '\r') {
+                return deleteSelectionInDialog();
+            }
+            delete_pending_ = false;
+            return true;
+        }
         if (ui_event.scancode == GROOVEPUTER_ESCAPE || ui_event.key == '\b') {
             closeDialog();
             return true;
@@ -970,7 +1293,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (ui_event.key == 'x' || ui_event.key == 'X') {
-            return deleteSelectionInDialog();
+            if (dialog_focus_ == DialogFocus::List && !scenes_.empty()) {
+                delete_pending_ = true;
+            }
+            return true;
+        }
+        if (ui_event.key == 'r' || ui_event.key == 'R') {
+            if (dialog_focus_ == DialogFocus::List) openRenameDialog();
+            return true;
         }
         if (ui_event.key == '\n' || ui_event.key == '\r') {
             if (dialog_focus_ == DialogFocus::Cancel) {
@@ -980,6 +1310,10 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return loadSceneAtSelection();
         }
         return true;
+    }
+
+    if (dialog_type_ == DialogType::MidiImportTracks) {
+        return handleMidiImportTracks(ui_event);
     }
 
     if (dialog_type_ == DialogType::MidiAdvance) {
@@ -1164,7 +1498,27 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         return true;
     }
 
-    if (dialog_type_ == DialogType::SaveAs) {
+    if (dialog_type_ == DialogType::SaveAs || dialog_type_ == DialogType::Rename) {
+        const bool renaming = dialog_type_ == DialogType::Rename;
+        const auto leaveDialog = [&]() {
+            if (renaming) { dialog_type_ = DialogType::Load; save_dialog_focus_ = SaveDialogFocus::Input; }
+            else closeDialog();
+        };
+        if (ui_event.scancode == GROOVEPUTER_ESCAPE) { leaveDialog(); return true; }
+        if (save_dialog_focus_ == SaveDialogFocus::Input) {
+            std::size_t caret = name_caret_;
+            if (ui_event.scancode == GROOVEPUTER_LEFT) {
+                ProjectUx::caretLeft(save_name_, caret);
+                name_caret_ = static_cast<uint8_t>(caret);
+                return true;
+            }
+            if (ui_event.scancode == GROOVEPUTER_RIGHT &&
+                ProjectUx::caretRight(save_name_, caret)) {
+                name_caret_ = static_cast<uint8_t>(caret);
+                return true;
+            }
+            // Caret already at the end: Right moves on to the buttons below.
+        }
         switch (ui_event.scancode) {
             case GROOVEPUTER_LEFT:
                 if (save_dialog_focus_ == SaveDialogFocus::Cancel) save_dialog_focus_ = SaveDialogFocus::Save;
@@ -1191,13 +1545,15 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         }
         if (save_dialog_focus_ == SaveDialogFocus::Input && handleSaveDialogInput(key)) return true;
         if (key == '\n' || key == '\r') {
-            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); return true; }
-            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) return saveCurrentScene();
-            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { closeDialog(); return true; }
+            if (save_dialog_focus_ == SaveDialogFocus::Randomize) { randomizeSaveName(); name_caret_ = static_cast<uint8_t>(save_name_.size()); return true; }
+            if (save_dialog_focus_ == SaveDialogFocus::Save || save_dialog_focus_ == SaveDialogFocus::Input) {
+                return renaming ? renameSelectedScene() : saveCurrentScene();
+            }
+            if (save_dialog_focus_ == SaveDialogFocus::Cancel) { leaveDialog(); return true; }
         }
         if (key == '\b') {
             if (save_dialog_focus_ == SaveDialogFocus::Input) return handleSaveDialogInput(key);
-            closeDialog(); return true;
+            leaveDialog(); return true;
         }
         return false;
     }
@@ -1240,6 +1596,18 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         case GROOVEPUTER_RIGHT: {
             const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
             auto& led = mini_acid_.sceneManager().currentScene().led;
+            if (main_focus_ == MainFocus::MidiInputEnabled ||
+                main_focus_ == MainFocus::MidiInputChannel ||
+                main_focus_ == MainFocus::MidiInputTarget) {
+                return adjustMidiInput(right ? 1 : -1);
+            }
+            if (main_focus_ == MainFocus::UsbRole) {
+                if (!CardputerUsbRoleRuntime::selectableInThisBuild()) return true;
+                const UsbBootRole current = usbRoleFromPreview(
+                    usb_role_preview_, CardputerUsbRoleRuntime::pendingRole());
+                usb_role_preview_ = static_cast<uint8_t>(usbRoleStep(current, right ? 1 : -1));
+                return true;
+            }
             if (main_focus_ == MainFocus::MidiDevice) {
                 const auto pending =
                     GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1258,18 +1626,6 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 UI::currentStyle = right ? nextStyle(UI::currentStyle) : prevStyle(UI::currentStyle);
                 return true;
             }
-            if (main_focus_ == MainFocus::GrooveMode) {
-                withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-                char toast[64];
-                std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                              grooveModeName(mini_acid_.grooveboxMode()));
-                UI::showToast(toast);
-                return true;
-            }
-            if (main_focus_ == MainFocus::GrooveFlavor) {
-                withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(right ? 1 : -1); });
-                return true;
-            }
             if (main_focus_ == MainFocus::LedMode) {
                 int m = static_cast<int>(led.mode);
                 m += right ? 1 : -1;
@@ -1277,9 +1633,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (m > 3) m = 0;
                 led.mode = static_cast<LedMode>(m);
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedSource) {
+                if (led.mode != LedMode::StepTrig) return true;
                 int s = static_cast<int>(led.source);
                 s += right ? 1 : -1;
                 int max = static_cast<int>(VoiceId::Count) - 1;
@@ -1287,6 +1645,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (s > max) s = 0;
                 led.source = static_cast<LedSource>(s);
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedColor) {
@@ -1304,24 +1663,27 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx > 5) currentIdx = 0;
                 led.color = TAPE_PALETTE[currentIdx].rgb;
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedBri) {
                 int currentIdx = 0;
-                for (int i = 0; i < 5; ++i) {
+                for (int i = 0; i < BRI_STEP_COUNT; ++i) {
                     if (BRI_STEPS[i] == led.brightness) {
                         currentIdx = i;
                         break;
                     }
                 }
                 currentIdx += right ? 1 : -1;
-                if (currentIdx < 0) currentIdx = 4;
-                if (currentIdx > 4) currentIdx = 0;
+                if (currentIdx < 0) currentIdx = BRI_STEP_COUNT - 1;
+                if (currentIdx >= BRI_STEP_COUNT) currentIdx = 0;
                 led.brightness = BRI_STEPS[currentIdx];
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             if (main_focus_ == MainFocus::LedFlash) {
+                if (led.mode != LedMode::StepTrig) return true;
                 int currentIdx = 0;
                 for (int i = 0; i < 4; ++i) {
                     if (FLASH_STEPS[i] == led.flashMs) {
@@ -1334,11 +1696,17 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 if (currentIdx > 3) currentIdx = 0;
                 led.flashMs = FLASH_STEPS[currentIdx];
                 GroovePuterState::markSceneMutated();
+                LedManager::instance().testPulse(led);
                 return true;
             }
             return false;
         }
         default: break;
+    }
+
+    if ((key == 'a' || key == 'A') && main_focus_ == MainFocus::SaveAs) {
+        openSaveDialog();  // Save As: a new name
+        return true;
     }
 
     if (key == 'g' || key == 'G') {
@@ -1347,6 +1715,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
     }
 
     if (key == '\n' || key == '\r') {
+        if (main_focus_ == MainFocus::MidiInputEnabled ||
+            main_focus_ == MainFocus::MidiInputChannel ||
+            main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+        if (main_focus_ == MainFocus::LedTest) {
+            LedManager::instance().testPulse(mini_acid_.sceneManager().currentScene().led);
+            return true;
+        }
+        if (main_focus_ == MainFocus::UsbRole) return activateUsbRole();
         if (main_focus_ == MainFocus::MidiDevice) {
             const auto pending =
                 GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
@@ -1369,28 +1745,22 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             return true;
         }
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
-        if (main_focus_ == MainFocus::SaveAs) { openSaveDialog(); return true; }
+        if (main_focus_ == MainFocus::SaveAs) return saveOwnName();
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
         if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
 
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
-        if (main_focus_ == MainFocus::GrooveMode) {
-            withAudioGuard([&]() { mini_acid_.toggleGrooveboxMode(); });
-            char toast[64];
-            std::snprintf(toast, sizeof(toast), "Groove Mode: %s (override)",
-                          grooveModeName(mini_acid_.grooveboxMode()));
-            UI::showToast(toast);
-            return true;
-        }
-        if (main_focus_ == MainFocus::GrooveFlavor) {
-            withAudioGuard([&]() { mini_acid_.shiftGrooveFlavor(1); });
-            return true;
-        }
         
         auto& led = mini_acid_.sceneManager().currentScene().led;
-        if (main_focus_ == MainFocus::LedMode) { led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4); GroovePuterState::markSceneMutated(); return true; }
+        if (main_focus_ == MainFocus::LedMode) {
+            led.mode = static_cast<LedMode>((static_cast<int>(led.mode) + 1) % 4);
+            GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
+            return true;
+        }
         if (main_focus_ == MainFocus::LedSource) {
+                if (led.mode != LedMode::StepTrig) return true;
             led.source = static_cast<LedSource>((static_cast<int>(led.source) + 1) % static_cast<int>(VoiceId::Count));
             switch (led.source) {
                 case LedSource::SynthA: led.color = TAPE_PALETTE[1].rgb; break;
@@ -1401,6 +1771,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 default: led.color = TAPE_PALETTE[4].rgb; break;
             }
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedColor) {
@@ -1408,20 +1779,24 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             for (int i=0; i<6; ++i) if (TAPE_PALETTE[i].rgb.r == led.color.r && TAPE_PALETTE[i].rgb.g == led.color.g) currentIdx = i;
             led.color = TAPE_PALETTE[(currentIdx + 1) % 6].rgb;
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedBri) {
             int currentIdx = 0;
-            for (int i=0; i<5; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
-            led.brightness = BRI_STEPS[(currentIdx + 1) % 5];
+            for (int i = 0; i < BRI_STEP_COUNT; ++i) if (BRI_STEPS[i] == led.brightness) currentIdx = i;
+            led.brightness = BRI_STEPS[(currentIdx + 1) % BRI_STEP_COUNT];
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
         if (main_focus_ == MainFocus::LedFlash) {
+                if (led.mode != LedMode::StepTrig) return true;
             int currentIdx = 0;
             for (int i=0; i<4; ++i) if (FLASH_STEPS[i] == led.flashMs) currentIdx = i;
             led.flashMs = FLASH_STEPS[(currentIdx + 1) % 4];
             GroovePuterState::markSceneMutated();
+            LedManager::instance().testPulse(led);
             return true;
         }
     }
@@ -1460,6 +1835,10 @@ void ProjectPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const {
 
 void ProjectPage::draw(IGfx& gfx) {
   UI::drawStandardHeader(gfx, mini_acid_, "PROJECT");
+  if (dialog_type_ == DialogType::MidiImportTracks) {
+    drawMidiImportTracks(gfx);
+    return;
+  }
   if (dialog_type_ == DialogType::MidiAdvance) {
     drawMidiAdvanceDialog(gfx);
     return;
@@ -1472,11 +1851,7 @@ void ProjectPage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
 
   const int x = Layout::COL_1;
-  const int y0 = LayoutManager::lineY(0);
   const int line_h = gfx.fontHeight();
-  const int listW = Layout::COL_WIDTH;
-  const int infoX = Layout::COL_2;
-  const int infoW = Layout::CONTENT.w - infoX - 4;
   int sectionIdx = static_cast<int>(section_);
   int firstFocus = 0;
   int lastFocus = 0;
@@ -1490,7 +1865,8 @@ void ProjectPage::draw(IGfx& gfx) {
     return;
   }
 
-  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::SaveAs) {
+  if (dialog_type_ == DialogType::Load || dialog_type_ == DialogType::SaveAs ||
+      dialog_type_ == DialogType::Rename) {
     const int w = Layout::CONTENT.w - 2 * Layout::CONTENT_PAD_X;
     const int h = Layout::CONTENT.h - 2 * Layout::CONTENT_PAD_Y;
     const int yStart = Layout::CONTENT.y + Layout::CONTENT_PAD_Y;
@@ -1505,6 +1881,9 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.drawRect(dialogX, dialogY, dialogW, dialogH, COLOR_ACCENT);
 
     if (dialog_type_ == DialogType::Load) {
+      if (!delete_pending_) {
+        UI::publishShellInfo("ENT LOAD  R RENAME  X DELETE  ESC");
+      }
       const int headerH = line_h + 4;
       const int cancelH = line_h + 8;
       const int listY = dialogY + headerH + 2;
@@ -1538,6 +1917,21 @@ void ProjectPage::draw(IGfx& gfx) {
       const int buttonWidth = 60;
       const int buttonX = dialogX + (dialogW - buttonWidth) / 2;
       const int buttonY = dialogY + dialogH - cancelH - 4;
+      if (delete_pending_ && !scenes_.empty()) {
+        // Confirmation replaces the Cancel button; the name is shortened to fit.
+        std::string shown = scenes_[selection_index_];
+        char msg[96];
+        for (;;) {
+          std::snprintf(msg, sizeof(msg), "DELETE %s? ENTER=YES ESC=NO", shown.c_str());
+          if (gfx.measureText(msg) <= dialogW - 8 || shown.size() <= 1) break;
+          shown.pop_back();
+        }
+        gfx.fillRect(dialogX + 2, buttonY, dialogW - 4, cancelH, COLOR_PANEL);
+        gfx.drawRect(dialogX + 2, buttonY, dialogW - 4, cancelH, COLOR_DANGER);
+        gfx.setTextColor(COLOR_WHITE);
+        gfx.drawText(dialogX + 5, buttonY + (cancelH - line_h) / 2, msg);
+        return;
+      }
       const bool focused = dialog_focus_ == DialogFocus::Cancel;
       gfx.fillRect(buttonX, buttonY, buttonWidth, cancelH, COLOR_PANEL);
       gfx.drawRect(buttonX, buttonY, buttonWidth, cancelH,
@@ -1548,8 +1942,10 @@ void ProjectPage::draw(IGfx& gfx) {
       return;
     }
 
+    UI::publishShellInfo("L/R CARET  ENT OK  ESC CANCEL");
     gfx.setTextColor(COLOR_WHITE);
-    gfx.drawText(dialogX + 4, dialogY + 2, "Save Scene");
+    gfx.drawText(dialogX + 4, dialogY + 2,
+                 dialog_type_ == DialogType::Rename ? "Rename Project" : "Save Scene");
     const int inputH = line_h + 8;
     const int inputY = dialogY + line_h + 6;
     gfx.fillRect(dialogX + 4, inputY, dialogW - 8, inputH, COLOR_PANEL);
@@ -1559,6 +1955,17 @@ void ProjectPage::draw(IGfx& gfx) {
     gfx.setTextColor(COLOR_WHITE);
     gfx.drawText(dialogX + 8, inputY + (inputH - line_h) / 2,
                  save_name_.c_str());
+    if (inputFocused) {
+      // Caret: a 2px underline under the character at the caret (or a cell
+      // past the end), so it stays readable on the 240x135 screen.
+      const std::size_t caret = std::min<std::size_t>(name_caret_, save_name_.size());
+      const std::string before = save_name_.substr(0, caret);
+      const int caretX = dialogX + 8 + (before.empty() ? 0 : gfx.measureText(before.c_str()));
+      char at[2] = {caret < save_name_.size() ? save_name_[caret] : '_', 0};
+      const int cellW = std::max(4, gfx.measureText(at));
+      const int baseY = inputY + (inputH - line_h) / 2 + line_h;
+      gfx.fillRect(caretX, baseY, cellW, 2, COLOR_ACCENT);
+    }
 
     const char* buttons[] = {"RND", "SAVE", "ESC"};
     const SaveDialogFocus focuses[] = {
@@ -1581,43 +1988,66 @@ void ProjectPage::draw(IGfx& gfx) {
     return;
   }
 
-  // Main Page Drawing
-  const int rowBase = 2;
-  const int visibleRows = 8;
+  // A shared full-width settings surface keeps role/profile names readable.
+  const auto palette = UI::themePalette();
+  int tabX = Layout::COL_1;
+  for (int i = 0; i < 4; ++i) {
+    char tab[16];
+    std::snprintf(tab, sizeof(tab), i == sectionIdx ? "[%s]" : " %s ", sectionName(i));
+    gfx.setTextColor(i == sectionIdx ? palette.invert : palette.secondary);
+    if (i == sectionIdx) gfx.fillRect(tabX - 1, LayoutManager::lineY(0) - 1,
+                                     gfx.measureText(tab) + 2, Layout::LINE_HEIGHT - 1, palette.focus);
+    gfx.drawText(tabX, LayoutManager::lineY(0), tab);
+    tabX += gfx.measureText(tab) + 6;
+  }
+  const int rowBase = 1;
+  const int visibleRows = 6;
   for (int row = 0; row < visibleRows; ++row) {
-    int focusIdx = firstFocus + row;
+    const int focusIdx = firstFocus + row;
     if (focusIdx > lastFocus) break;
-    MainFocus focus = static_cast<MainFocus>(focusIdx);
-    bool selected = (focus == main_focus_) && dialog_type_ == DialogType::None;
-
+    const MainFocus focus = static_cast<MainFocus>(focusIdx);
+    const bool selected = focus == main_focus_;
+    const char* label = "";
+    switch (focus) {
+      case MainFocus::Load: label = "Load Scene"; break;
+      case MainFocus::SaveAs: label = "Save"; break;
+      case MainFocus::New: label = "New"; break;
+      case MainFocus::ImportMidi: label = "Import MIDI"; break;
+      case MainFocus::ClearProject: label = "Clear Project"; break;
+      case MainFocus::VisualStyle: label = "Theme"; break;
+      case MainFocus::Volume: label = "Main Volume"; break;
+      case MainFocus::LedMode: label = "Mode"; break;
+      case MainFocus::LedSource: label = "Source"; break;
+      case MainFocus::LedColor: label = "Color"; break;
+      case MainFocus::LedBri: label = "Brightness"; break;
+      case MainFocus::LedFlash: label = "Flash"; break;
+      case MainFocus::LedTest: label = "Test LED"; break;
+      case MainFocus::UsbRole: label = "USB Role"; break;
+      case MainFocus::MidiDevice: label = "Device Profile"; break;
+      case MainFocus::MidiInputEnabled: label = "MIDI Input"; break;
+      case MainFocus::MidiInputChannel: label = "Input Channel"; break;
+      case MainFocus::MidiInputTarget: label = "Input Route"; break;
+    }
     char line[48];
     switch (focus) {
-      case MainFocus::Load: std::snprintf(line, sizeof(line), "Load Scene"); break;
-      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "Save As"); break;
-      case MainFocus::New: std::snprintf(line, sizeof(line), "New"); break;
-      case MainFocus::ImportMidi: std::snprintf(line, sizeof(line), "Import MIDI"); break;
-      case MainFocus::ClearProject: std::snprintf(line, sizeof(line), "Clear Project"); break;
+      case MainFocus::Load: line[0] = '\0'; break;
+      case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "A=SAVE AS"); break;
+      case MainFocus::New: line[0] = '\0'; break;
+      case MainFocus::ImportMidi: line[0] = '\0'; break;
+      case MainFocus::ClearProject: line[0] = '\0'; break;
       case MainFocus::VisualStyle:
-        std::snprintf(line, sizeof(line), "Theme      %s", styleShortName(UI::currentStyle));
+        std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
         break;
-      case MainFocus::GrooveMode:
-        std::snprintf(line, sizeof(line), "Groove     %s", grooveModeName(mini_acid_.grooveboxMode()));
-        break;
-      case MainFocus::GrooveFlavor: {
-        int f = mini_acid_.grooveFlavor();
-        std::snprintf(line, sizeof(line), "Flavor     %s", grooveFlavorName(mini_acid_.grooveboxMode(), f));
-        break;
-      }
       case MainFocus::Volume: {
         int volPct = (int)(mini_acid_.miniParameter(MiniAcidParamId::MainVolume).normalized() * 100.0f + 0.5f);
-        std::snprintf(line, sizeof(line), "Main Vol   %d%%", volPct);
+        std::snprintf(line, sizeof(line), "%d%%", volPct);
         break;
       }
       case MainFocus::LedMode:
-        std::snprintf(line, sizeof(line), "LED Mode   %s", LED_MODE_NAMES[static_cast<int>(led.mode)]);
+        std::snprintf(line, sizeof(line), "%s", LED_MODE_NAMES[static_cast<int>(led.mode)]);
         break;
       case MainFocus::LedSource:
-        std::snprintf(line, sizeof(line), "LED Src    %s", VOICE_ID_NAMES[static_cast<int>(led.source)]);
+        std::snprintf(line, sizeof(line), "%s", VOICE_ID_NAMES[static_cast<int>(led.source)]);
         break;
       case MainFocus::LedColor: {
         int colorIdx = 0;
@@ -1629,85 +2059,144 @@ void ProjectPage::draw(IGfx& gfx) {
             break;
           }
         }
-        std::snprintf(line, sizeof(line), "LED Color  %s", TAPE_PALETTE[colorIdx].name);
+        std::snprintf(line, sizeof(line), "%s", TAPE_PALETTE[colorIdx].name);
         break;
       }
       case MainFocus::LedBri:
-        std::snprintf(line, sizeof(line), "LED Bri    %u%%", (unsigned)led.brightness);
+        std::snprintf(line, sizeof(line), "%u%%", (unsigned)((led.brightness * 100u + 127u) / 255u));
         break;
       case MainFocus::LedFlash:
-        std::snprintf(line, sizeof(line), "LED Flash  %ums", (unsigned)led.flashMs);
+        std::snprintf(line, sizeof(line), "%ums", (unsigned)led.flashMs);
         break;
+      case MainFocus::LedTest: std::snprintf(line, sizeof(line), "ENTER"); break;
+      case MainFocus::UsbRole: {
+        if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+          std::snprintf(line, sizeof(line), "COMPUTER (fixed)");
+        } else {
+          const UsbBootRole pending = CardputerUsbRoleRuntime::pendingRole();
+          const UsbBootRole selected = usbRoleFromPreview(usb_role_preview_, pending);
+          std::snprintf(line, sizeof(line), "<%s>%s", usbRoleLabel(selected),
+                        selected != pending ? "*" : "");
+        }
+        break;
+      }
       case MainFocus::MidiDevice: {
-        const auto pending =
-            GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
-        const auto selected = ProfileUi::profileFromPreview(
-            midi_profile_preview_, pending);
-        std::snprintf(line, sizeof(line), "Device     <%s>%s",
-                      ProfileUi::shortName(selected),
-                      selected != pending ? "*" : "");
+        const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+        const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
+        std::snprintf(line, sizeof(line), "<%s>%s",
+                      ProfileUi::shortName(selected), selected != pending ? "*" : "");
+        break;
+      }
+      case MainFocus::MidiInputEnabled: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        std::snprintf(line, sizeof(line), "<%s>", InputUi::enabledName(input.enabled));
+        break;
+      }
+      case MainFocus::MidiInputChannel: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        char channel[12]; InputUi::formatChannel(input, channel, sizeof(channel));
+        std::snprintf(line, sizeof(line), "<%s>", channel);
+        break;
+      }
+      case MainFocus::MidiInputTarget: {
+        const auto input = GroovePuterPlatform::cardputerMidiInputRoutingConfig();
+        std::snprintf(line, sizeof(line), "<%s>", InputUi::targetName(input.target));
         break;
       }
     }
-    Widgets::drawListRow(gfx, x, LayoutManager::lineY(rowBase + row), listW, line, selected);
+    const int rowY = LayoutManager::lineY(rowBase + row);
+    const bool available = !((focus == MainFocus::LedSource || focus == MainFocus::LedFlash)
+                             && led.mode != LedMode::StepTrig);
+    if (selected) gfx.fillRect(Layout::COL_1 - 1, rowY - 1, Layout::CONTENT.w - 6,
+                               Layout::LINE_HEIGHT - 2, palette.focus);
+    gfx.setTextColor(selected ? palette.invert : (available ? palette.text : palette.dim));
+    gfx.drawText(Layout::COL_1 + 6, rowY, label);
+    const int valueX = Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(line);
+    gfx.drawText(valueX, rowY, line);
   }
-
-  uint32_t freeInt = 0;
-  uint32_t largestInt = 0;
-#if defined(ESP32) || defined(ESP_PLATFORM)
-  freeInt = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-  largestInt = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-#endif
-  int cpuAvg = (int)mini_acid_.perfStats.cpuAudioPctIdeal;
-  int cpuPeak = (int)mini_acid_.perfStats.cpuAudioPeakPct;
-  static char perf0[42];
-  static char perf1[42];
-  static char perf2[42];
-  std::snprintf(perf0, sizeof(perf0), "CPU:%d/%d%%", cpuAvg, cpuPeak);
-  std::snprintf(perf1, sizeof(perf1), "RAM:%uk/%uk",
-                (unsigned)(freeInt / 1024), (unsigned)(largestInt / 1024));
-  std::snprintf(perf2, sizeof(perf2), "Th:%s  M:%s",
-                styleShortName(UI::currentStyle), grooveModeName(mini_acid_.grooveboxMode()));
-  if (section_ == ProjectSection::Midi) {
-    static char midi0[42];
-    static char midi1[42];
-    static char midi2[42];
-    const auto pending =
-        GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
-    const auto selected = ProfileUi::profileFromPreview(
-        midi_profile_preview_, pending);
-    std::snprintf(midi0, sizeof(midi0), "Saved:%s",
-                  ProfileUi::shortName(pending));
-    if (selected != pending) {
-      std::snprintf(midi1, sizeof(midi1), "Apply:ENTER SAVE");
-    } else if (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()) {
-      std::snprintf(midi1, sizeof(midi1), "Apply:REBOOT");
-    } else {
-      std::snprintf(midi1, sizeof(midi1), "Apply:ACTIVE");
+  // DEVICE: battery as an information row below the settings (not focusable).
+  // The percent is an estimate from the voltage, so the voltage is shown too;
+  // this board has no charging signal, so no charging icon is claimed.
+  if (sectionIdx == 1) {
+    const int infoRow = rowBase + (lastFocus - firstFocus + 1);
+    if (infoRow < rowBase + visibleRows) {
+      const auto battery = GroovePuterPlatform::batteryStatus();
+      char value[24];
+      if (battery.available) {
+        std::snprintf(value, sizeof(value), "%d%%  %u.%02uV",
+                      static_cast<int>(battery.percent),
+                      static_cast<unsigned>(battery.millivolts / 1000u),
+                      static_cast<unsigned>((battery.millivolts % 1000u) / 10u));
+      } else {
+        std::snprintf(value, sizeof(value), "N/A");
+      }
+      const int rowY = LayoutManager::lineY(infoRow);
+      gfx.setTextColor(battery.available && battery.percent <= 15 ? COLOR_DANGER : palette.dim);
+      gfx.drawText(Layout::COL_1 + 6, rowY, "Battery");
+      gfx.drawText(Layout::CONTENT.w - Layout::CONTENT_PAD_X - gfx.measureText(value), rowY, value);
     }
-    std::snprintf(midi2, sizeof(midi2), "Tab:Section  </>:Edit");
-    const char* midiLines[3] = {midi0, midi1, midi2};
-    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, midiLines, 3);
-  } else {
-    const char* infoLines[3] = {perf0, perf1, perf2};
-    Widgets::drawInfoBox(gfx, infoX, LayoutManager::lineY(2), infoW, infoLines, 3);
   }
+  char hint[64] = "[ENTER] SELECT";
+  if (section_ == ProjectSection::Scenes && main_focus_ == MainFocus::SaveAs) {
+    std::snprintf(hint, sizeof(hint), "ENT SAVE  A SAVE AS  TAB SECT");
+  } else if (section_ == ProjectSection::Midi) {
+    if (main_focus_ == MainFocus::UsbRole) {
+      const auto pending = CardputerUsbRoleRuntime::pendingRole();
+      const auto selected = usbRoleFromPreview(usb_role_preview_, pending);
+      if (!CardputerUsbRoleRuntime::selectableInThisBuild()) {
+        std::snprintf(hint, sizeof(hint), "USB ROLE FIXED IN THIS BUILD");
+      } else if (selected != pending) {
+        std::snprintf(hint, sizeof(hint), "ENTER SAVE; THEN ENTER RESTART");
+      } else if (CardputerUsbRoleRuntime::restartPending()) {
+        std::snprintf(hint, sizeof(hint), "NOW %s; ENTER RESTART", usbRoleLabel(CardputerUsbRoleRuntime::activeRole()));
+      } else {
+        const bool host = pending == UsbBootRole::Host;
+        std::snprintf(hint, sizeof(hint), "%s: %s", usbRoleLabel(pending), host
+            ? (GroovePuterMidi::CardputerUsbHostMidi::isConnected() ? "CONNECTED" : "NO KEYBOARD") : "ACTIVE");
+      }
+    } else if (main_focus_ == MainFocus::MidiDevice) {
+      const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+      const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
+      std::snprintf(hint, sizeof(hint), "%s", selected != pending ? "ENTER SAVE PROFILE"
+          : (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+    } else if (main_focus_ == MainFocus::MidiInputChannel) {
+      std::snprintf(hint, sizeof(hint), "INPUT FILTER: OMNI OR CH1..16");
+    } else {
+      std::snprintf(hint, sizeof(hint), "PERFORM ROUTE FOLLOWS PERFORM TARGET");
+    }
+  } else if (section_ == ProjectSection::Led) {
+    std::snprintf(hint, sizeof(hint), "%s", main_focus_ == MainFocus::LedTest ? "ENTER: 150MS TEST PULSE"
+        : ((main_focus_ == MainFocus::LedSource || main_focus_ == MainFocus::LedFlash) && led.mode != LedMode::StepTrig
+           ? "N/A: SOURCE + FLASH REQUIRE STEP MODE" : "TEST: CURRENT COLOR + BRIGHTNESS"));
+  }
+  gfx.setTextColor(palette.secondary);
+  Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lastLineY(gfx),
+                           Layout::CONTENT.w - 8, hint);
 
+  char projInfo[64];
+  std::snprintf(projInfo, sizeof(projInfo), "SCENE: %s",
+                mini_acid_.currentSceneName().c_str());
+  char projStatus[32];
+  std::snprintf(projStatus, sizeof(projStatus), "THEME: %s",
+                UI::themeName(UI::currentStyle));
+  UI::publishShellInfo(projInfo, projStatus);
+
+  UI::drawStandardFooter(gfx, "[TAB]SECT [U/D]ITEM [L/R]VAL", "[ENT]SELECT [ESC]BACK");
 }
 
 int ProjectPage::firstFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::Load;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::VisualStyle;
   if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedMode;
-  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::UsbRole;
   return 0;
 }
 
 int ProjectPage::lastFocusInSection(int sectionIdx) {
   if (sectionIdx == 0) return (int)ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return (int)ProjectPage::MainFocus::Volume;
-  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedFlash;
-  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 2) return (int)ProjectPage::MainFocus::LedTest;
+  if (sectionIdx == 3) return (int)ProjectPage::MainFocus::MidiInputTarget;
   return 0;
 }
 
@@ -1715,8 +2204,8 @@ bool ProjectPage::focusInSection(int sectionIdx, int focusIdx) {
   ProjectPage::MainFocus f = static_cast<ProjectPage::MainFocus>(focusIdx);
   if (sectionIdx == 0) return f >= ProjectPage::MainFocus::Load && f <= ProjectPage::MainFocus::ClearProject;
   if (sectionIdx == 1) return f >= ProjectPage::MainFocus::VisualStyle && f <= ProjectPage::MainFocus::Volume;
-  if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedFlash;
-  if (sectionIdx == 3) return f == ProjectPage::MainFocus::MidiDevice;
+  if (sectionIdx == 2) return f >= ProjectPage::MainFocus::LedMode && f <= ProjectPage::MainFocus::LedTest;
+  if (sectionIdx == 3) return f >= ProjectPage::MainFocus::UsbRole && f <= ProjectPage::MainFocus::MidiInputTarget;
   return false;
 }
 

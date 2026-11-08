@@ -4,6 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-i2"
 mkdir -p "${BUILD_DIR}"
+source "${ROOT}/tests/hgs_song_state_sources.sh"
 
 # Reuse the authoritative Stage 15 source list so the FEEL owners under test are
 # the real production translation units.
@@ -12,6 +13,9 @@ mapfile -t COMMON_SOURCES < <(
     grep -F '"${ROOT}/src/' |
     sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
 )
+for source_path in "${HGS_SONG_STATE_SOURCES[@]}"; do
+  COMMON_SOURCES+=("${source_path#${ROOT}}")
+done
 
 "${CXX:-g++}" -std=c++17 -Wall -Wextra -Werror -Wvla \
   -Wno-c++20-extensions -Wno-unused-but-set-variable \
@@ -42,6 +46,8 @@ mapfile -t COMMON_SOURCES < <(
   "${ROOT}/tests/test_gf2_i2_feel_persistence.cpp" \
   "${ROOT}/scenes.cpp" "${ROOT}/json_evented.cpp" \
   "${ROOT}/src/audio/pattern_paging.cpp" \
+  "${HGS_SONG_STATE_SOURCES[@]}" \
+  "${ROOT}/src/generation/generation_context.cpp" \
   -o "${BUILD_DIR}/feel_persistence"
 
 python3 "${ROOT}/tests/test_source_regressions.py"

@@ -25,6 +25,15 @@ int BankSelectionBarComponent::barHeight(IGfx& gfx) const {
   return layout.box_size;
 }
 
+int BankSelectionBarComponent::barWidth(IGfx& gfx) const {
+  int bank_count = state_.bank_count;
+  if (bank_count < 1) bank_count = 1;
+  const int box_size = gfx.fontHeight() + 2;
+  const int spacing = Layout{}.spacing;
+  return textWidth(gfx, label_.c_str()) + spacing +
+         (box_size + spacing) * bank_count - spacing;
+}
+
 bool BankSelectionBarComponent::computeLayout(IGfx& gfx, Layout& layout) const {
   const Rect& bounds = getBoundaries();
   layout.bounds_x = bounds.x;

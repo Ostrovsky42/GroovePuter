@@ -2,8 +2,36 @@
 #ifndef MINIACID_ENGINE_H
 #define MINIACID_ENGINE_H
 
+#include "../platform/cardputer_capabilities.h"
+
+#include "src/state/material_slot.h"
+#include "src/state/material_slot_access.h"
+#include "src/state/material_version.h"
+#include "src/state/material_lineage.h"
+#include "src/state/generated_synth_a_origin.h"
+#include "src/state/generated_pattern_harmony_origin.h"
+#include "src/state/generated_phrase_recipe.h"
+#include "src/state/reuse_marks.h"
+#include "src/dsp/p0_preservation_types.h"
+#include "src/state/working_material_storage.h"
+
+namespace GroovePuterDevelopment {
+struct DevelopmentRequest;
+struct DevelopmentResult;
+enum class GrowthMode : uint8_t;
+}  // namespace GroovePuterDevelopment
+
+namespace GroovePuterPerformance {
+struct HarmonyPlaybackPosition;
+struct PatternHarmonyPlaybackPosition;
+}
+namespace GroovePuterHarmony {
+struct SongHarmonicParticipant;
+}
+
 #include <stddef.h>
 #include <stdint.h>
+#include <atomic>
 #include <memory>
 #include <vector>
 #include <string>
@@ -20,15 +48,20 @@
 #include "../output/output_owned_synth_voice.h"
 #include "mini_drumvoices.h"
 #include "pattern_drum_event_tap.h"
+#include "../phrase/runtime_pattern_event_bank.h"
+#include "../phrase/runtime_synth_playback.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
+#if GROOVEPUTER_ENABLE_TAPE
 #include "tape_fx.h"
 #include "tape_looper.h"
+#endif
 #include "../audio/audio_config.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "../sampler/sample_store.h"
 #include "../sampler/sample_index.h"
 #include "../sampler/drum_sampler_track.h"
-#include "../sampler/sample_index.h"
+#endif
 #include "formant_synth.h"
 #include "../audio/vocal_mixer.h"
 #include "voice_compressor.h"
@@ -43,6 +76,8 @@ static const int SAMPLE_RATE = kSampleRate;        // Hz
 static const int AUDIO_BUFFER_SAMPLES = kBlockFrames; // per buffer, mono
 static const int SEQ_STEPS = 16;             // 16-step sequencer
 static const int kPPQN = 96;                 // Pulses Per Quarter Note
+// Velocity added to an accented Pattern note on the MIDI wire (clamped to 127).
+static const int kPatternMidiAccentVelocityBoost = 30;
 static const int NUM_303_VOICES = 2;
 static const int NUM_DRUM_VOICES = DrumPatternSet::kVoices;
 
@@ -75,6 +110,9 @@ private:
 #endif
 
   std::vector<float> buffer;
+  // 0.9.19 P1: consecutive samples that wrote 0 with 0 in and 0 out. Once it
+  // covers the whole buffer, the buffer is all zeros and process(0) is 0.
+  int silentRun_ = 0;
   int writeIndex;
   int delaySamples;
   float sampleRate;
@@ -94,10 +132,24 @@ enum class MiniAcidParamId : uint8_t {
   Count
 };
 
+class AudioMutationGate;
+
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
-  static constexpr int kMax303Note = 71; // B4
+  static constexpr int kMax303Note = 71; // B4: top of the internal voice
+  // A Pattern step may hold up to C7. MIDI gets the note as written; the
+  // internal voice plays it folded into its range (internalVoiceNote).
+  static constexpr int kMaxPatternNote = 96;
+
+  // Pitch the internal synth voice plays for a sequenced note: above B4 the
+  // naive 22.05 kHz oscillators alias and the untracked filter mutes the
+  // fundamental, so the note drops whole octaves until it is <= kMax303Note.
+  // Same pitch class, a pure integer fold: no allocation, no lock.
+  static constexpr int internalVoiceNote(int note) {
+    while (note > kMax303Note) note -= 12;
+    return note;
+  }
 
   MiniAcid(float sampleRate, SceneStorage* sceneStorage);
 
@@ -105,23 +157,363 @@ public:
   void preallocateConstrainedDelayBuffers();
   void reset();
   void start();
+  // Right after start(): begin `steps` into the bar instead of at its start.
+  // The skipped ticks all run on the first rendered sample, so the downbeat
+  // still sounds; everything after it lands on an external master's grid.
+  // Returns the phase actually applied (0 when not called right after start).
+  double advanceStartPhase(double steps);
   void stop();
   void pauseTransport();
   void continueTransport();
 
   void liveNoteOn(int synthIndex, uint8_t midiNote, uint8_t velocity);
+  // A played drum lane (0..7: kick, snare, closed hat, open hat, mid tom, high tom, rim, clap)
+  // pulses the LED like a sequenced hit. Kept in the engine so the output sink needs no LED/scene types.
+  void pulseLedForDrumLane(uint8_t lane);
   void liveNoteOff(int synthIndex, uint8_t midiNote);
   void allLiveNotesOff();
+  void suspendLiveNoteProjection(int synthIndex);
+  bool patternOwnsInternalSynth(int synthIndex) const;
   void setPatternEventQueue(MusicalEventQueue* queue);
   int liveNote(int synthIndex) const;
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
 
   void setBpm(float bpm);
   void setExternalClockBpm(float bpm);
+  // Resyncs the effective render tempo back to the durable project tempo.
+  // Call exactly once when clock ownership returns from external follow:
+  // setExternalClockBpm() never touches projectBpmValue, so nothing else
+  // restores bpmValue on its own, and it would otherwise stay at the last
+  // followed tempo until the next explicit setBpm() call or a reboot.
+  void restoreProjectBpm();
   float bpm() const;
+  float projectBpm() const { return projectBpmValue; }
   float sampleRate() const;
   bool isPlaying() const;
   int currentStep() const;
+  // Where the phrase is sounding, in its own time. currentStep() is bar-local
+  // and would place the marker wrongly on any phrase longer than one bar.
+  uint16_t currentPhrasePlayTick(int voiceIndex) const;
+
+  // M3: the one resolved answer to "what is this voice playing", published by
+  // the control side and only read by the audio path.
+  //
+  // Resolving a slot means reading the Scene, a descriptor, a project name and
+  // possibly a file. None of that may happen while audio is being generated, so
+  // it happens once, ahead of time, and the result lands here as a small
+  // bounded value the sequencer can act on without asking anyone.
+  struct ActiveMaterial {
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+  };
+
+  void publishActiveMaterial(int voiceIndex, uint16_t slot,
+                             GroovePuterMaterial::MaterialKind kind);
+  const ActiveMaterial& activeMaterial(int voiceIndex) const;
+
+  // M4: what a voice will play next, prepared away from the audio path and
+  // swapped in on a musical boundary.
+  //
+  // The press is answered at once; the work it implies is not done where it
+  // would be heard. Preparation may read a file and takes 12-18 ms, against a
+  // 2000 ms bar at 120 BPM -- room to prepare properly instead of racing. What
+  // that margin buys is that nothing half-prepared ever becomes audible.
+  //
+  // Session material buffers are allocated once at startup. They exceed the
+  // Cardputer's fixed DRAM budget but are never allocated on the audio path or
+  // churned during a session. If this bounded reservation fails, preparation
+  // is refused instead of presenting a partial material workflow.
+  bool initPendingMaterial();
+  bool pendingMaterialReady() const;
+  const void* pendingMaterialAddress(int voiceIndex) const;
+  bool hasPendingMaterial(int voiceIndex) const;
+
+  // Melody requests must arrive already prepared. A null melody for a Melody
+  // request is the failed-load case: refused here, so it can never reach a
+  // boundary and half-activate.
+  bool stagePendingMaterial(int voiceIndex, uint16_t slot,
+                            GroovePuterMaterial::MaterialKind kind,
+                            const PhraseRuntime::RuntimeSynthEventBuffer* melody);
+
+  // Called on a musical boundary. A value copy and two assignments: no
+  // allocation, no I/O, nothing that can fail halfway.
+  void activatePendingMaterial();
+
+  // M2 slot navigation for a voice playing MELODY: Q..I / B move only between
+  // slots that hold an accepted Melody. The payload is read from SD outside
+  // the audio guard (prepareMelodySlot) and swapped in under it
+  // (activateMelodySlot). Unsaved Working edits are never discarded.
+  enum class MelodySlotResult : uint8_t {
+    Ready,
+    AlreadyCurrent,
+    NoMelody,
+    Unsaved,
+    LoadFailed,
+    Unavailable,
+  };
+  bool isMelodySlot(int voiceIndex, int bankIndex, int patternIndex) const;
+  bool hasUnsavedWorkingMelody(int voiceIndex) const;
+  // PAIR PLAY: a control-side override that plays slot N, then N+1 at the next
+  // bar boundary, and back. Pattern mode (Song off) only; it never writes the
+  // selected slot, the Song or the Scene.
+  enum class PairPlayResult : uint8_t {
+    Started, Stopped, SongOn, NotSteps, SaveFirst, GoQueued, NoNextSlot, RefreshFailed,
+  };
+  PairPlayResult togglePairPlay(int voiceIndex);
+  void cancelPairPlay(int voiceIndex, const char* reason = "other");
+  void cancelAllPairPlay(const char* reason = "other");
+  // True once after a slot switch stopped a pair on the last slot (no N+1).
+  bool consumePairNoNextNotice(int voiceIndex);
+  // Active covers armed (waiting for the bar line) and sounding.
+  bool pairPlayActive(int voiceIndex) const;
+  bool pairPlayArmed(int voiceIndex) const;
+  int pairPlayBaseSlot(int voiceIndex) const;
+  // 0 while slot N sounds, 1 while N+1 sounds, -1 when pair play is off.
+  int pairPlayPhase(int voiceIndex) const;
+  MelodySlotResult prepareMelodySlot(
+      int voiceIndex, int bankIndex, int patternIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& out) const;
+  bool activateMelodySlot(int voiceIndex, int bankIndex, int patternIndex,
+                          const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  // The accepted Melody of the slot the voice is on now (SD read, no guard).
+  bool loadCurrentSlotMelody(int voiceIndex,
+                             PhraseRuntime::RuntimeSynthEventBuffer& out) const;
+
+  // Unified Song slots. A Song cell names a slot; the slot's kind decides
+  // whether the row plays a Pattern or a Melody. Song is a NEXT producer: this
+  // control-side service loads the Melody of the next row into the voice's
+  // NEXT buffer ahead of the boundary and catches up a voice whose current row
+  // could not be activated there. Call from the UI loop under the audio guard.
+  void serviceSongMaterial();
+  // Cheap unguarded hint for the UI loop: whether serviceSongMaterial() has
+  // anything to do, so the audio guard is not taken on every frame.
+  bool songMaterialServiceDue() const;
+  // 0.9.19 S1: a synth engine switch is committed (the old engine freed) on
+  // the UI thread, never in the AudioTask. Due = the crossfade ended, or the
+  // synth is muted (it is not rendered, so its crossfade cannot advance).
+  // The commit must run under the audio guard.
+  bool synthEngineSwitchDue() const;
+  void commitSettledSynthEngineSwitches();
+  // The drum EngineSwitch automation lane only requests a switch from the
+  // AudioTask; the UI applies it under the audio guard.
+  bool drumEngineSwitchDue() const;
+  void applyPendingDrumEngineSwitch();
+  // Song reached a row but kept this voice where it was, because its Working
+  // Melody is unsaved.
+  bool songVoiceHeld(int voiceIndex) const;
+
+  // Read-only Song/material projection for UI and deterministic tests. These
+  // values do not own or mutate musical material.
+  enum class SongCellMaterialKind : uint8_t {
+    Empty = 0,
+    Pattern,
+    Melody,
+    Unknown,
+  };
+  enum class SongVoiceDisplayState : uint8_t {
+    Pattern = 0,
+    Melody,
+    Held,
+    Awaiting,
+    LoadFailed,
+  };
+  // row >= 0 applies that cell's STEPS override: a Melody slot reads as Pattern.
+  SongCellMaterialKind songCellMaterialKind(int voiceIndex,
+                                            int16_t globalSlot,
+                                            int row = -1) const;
+  SongVoiceDisplayState songVoiceDisplayState(int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* activeMelodyForDisplay(
+      int voiceIndex) const;
+  bool songNeedsNextBuffer(int voiceIndex) const;
+
+  // Project/Scene replacement is a canonical-truth boundary. Session NEXT
+  // prepared against the old project cannot survive it.
+  bool invalidateSessionNextForProjectChange();
+
+  // FS2A/M0: session-only CURRENT/NEXT lifecycle. ACCEPT remains the separate
+  // durable CURRENT -> CANONICAL boundary. Lifecycle NEXT is always bound
+  // to the exact preparation basis it was prepared against.
+  enum class NextPrepareResult : uint8_t {
+    Prepared = 0,
+    Replaced,
+    InvalidVoice,
+    InvalidCandidate,
+    RejectedCurrentDirty,
+    UnsupportedCurrentState,
+    PendingUnavailable,
+    StalePreparationBasis,
+  };
+
+  enum class NextActivationResult : uint8_t {
+    Activated = 0,
+    InvalidVoice,
+    NoPending,
+    UnboundPending,
+    RejectedReferenceMismatch,
+    RejectedCanonicalChanged,
+    RejectedCurrentDirty,
+    UnsupportedCurrentState,
+  };
+
+  using PreparationBasis = GroovePuterMaterial::PreparationBasis;
+
+  PreparationBasis captureCurrentPreparationBasis(int voiceIndex) const;
+
+  // D1-B: read-only session provenance of the latest committed P1R generated
+  // Phrase (Synth A). nullptr when none is known. Historical evidence only:
+  // it is never rewritten by later edits and carries no lineage verdict.
+  const GroovePuterMaterial::GeneratedSynthAOrigin* generatedSynthAOrigin() const {
+    return generatedSynthAOriginValid_ ? &generatedSynthAOrigin_ : nullptr;
+  }
+  const GroovePuterMaterial::GeneratedSynthABarOrigin* findGeneratedSynthAOrigin(
+      GroovePuterMaterial::MaterialReference reference) const {
+    return generatedSynthAOriginValid_ ? generatedSynthAOrigin_.find(reference)
+                                       : nullptr;
+  }
+  // Publication is reserved for GeneratedPhraseSong (enforced by source
+  // regression): call only after the physical generated Material committed.
+  bool publishGeneratedSynthAOrigin(
+      const GroovePuterMaterial::GeneratedSynthAOriginCandidate& candidate) {
+    if (!candidate.complete()) return false;
+    generatedSynthAOrigin_ = candidate.origin;
+    generatedSynthAOriginValid_ = true;
+    return true;
+  }
+  void clearGeneratedSynthAOrigin() {
+    generatedSynthAOrigin_ = GroovePuterMaterial::GeneratedSynthAOrigin{};
+    generatedSynthAOriginValid_ = false;
+  }
+
+  // P0: rebuild inputs of the latest generated phrase. Same lifecycle as the
+  // origin sidecar except that Undo of the cycle keeps it (GeneratedPhraseSong
+  // decides). Publication is reserved for GeneratedPhraseSong.
+  const GroovePuterMaterial::GeneratedPhraseRecipe* generatedPhraseRecipe() const {
+    return generatedPhraseRecipe_.valid ? &generatedPhraseRecipe_ : nullptr;
+  }
+  void publishGeneratedPhraseRecipe(
+      const GroovePuterMaterial::GeneratedPhraseRecipe& recipe) {
+    generatedPhraseRecipe_ = recipe;
+    generatedPhraseRecipe_.valid = true;
+  }
+  void setGeneratedPhraseCycleStart(int16_t songStart) {
+    if (generatedPhraseRecipe_.valid) generatedPhraseRecipe_.cycleSongStart = songStart;
+  }
+  void clearGeneratedPhraseRecipe() {
+    generatedPhraseRecipe_ = GroovePuterMaterial::GeneratedPhraseRecipe{};
+  }
+  const GroovePuterMaterial::GeneratedPatternHarmonyOrigin*
+  generatedPatternHarmonyOrigin() const {
+    return generatedPatternHarmonyOrigin_.valid() ? &generatedPatternHarmonyOrigin_
+                                                  : nullptr;
+  }
+  void publishGeneratedPatternHarmony(
+      GroovePuterMaterial::GeneratedPatternHarmonyOrigin candidate);
+  void clearGeneratedPatternHarmony() {
+    generatedPatternHarmonyOrigin_ =
+        GroovePuterMaterial::GeneratedPatternHarmonyOrigin{};
+  }
+
+  // PML-C: session-only "allow replacement" marks for Pattern slots of the current page.
+  // Marks are managed by slot_reuse.h (which verifies every holder); nothing here decides
+  // whether a slot may be replaced. Dropped on scene load, project change and page change.
+  const GroovePuterMaterial::ReuseMarks& reuseMarks() const { return reuseMarks_; }
+  GroovePuterMaterial::ReuseMarks& reuseMarksForReuseModule() { return reuseMarks_; }
+  // Also drops the session ledger of generated slots (same lifecycle).
+  void clearReuseMarks() { reuseMarks_.clear(); generatedLedger_.clear(); }
+  const GroovePuterMaterial::GeneratedLedger& generatedLedger() const { return generatedLedger_; }
+  GroovePuterMaterial::GeneratedLedger& generatedLedgerForReuseModule() { return generatedLedger_; }
+
+  // Holders only the engine can see for a resident Pattern slot of the current page.
+  enum ReuseHolder : uint8_t {
+    kReuseHolderCurrent = 1,   // selected as CURRENT (synth or drum selector)
+    kReuseHolderWorking = 2,   // Working material bound to the slot
+    kReuseHolderNext = 4,      // queued as NEXT
+  };
+  uint8_t reuseEngineHolders(int localSlot) const;
+
+  enum class GoRequestResult : uint8_t {
+    Failed = 0,
+    InvalidVoice,
+    NoPendingMaterial,
+    Queued,
+    ActivatedImmediately,
+  };
+
+  NextPrepareResult prepareNextMelody(
+      int voiceIndex,
+      const PhraseRuntime::RuntimeSynthEventBuffer& melody,
+      const PreparationBasis& basis,
+      GroovePuterMaterial::IdeaClassification classification =
+          GroovePuterMaterial::IdeaClassification::Unknown);
+  bool cancelNextMaterial(int voiceIndex);
+  NextActivationResult activateNextMaterialAtBoundary(int voiceIndex);
+
+  GoRequestResult requestGoNextMaterial(int voiceIndex);
+  bool isGoQueued(int voiceIndex) const;
+  void cancelGoQueue(int voiceIndex);
+  bool acquireWorkingMelodySource(
+      int voiceIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& outBuffer) const;
+
+  // `semanticOut` (D1-C) is a purely observational, optional output: passing it
+  // never changes candidate generation, classification, NEXT eligibility or
+  // publication. Callers that pass nothing behave exactly as before.
+  NextPrepareResult developWorkingMaterial(
+      int voiceIndex,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation* semanticOut = nullptr);
+
+  NextPrepareResult growWorkingMaterial(
+      int voiceIndex,
+      uint8_t targetBars,
+      GroovePuterDevelopment::GrowthMode mode,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopment::DevelopmentResult* outResult = nullptr);
+
+  PreparationBasis sourceAnchor(int voiceIndex) const;
+  PreparationBasis predecessor(int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* sourceAnchorSnapshot(int voiceIndex) const;
+
+  // 0.9.12 Material Closure: session-only rollback to exact ACCEPTED truth.
+  // Accepted Pattern resolves from RAM; accepted Melody resolves from its slot
+  // on SD (M2), so DISCARD on a Melody slot restores the saved Melody.
+  enum class DiscardResult : uint8_t {
+    Discarded = 0,
+    AlreadyClean,
+    InvalidVoice,
+    UnsupportedCurrentState,
+  };
+  DiscardResult discardCurrentMaterial(int voiceIndex);
+
+  // 0.9.12 Material Closure: Material Working LENGTH ownership (FS2B-L1).
+  enum class MaterialLengthResult : uint8_t {
+    Changed = 0,
+    Unchanged,
+    InvalidVoice,
+    InvalidLength,
+    WouldTruncate,
+    UnsupportedCurrentState,
+  };
+  MaterialLengthResult setMaterialLength(int voiceIndex, uint8_t targetBars);
+  bool undoMaterialWorking(int voiceIndex);
+
+  // 0.9.12 Material Closure: Material Working ACCEPT transaction.
+  enum class AcceptResult : uint8_t {
+    Accepted = 0,
+    AlreadyClean,
+    NoWorkingMaterial,
+    InvalidVoice,
+    InvalidCandidate,
+    UnsupportedCurrentState,
+    CommitFailed,
+  };
+  AcceptResult acceptMaterialWorking(int voiceIndex);
+  void setAcceptAudioMutationGate(AudioMutationGate* gate) {
+    acceptAudioMutationGate_ = gate;
+  }
+
   float getStepProgress() const;
   float transportPhaseSteps() const;
   int cycleBarIndex() const;
@@ -145,11 +537,29 @@ public:
   const Parameter& parameter303(TB303ParamId id, int voiceIndex = 0) const;
 
   struct WaveformBuffer {
+#if GROOVEPUTER_ENABLE_WAVEFORM
     int16_t data[AUDIO_BUFFER_SAMPLES];
+#else
+    int16_t data[1];  // empty compatibility view, never an audio history
+#endif
     size_t count;
   };
   const WaveformBuffer& getWaveformBuffer() const;
+  uint16_t lastAudioPeak() const { return lastAudioPeak_.load(std::memory_order_relaxed); }
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  // Read only on the control thread under AudioMutationScope.
+  bool diagnostic303Active(int voiceIndex) const {
+    const TB303Voice* voice = tb303Voice(voiceIndex);
+    return voice && voice->isVoiceActive();
+  }
+  float diagnostic303Envelope(int voiceIndex) const {
+    const TB303Voice* voice = tb303Voice(voiceIndex);
+    return voice ? voice->amplitudeEnvelope() : -1.0f;
+  }
+#endif
 
+  // Current audible/editable Pattern, independent of the UI selection cursor.
+  const SynthPattern& synthPatternForDisplay(int voiceIndex) const;
   const int8_t* pattern303Steps(int voiceIndex = 0) const;
   const bool* pattern303AccentSteps(int voiceIndex = 0) const;
   const bool* pattern303SlideSteps(int voiceIndex = 0) const;
@@ -161,7 +571,6 @@ public:
   const bool* patternHighTomSteps() const;
   const bool* patternRimSteps() const;
   const bool* patternClapSteps() const;
-  const bool* patternDrumAccentSteps() const;
   const bool* patternKickAccentSteps() const;
   const bool* patternSnareAccentSteps() const;
   const bool* patternHatAccentSteps() const;
@@ -171,6 +580,19 @@ public:
   const bool* patternRimAccentSteps() const;
   const bool* patternClapAccentSteps() const;
   bool songModeEnabled() const;
+  // Control-thread calls; caller holds the existing AudioGuard. The caller
+  // must end a session under that guard before destroying its owner.
+  uint32_t beginRhythmAudition();
+  bool stageRhythmAudition(uint32_t session, const DrumPatternSet& drums);
+  bool endRhythmAudition(uint32_t session);
+  bool rhythmAuditionSessionValid(uint32_t session) const;
+  bool rhythmAuditionContextValid(uint32_t session) const;
+  bool rhythmAuditionCanStage(uint32_t session) const;
+  bool rhythmAuditionPending(uint32_t session) const;
+  bool setRhythmAuditionSolo(uint32_t session, bool solo);
+  bool rhythmAuditionSolo(uint32_t session) const;
+  bool rhythmAuditionCleanupDue() const;
+  void serviceRhythmAuditionCleanup();
   void setSongMode(bool enabled);
   void toggleSongMode();
   bool loopModeEnabled() const;
@@ -183,15 +605,41 @@ public:
   bool isPageLoading() const { return pageLoading_.load(std::memory_order_acquire); }
   void setPageLoading(bool loading) { pageLoading_.store(loading, std::memory_order_release); }
   void setTargetPage(int8_t page) { targetPage_.store(page, std::memory_order_release); }
-  void setCurrentPage(int8_t page) { currentPage_.store(page, std::memory_order_release); }
+  void setCurrentPage(int8_t page);
+  // After a page is loaded from SD, republish its accepted melodies for both voices.
+  void rehydrateAcceptedMaterialForPage();
+  void barrierPatternRuntimeSourceTransition();
+  bool rebuildPatternRuntimeEventBank();
+  bool refreshPatternRuntimeEvents(int synthIndex, int bankIndex, int patternIndex);
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(int synthIndex) const;
   void requestPageSwitch(int pageIndex);
   int songLength() const;
   void setSongLength(int length);
   int currentSongPosition() const;
   int songPlayheadPosition() const;
+  // Control-side snapshot of the currently published Song Synth A material.
+  // Returns false while Song/page/material publication is incomplete.
+  bool tryCaptureHarmonyPlaybackPosition(
+      GroovePuterPerformance::HarmonyPlaybackPosition& out) const;
+  bool tryCapturePatternHarmonyPlaybackPosition(
+      GroovePuterPerformance::PatternHarmonyPlaybackPosition& out) const;
+  // Control-side fixed snapshot for the exact A/B material identities and
+  // versions in one 1..8-row Song harmonic placement. No SD access occurs.
+  bool tryCaptureSongHarmonicParticipants(
+      uint8_t songSlot, uint8_t startPosition, uint8_t rowCount,
+      GroovePuterHarmony::SongHarmonicParticipant* out,
+      uint8_t outCapacity, uint8_t& outCount) const;
   void setSongPosition(int position);
   void setSongPattern(int position, SongTrack track, int16_t patternIndex);
   void clearSongPattern(int position, SongTrack track);
+  // After MidiImporter wrote scene patterns: make them audible at once.
+  // Cancels pending generation activation, writes the Song rows (routed
+  // tracks get the imported slots, unrouted A/B/Drums rows are cleared),
+  // aligns the Song playback slot with the written slot, selects the
+  // imported slot of every routed target when it is on the resident page,
+  // and republishes the runtime event bank. Returns the bank rebuild result.
+  bool publishMidiImport(int startPattern, int importedBars, bool toA,
+                         bool toB, bool toD, bool appendToSong);
   int16_t songPatternAt(int position, SongTrack track) const;
   int16_t songPatternAtSlot(int slot, int position, SongTrack track) const;
   const Song& song() const;
@@ -222,6 +670,8 @@ public:
   const Parameter& synthParameter(int voiceIndex, int knobIndex) const;
   uint8_t synthParameterCount(int voiceIndex) const;
   void adjustSynthParameter(int voiceIndex, int knobIndex, int steps);
+  bool applySoundQualityPreset(int voiceIndex, int presetIndex);
+  int soundQualityPresetIndex(int voiceIndex) const;
   void setSynthEngine(int voiceIndex, const std::string& engineName);
   std::vector<std::string> getAvailableSynthEngines() const;
   std::string currentSynthEngineName(int voiceIndex) const;
@@ -254,6 +704,10 @@ public:
   void toggleMuteClap();
 
   bool isTrackActive(int index) const;
+  // Same index as isTrackActive (0 SYN-A, 1 SYN-B, 2..9 drum voices); goes
+  // through the existing toggles, so LED and synth barrier behave as 1..0 do.
+  // Control side, under AudioGuard.
+  void setTrackMuted(int index, bool muted);
   void setTrackVolume(VoiceId id, float volume);
   float getTrackVolume(VoiceId id) const;
 
@@ -273,12 +727,23 @@ public:
   void adjust303StepNote(int voiceIndex, int stepIndex, int semitoneDelta);
   void adjust303StepOctave(int voiceIndex, int stepIndex, int octaveDelta);
 
+  // 0.9.11 M-WORKING: manual Pattern edits are prepared against the stable
+  // identity of the resident material, published to the retained runtime bank,
+  // and only then stored as session Working. Scene/ACCEPTED is not mutated.
+  bool adjustWorking303StepNote(int voiceIndex, int stepIndex,
+                                int semitoneDelta);
+  const SynthPattern* currentWorking303Pattern(int voiceIndex) const;
+  bool hasModifiedWorking303Pattern(int voiceIndex) const;
+  bool tryManual303TargetSwitch(int voiceIndex, int bankIndex, int patternIndex);
+  bool tryManual303TargetSwitch(int voiceIndex, int patternIndex);
+  bool tryManual303BankSwitch(int voiceIndex, int bankIndex);
+  bool tryManualPageSwitch(int pageIndex);
+
   void clear303StepNote(int voiceIndex, int stepIndex);
   void clear303Step(int stepIndex, int voiceIndex);
   void toggle303AccentStep(int voiceIndex, int stepIndex);
   void toggle303SlideStep(int voiceIndex, int stepIndex);
   void toggleDrumStep(int voiceIndex, int stepIndex);
-  void toggleDrumAccentStep(int stepIndex);
   void setDrumAccentStep(int voiceIndex, int stepIndex, bool accent);
 
   void cycle303StepFx(int voiceIndex, int stepIndex);
@@ -308,7 +773,13 @@ public:
   void applyFeelTimingFromScene_();
 
   int currentScene() const { return current303BankIndex(0); }
-  bool isRecording() const { return sceneManager().currentScene().tape.mode == TapeMode::Rec; }
+  bool isRecording() const {
+#if GROOVEPUTER_ENABLE_TAPE
+    return sceneManager().currentScene().tape.mode == TapeMode::Rec;
+#else
+    return false;
+#endif
+  }
   float swing() const { return genreManager().getGenerativeParams().swingAmount; }
 
   GrooveboxModeManager& modeManager() { return modeManager_; }
@@ -352,15 +823,79 @@ public:
   const VoiceCache& voiceCache() const { return voiceCache_; }
   bool speakCached(const char* text);
 
+  // P3: Bounded Phrase Source
+  enum class SequencedSource : uint8_t {
+    Pattern = 0,
+    Phrase = 1,
+  };
+
+  // Routing lives in the container: phrase[voice] selects the synth, so
+  // RuntimeSynthEvent stays free of any target field.
+  void setSequencedSource(int voiceIndex, SequencedSource source);
+  SequencedSource currentSequencedSource(int voiceIndex) const;
+  // U4B6: the explicit, one-way entry into the Phrase source. Projects the
+  // voice's active Pattern into bounded Phrase material and moves the source,
+  // or changes nothing at all. A voice already on Phrase is left untouched:
+  // re-projecting would silently discard edits made since the conversion.
+  // emptyMelody: same validated entry, but the new Melody holds no events.
+  bool makePhrase(int voiceIndex, bool emptyMelody = false);
+  bool setPhraseLength(int voiceIndex, uint8_t barCount);
+  PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(int voiceIndex);
+  const PhraseRuntime::RuntimeSynthEventBuffer& currentPhraseBuffer(
+      int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* readableWorkingMelody(
+      int voiceIndex) const {
+    return readableWorkingMelody_(voiceIndex);
+  }
+  const PhraseRuntime::RuntimeSynthEventBuffer* retainedWorkingMelody(
+      int voiceIndex) const {
+    return retainedWorkingMelody_(voiceIndex);
+  }
+
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
   void updateTickIncrement();
   void advanceTick();
   void processSequencerEvents(uint32_t absoluteTick);
-  void triggerSynthStep_(int synthIdx, int stepIdx);
-  void publishPatternNoteOn_(int synthIdx, uint8_t note, uint8_t velocity);
+  void triggerSynthStep_(int synthIdx,
+                         const PhraseRuntime::RuntimeSynthEvent& event,
+                         uint32_t absoluteStartSubtick,
+                         bool chordVoice = false);
+  // Melody onsets of one tick. A Melody with overlapping notes starts every
+  // note of the tick as a chord voice; any other keeps the one-note path.
+  void triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
+                            uint32_t absoluteStartSubtick);
+  // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
+  // one place leaves room for a per-voice cycle origin later without touching
+  // the sequencer scan.
+  uint16_t phraseRelativeTick_(int voiceIndex, uint32_t absoluteTick) const;
+  const PhraseRuntime::RuntimeSynthEvent* phraseEventAt_(
+      int voiceIndex, uint32_t absoluteTick) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* readableWorkingMelody_(
+      int voiceIndex) const;
+  const PhraseRuntime::RuntimeSynthEventBuffer* retainedWorkingMelody_(
+      int voiceIndex) const;
+  void consumePatternPlaybackActions_(
+      int synthIdx,
+      const PhraseRuntime::RuntimeSynthPlaybackActions& actions);
+  void hardBarrierPatternPlayback_(int synthIdx);
+  void hardBarrierPatternPlayback_();
+  void cleanupLiveNotesForTransportBarrier_(uint8_t patternAuthorityAtEntry);
+  uint32_t currentAbsoluteSubtick_() const;
+  void publishPatternNoteOn_(int synthIdx,
+                             uint8_t note,
+                             uint8_t velocity,
+                             bool accent,
+                             bool slide);
   void publishPatternNoteOff_(int synthIdx, uint8_t velocity = 0);
+  void publishChordNoteOn_(int synthIdx, uint8_t note, uint8_t velocity,
+                           bool accent);
+  void publishChordNoteOff_(int synthIdx, uint8_t note);
+  // The monophonic synth follows the top note of the sounding chord.
+  void followChordWithInternalVoice_(int synthIdx, bool topRestarted);
+  bool translateChordVoiceAction_(
+      int synthIdx, const PhraseRuntime::RuntimeSynthPlaybackAction& action);
   void publishPatternAllNotesOff_();
   void triggerDrumVoice_(int voiceIdx, int stepIdx);
   void advanceSongBar_();
@@ -375,6 +910,33 @@ private:
   const TB303Voice* tb303Voice(int voiceIndex) const;
   int clamp303Step(int stepIndex) const;
   int clamp303Note(int note) const;
+  bool current303MaterialReference_(
+      int voiceIndex, GroovePuterMaterial::MaterialReference& out) const;
+  // Shared Pattern->Runtime source acquisition. When `sourceSteps` is non-null
+  // and CURRENT is a Pattern, it also receives the authoritative physical step
+  // of every projected event (projectPatternToRuntimeEventsWithSourceSteps).
+  bool acquireWorkingMelodySourceImpl_(
+      int voiceIndex,
+      PhraseRuntime::RuntimeSynthEventBuffer& outBuffer,
+      uint8_t (*sourceSteps)[SynthPattern::kSteps]) const;
+  void observeP0Preservation_(
+      int idx,
+      const PreparationBasis& basis,
+      const PhraseRuntime::RuntimeSynthEventBuffer& source,
+      const uint8_t (&sourceSteps)[SynthPattern::kSteps],
+      bool haveSourceSteps,
+      const GroovePuterDevelopment::DevelopmentResult& dev,
+      const GroovePuterDevelopment::DevelopmentRequest& request,
+      GroovePuterDevelopmentSemantic::DevelopmentSemanticObservation& out) const;
+  enum class CurrentNextState : uint8_t {
+    CleanAcceptedPattern = 0,
+    DirtyCurrent,
+    UnsupportedCurrentState,
+  };
+  CurrentNextState classifyCurrentForNext_(
+      int voiceIndex, GroovePuterMaterial::MaterialReference& reference,
+      GroovePuterMaterial::MaterialVersionToken& acceptedVersion) const;
+  bool activatePendingMaterialForVoice_(int voiceIndex);
   const SynthPattern& synthPattern(int synthIndex) const;
   SynthPattern& editSynthPattern(int synthIndex);
   const DrumPattern& drumPattern(int drumVoiceIndex) const;
@@ -384,6 +946,8 @@ private:
   void refreshDrumCache(int drumVoiceIndex) const;
   const SynthPattern& activeSynthPattern(int synthIndex) const;
   const DrumPattern& activeDrumPattern(int drumVoiceIndex) const;
+  const DrumPatternSet* auditionDrums_();
+  void barrierRhythmAuditionDrums_();
   int songPatternIndexForTrack(SongTrack track) const;
   void applySongPositionSelection();
   void syncModeToVoices();
@@ -399,6 +963,7 @@ private:
   PatternPublishingDrumVoice drums;
   float sampleRateValue;
   std::string drumEngineName_;
+  std::atomic<int8_t> pendingDrumEngineLane_{-1};  // AudioTask -> UI
 
   SceneManager sceneManager_;
   SceneStorage* sceneStorage_;
@@ -407,7 +972,6 @@ private:
   mutable bool synthSlideCache_[NUM_303_VOICES][SEQ_STEPS];
   mutable bool drumHitCache_[NUM_DRUM_VOICES][SEQ_STEPS];
   mutable bool drumAccentCache_[NUM_DRUM_VOICES][SEQ_STEPS];
-  mutable bool drumStepAccentCache_[SEQ_STEPS];
 
   VocalMixer vocalMixer_;
   VoiceCompressor voiceCompressor_;
@@ -430,22 +994,163 @@ private:
 
   int currentTimingOffset_ = 0;
 
+  // bpmValue is the effective tempo driving the audio transport. It may be
+  // temporarily projected from external MIDI Clock. projectBpmValue is the
+  // durable musician-owned project tempo and is the only value Scene sync may
+  // persist.
   volatile float bpmValue;
+  float projectBpmValue;
   volatile int currentStepIndex;
   uint64_t tickPhaseAccum_ = 0;
   uint64_t tickPhaseInc_ = 0;
   uint32_t currentTick_ = 0;
   float samplesPerStep_ = 10000.0f;
 
+  // P2 compatibility fields remain physically present for this cutover
+  // commit, but they no longer own Pattern backend lifetime decisions.
   long gateCountdownA_ = 0;
   long gateCountdownB_ = 0;
   ClampedLiveNoteIdentity liveNotes_[NUM_303_VOICES] = {-1, -1};
+  PhraseRuntime::RuntimePatternEventBank patternRuntimeBank_;
+  PhraseRuntime::RuntimeSynthPlaybackState patternPlaybackState_[NUM_303_VOICES]{};
+  PhraseRuntime::RuntimeSynthEvent patternRetrigEvent_[NUM_303_VOICES]{};
   PatternEventQueueHandle patternEventQueue_;
   int16_t patternMidiNotes_[NUM_303_VOICES] = {-1, -1};
+  // Note the internal synth plays while a chord sounds, or -1.
+  int16_t chordInternalNote_[NUM_303_VOICES] = {-1, -1};
+  std::atomic<uint8_t> patternOwnedMask_{0};
   uint32_t liveInputEpoch_ = 0;
+
+  // P3: Bounded Phrase Source, owned per synth voice.
+  // The published authority is the only storage. SequencedSource survives as
+  // an API into it until M5 retires the concept, rather than as a second copy
+  // that could disagree with what is actually sounding.
+  ActiveMaterial activeMaterial_[NUM_303_VOICES]{};
+
+  struct PendingMaterial {
+    PhraseRuntime::RuntimeSynthEventBuffer* melody = nullptr;
+    uint16_t slot = 0;
+    GroovePuterMaterial::MaterialKind kind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+    bool queued = false;
+
+    // FS2A/M0 causal stamp. These are metadata only; the existing Melody
+    // buffer remains the sole NEXT musical payload owner.
+    GroovePuterMaterial::MaterialReference preparedFor{};
+    GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+    GroovePuterMaterial::MaterialKind basisKind =
+        GroovePuterMaterial::MaterialKind::Pattern;
+    bool lifecycleBound = false;
+    GroovePuterMaterial::IdeaClassification ideaClassification =
+        GroovePuterMaterial::IdeaClassification::Unknown;
+    // Song row this NEXT was prepared for; -1 when Song did not produce it.
+    // int8_t keeps the struct at 32 bytes (Song::kMaxPositions == 128).
+    int8_t songRow = -1;
+  };
+  static_assert(Song::kMaxPositions <= 128,
+                "PendingMaterial::songRow is an int8_t row index");
+  PendingMaterial pendingMaterial_[NUM_303_VOICES]{};
+  GroovePuterMaterial::GeneratedSynthAOrigin generatedSynthAOrigin_{};
+  bool generatedSynthAOriginValid_ = false;
+  GroovePuterMaterial::GeneratedPhraseRecipe generatedPhraseRecipe_{};
+  GroovePuterMaterial::GeneratedPatternHarmonyOrigin generatedPatternHarmonyOrigin_{};
+  uint32_t generatedPatternHarmonySerial_ = 0;
+  GroovePuterMaterial::ReuseMarks reuseMarks_{};
+  GroovePuterMaterial::GeneratedLedger generatedLedger_{};
+  // Version of the Melody last loaded from / accepted into savedMelodySlot_.
+  // Working equals it => nothing unsaved. -1: no saved Melody is loaded.
+  GroovePuterMaterial::MaterialVersionToken savedMelodyVersion_[NUM_303_VOICES]{};
+  int16_t savedMelodySlot_[NUM_303_VOICES]{-1, -1};
+  void recordSavedMelody_(int voiceIndex, int globalSlot,
+                          const PhraseRuntime::RuntimeSynthEventBuffer& melody);
+  int current303GlobalSlot_(int voiceIndex) const;
+  MelodySlotResult loadSlotMelody_(int voiceIndex, int bankIndex,
+                                   int patternIndex,
+                                   PhraseRuntime::RuntimeSynthEventBuffer& out) const;
+  // Working Melody belongs to the slot it was made on or loaded from. After a
+  // slot change a saved one (it is on SD) leaves Working with that slot.
+  void releaseSavedWorkingMelody_(int voiceIndex);
+  void dropRuntimePhraseReceiptFor_(int voiceIndex);
+  void restoreSlotMaterialAfterSong_(int voiceIndex);
+  void dropSongPreparedNext_();
+  void invalidateSongPreparedNext_(int voiceIndex = -1, int row = -1);
+  bool userOwnsNext_(int voiceIndex) const;
+  void silenceAwaitingSongVoice_(int voiceIndex);
+
+  // Unified Song slots (see serviceSongMaterial()).
+  enum class SongVoiceState : uint8_t {
+    InSync,     // the voice plays what the current row names
+    Held,       // unsaved Working Melody: the voice keeps its slot
+    Awaiting,   // the row's Melody is not loaded yet: the voice is silent
+  };
+  SongVoiceState songVoiceState_[NUM_303_VOICES]{};
+  // The slot a voice is bound to in Song mode; a held voice stays on it.
+  int16_t songVoiceSlot_[NUM_303_VOICES]{-1, -1};
+  // Last Song Melody that failed to load; not retried until START.
+  int16_t songLoadFailedSlot_[NUM_303_VOICES]{-1, -1};
+  bool workingMelodyUnsaved_(int voiceIndex) const;
+  // Phrase phase origin. Pattern mode keeps 0 (global phase); Song restarts it
+  // at the first bar of a row whose material changed for the voice.
+  uint32_t melodyPhaseOriginTick_[NUM_303_VOICES]{0, 0};
+  bool songPhaseResetPending_[NUM_303_VOICES]{false, false};
+  uint32_t songRowStartTick_ = 0;
+  void applySongSynthRow_(int voiceIndex, int16_t globalSlot, int row);
+  bool songVoiceInSync_(int voiceIndex, int16_t globalSlot, int row) const;
+  // The one place that decides Melody vs steps for a Song cell.
+  bool songCellWantsMelody_(int voiceIndex, int row, int16_t globalSlot) const;
+  bool activateSongMelody_(int voiceIndex, int16_t globalSlot);
+  bool loadSongMelodyIntoNext_(int voiceIndex, int row, int16_t globalSlot);
+  int peekNextSongRow_() const;
+  bool songNeedsNext_(int voiceIndex) const;
+  int nextSongRowFrom_(int currentPos) const;
+  bool songRowIsPause_(int row) const;
+  int16_t songSynthSlotAt_(int voiceIndex, int row) const;
+  DiscardResult discardToAcceptedMelody_(int voiceIndex);
+  GroovePuterMaterial::WorkingMaterialStorage workingMaterial_[NUM_303_VOICES]{};
+  AudioMutationGate* acceptAudioMutationGate_ = nullptr;
+  // MAKE PHRASE can start from a legacy Pattern with no MaterialId. Keep only
+  // its source proof (never another payload) so DISCARD cannot retarget it.
+  struct MakePhraseSourceBasis {
+    GroovePuterMaterial::MaterialAddress address{};
+    GroovePuterMaterial::MaterialId id{};
+    GroovePuterMaterial::MaterialVersionToken acceptedVersion{};
+    bool valid = false;
+  } makePhraseSourceBasis_[NUM_303_VOICES]{};
+  GroovePuterMaterial::DevelopmentLineage developmentLineage_[NUM_303_VOICES]{};
+
+  bool goQueued_[NUM_303_VOICES]{false, false};
+  struct PairPlayState {
+    bool active = false;
+    bool skipFlip = false;  // started while stopped: bar 1 plays N, no flip
+    bool armed = false;     // started while playing: waits for the next bar line
+    // A melody was made from this pair: flips stop while the voice is on
+    // Phrase, and resume from slot N when it returns to STEPS.
+    bool paused = false;
+    uint8_t base = 0;
+    uint8_t phase = 0;
+  } pairPlay_[NUM_303_VOICES]{};
+  bool pairNoNextNotice_[NUM_303_VOICES]{false, false};
+  void rebasePairPlayOnSwitch_(int idx);
+  uint32_t goQueuedGeneration_[NUM_303_VOICES]{0, 0};
+  uint32_t pendingGeneration_[NUM_303_VOICES]{0, 0};
+  // Source anchors are session history, not firmware-resident state. Keep the
+  // fixed four-buffer reservation off permanent DRAM; construction reserves it
+  // once and all material operations fail closed if it is unavailable.
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer[]> sourceAnchorSnapshot_;
+  std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer[]> sourceAnchorUndoSnapshot_;
+  bool hasSourceAnchorSnapshot_[NUM_303_VOICES]{false, false};
+  bool hasSourceAnchorUndoSnapshot_[NUM_303_VOICES]{false, false};
+
+  bool sourceAnchorMemoryReady_() const;
+
   bool songMode_;
   int drumCycleIndex_;
   int songPlayheadPosition_;
+  std::atomic<int16_t> publishedHarmonySongRow_{-1};
+  std::atomic<int16_t> publishedHarmonySongSlot_{-1};
+  std::atomic<int16_t> publishedHarmonyPatternGlobal_{-1};
+  std::atomic<uint32_t> publishedHarmonyGeneration_{0};
+  std::atomic<bool> publishedHarmonySongMode_{false};
   int songPlaybackSlot_ = 0;
   bool liveMixMode_ = false;
   int songBarIndex_ = -1;
@@ -516,15 +1221,23 @@ private:
   float dcBlockPrev_ = 0.0f;
   float dcBlockOut_ = 0.0f;
 
+#if GROOVEPUTER_ENABLE_WAVEFORM
   WaveformBuffer waveformBuffers_[2];
   std::atomic<int> displayBufferIndex_{0};
   int writeBufferIndex_ = 1;
+
+#endif
+  std::atomic<uint16_t> lastAudioPeak_{0};
+  void captureAudioObservation_(const int16_t* buffer, size_t count);
 
   FormantSynth vocalSynth_;
   VoiceCache voiceCache_;
   bool voiceTrackMuted_ = false;
 
   void loadSceneFromStorage();
+  void resetWorkingMaterialForProjectChange_();
+  void hydrateAcceptedMaterialAtBoot_(
+      const PhraseRuntime::RuntimeSynthEventBuffer* prepared = nullptr);
   bool saveSceneToStorage();
   void applySceneStateFromManager();
   void syncSceneStateToManager();
@@ -533,12 +1246,16 @@ private:
 
 public:
   PerfStats perfStats;
+#if GROOVEPUTER_ENABLE_SAMPLER
   ISampleStore* sampleStore = nullptr;
   SampleIndex sampleIndex;
   std::unique_ptr<DrumSamplerTrack> samplerTrack;
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
   std::unique_ptr<TapeFX> tapeFX;
   std::unique_ptr<TapeLooper> tapeLooper;
 
+#endif
   SceneManager& sceneManager() { return sceneManager_; }
   const SceneManager& sceneManager() const { return sceneManager_; }
 
@@ -547,6 +1264,7 @@ private:
   GenreManager genreManager_{sceneManager_};
 
   uint32_t ditherState_ = 12345;
+#if GROOVEPUTER_ENABLE_TAPE
   bool tapeControlCached_ = false;
   TapeMacro lastTapeMacro_{};
   uint8_t lastTapeSpace_ = 0xFF;
@@ -555,9 +1273,12 @@ private:
   TapeMode lastTapeMode_ = TapeMode::Stop;
   uint8_t lastTapeSpeed_ = 0xFF;
   float lastTapeLooperVolume_ = -1.0f;
+#endif
+#if GROOVEPUTER_ENABLE_TAPE
   float fxSafetyMix_ = 1.0f;
   uint16_t fxSafetyHold_ = 0;
   uint32_t lastUnderrunCount_ = 0;
+#endif
   uint32_t perfDetailCounter_ = 0;
 
   bool waitingForRehearsal_ = false;
@@ -592,4 +1313,208 @@ public:
 inline Parameter& MiniAcid::miniParameter(MiniAcidParamId id) {
   return params[static_cast<int>(id)];
 }
+
+inline bool MiniAcid::current303MaterialReference_(
+    int voiceIndex, GroovePuterMaterial::MaterialReference& out) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (page < 0 || page >= kMaxPages || bank < 0 || bank >= kBankCount ||
+      pattern < 0 || pattern >= Bank<SynthPattern>::kPatterns) {
+    return false;
+  }
+
+  const int globalSlot = songPatternFromPageBankIndex(page, bank, pattern);
+  if (globalSlot < 0 || globalSlot >= kMaxGlobalPatterns || globalSlot > 0xff) {
+    return false;
+  }
+
+  const GroovePuterMaterial::MaterialAddress address{
+      static_cast<uint8_t>(idx), static_cast<uint8_t>(globalSlot)};
+  if (!GroovePuterMaterial::materialAddressIsResident(address, page)) {
+    return false;
+  }
+  const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
+  const auto id = GroovePuterMaterial::residentId(
+      sceneManager_.currentScene(), idx, residentSlot);
+  if (!id.valid()) return false;
+
+  out.address = address;
+  out.id = id;
+  return true;
+}
+
+inline const SynthPattern* MiniAcid::currentWorking303Pattern(
+    int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return nullptr;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return nullptr;
+  }
+
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return nullptr;
+  const auto& storage = workingMaterial_[idx];
+  if (!storage.patternMatches(current)) return nullptr;
+  return &storage.pattern();
+}
+
+inline bool MiniAcid::hasModifiedWorking303Pattern(int voiceIndex) const {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return false;
+
+  const auto& storage = workingMaterial_[idx];
+  if (!storage.patternMatches(current)) return false;
+
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  const Scene& scene = sceneManager_.currentScene();
+  const SynthPattern& accepted = idx == 0
+      ? scene.synthABanks[bank].patterns[pattern]
+      : scene.synthBBanks[bank].patterns[pattern];
+  const SynthPattern& working = storage.pattern();
+  for (int step = 0; step < SynthPattern::kSteps; ++step) {
+    const SynthStep& a = accepted.steps[step];
+    const SynthStep& w = working.steps[step];
+    if (a.note != w.note || a.slide != w.slide || a.accent != w.accent ||
+        a.ghost != w.ghost || a.velocity != w.velocity ||
+        a.timing != w.timing || a.fx != w.fx || a.fxParam != w.fxParam ||
+        a.probability != w.probability) {
+      return true;
+    }
+  }
+  return false;
+}
+
+inline bool MiniAcid::adjustWorking303StepNote(
+    int voiceIndex, int stepIndex, int semitoneDelta) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (activeMaterial_[idx].kind != GroovePuterMaterial::MaterialKind::Pattern) {
+    return false;
+  }
+
+  GroovePuterMaterial::MaterialReference current{};
+  if (!current303MaterialReference_(idx, current)) return false;
+
+  const int page = currentPageIndex();
+  const int bank = current303BankIndex(idx);
+  const int pattern = display303LocalPatternIndex(idx);
+  if (patternRuntimeBank_.pageIdentity() != page) return false;
+
+  auto& storage = workingMaterial_[idx];
+  SynthPattern candidate{};
+  if (storage.empty()) {
+    const Scene& scene = sceneManager_.currentScene();
+    candidate = idx == 0
+        ? scene.synthABanks[bank].patterns[pattern]
+        : scene.synthBBanks[bank].patterns[pattern];
+  } else if (storage.patternMatches(current)) {
+    candidate = storage.pattern();
+  } else {
+    // Retarget/discard is a separate explicit lifecycle operation. Never
+    // overwrite retained Melody or Working belonging to another identity.
+    return false;
+  }
+
+  const int step = clamp303Step(stepIndex);
+  const int oldNote = candidate.steps[step].note;
+  int nextNote = oldNote;
+  if (oldNote == -2) {
+    if (semitoneDelta > 0) nextNote = -1;
+  } else if (oldNote == -1) {
+    if (semitoneDelta > 0) nextNote = kMin303Note;
+    else if (semitoneDelta < 0) nextNote = -2;
+  } else {
+    nextNote = oldNote + semitoneDelta;
+    if (nextNote < kMin303Note) {
+      nextNote = -1;
+    } else if (nextNote > kMaxPatternNote) {
+      nextNote = kMaxPatternNote;
+    }
+  }
+  if (nextNote == oldNote) return false;
+  candidate.steps[step].note = static_cast<int8_t>(nextNote);
+
+  const Scene& scene = sceneManager_.currentScene();
+  const auto recipe = genreManager_.getGrooveRecipe();
+  int swingPct = static_cast<int>(scene.feel.swingPct);
+  if (swingPct < 50) swingPct = 50;
+  if (swingPct > 75) swingPct = 75;
+
+  PhraseRuntime::PatternProjectionSettings settings{};
+  settings.synthIndex = static_cast<uint8_t>(idx);
+  settings.gateLengthRatio = recipe.gateLengthRatio;
+  settings.swingPercent = static_cast<uint8_t>(swingPct);
+  const VoiceId voice = idx == 0 ? VoiceId::SynthA : VoiceId::SynthB;
+  settings.swingEnabled =
+      (scene.feel.swingMask & (1u << static_cast<int>(voice))) != 0;
+
+  // Prepare/validate/publish before the session Working owner is updated. A
+  // failed projection leaves ACCEPTED, audio and Working unchanged.
+  if (patternRuntimeBank_.refresh(
+          static_cast<uint8_t>(idx), static_cast<uint8_t>(bank),
+          static_cast<uint8_t>(pattern), candidate, settings) !=
+      PhraseRuntime::PatternBankRefreshStatus::Ready) {
+    return false;
+  }
+
+  storage.storePattern(candidate, current);
+  return true;
+}
+
+
+inline bool MiniAcid::tryManual303TargetSwitch(
+    int voiceIndex, int bankIndex, int patternIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  if (bankIndex < 0 || bankIndex >= kBankCount || patternIndex < 0 ||
+      patternIndex >= Bank<SynthPattern>::kPatterns) return false;
+  const int idx = clamp303Voice(voiceIndex);
+  if (current303BankIndex(idx) == bankIndex &&
+      display303LocalPatternIndex(idx) == patternIndex) {
+    return true;
+  }
+  if (hasModifiedWorking303Pattern(idx)) return false;
+  // An unsaved Working Melody belongs to the current slot: moving away would
+  // silently carry it onto another slot or lose it.
+  if (hasUnsavedWorkingMelody(idx)) return false;
+  set303BankIndex(idx, bankIndex);
+  set303PatternIndex(idx, patternIndex);
+  const bool moved = current303BankIndex(idx) == bankIndex &&
+                     display303LocalPatternIndex(idx) == patternIndex;
+  if (moved) releaseSavedWorkingMelody_(idx);
+  return moved;
+}
+
+inline bool MiniAcid::tryManual303TargetSwitch(
+    int voiceIndex, int patternIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  return tryManual303TargetSwitch(
+      voiceIndex, current303BankIndex(voiceIndex), patternIndex);
+}
+
+inline bool MiniAcid::tryManual303BankSwitch(
+    int voiceIndex, int bankIndex) {
+  if (voiceIndex < 0 || voiceIndex >= NUM_303_VOICES) return false;
+  const int patternIndex = display303LocalPatternIndex(voiceIndex);
+  if (patternIndex < 0) return false;
+  return tryManual303TargetSwitch(voiceIndex, bankIndex, patternIndex);
+}
+
+inline bool MiniAcid::tryManualPageSwitch(int pageIndex) {
+  if (pageIndex < 0 || pageIndex >= kMaxPages) return false;
+  if (pageIndex == currentPageIndex()) return true;
+  // An unsaved Working melody must not move to another page: the page switch
+  // would otherwise play it on the new page while the screen shows that page's steps.
+  for (int voice = 0; voice < NUM_303_VOICES; ++voice) {
+    if (hasModifiedWorking303Pattern(voice) || hasUnsavedWorkingMelody(voice)) return false;
+  }
+  requestPageSwitch(pageIndex);
+  return targetPageIndex() == pageIndex || currentPageIndex() == pageIndex;
+}
+
 #endif // MINIACID_ENGINE_H

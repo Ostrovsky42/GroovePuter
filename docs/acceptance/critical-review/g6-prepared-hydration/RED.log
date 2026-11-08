@@ -1,0 +1,120 @@
+  - MiniAcid::init: DRAM-only mode (constrained)
+TempoDelay::init: sr=22050.0 maxSeconds=0.100 => samples=2205
+TempoDelay::init: Allocating 2205 samples (8.6 KB)...
+TempoDelay::init: sr=22050.0 maxSeconds=0.100 => samples=2205
+TempoDelay::init: Allocating 2205 samples (8.6 KB)...
+  - MiniAcid::init: DRAM MODE ACTIVE (Reduced buffers)
+  - MiniAcid::init: Memory strategy applied
+  - MiniAcid::init: Initializing scene storage...
+  - MiniAcid::init: Loading scene from storage...
+  - loadSceneFromStorage: Streaming parse failed, loading default scene
+  - MiniAcid::init: reset()...
+    - MiniAcid::reset: Start
+    - MiniAcid::reset: voices reset
+    - MiniAcid::reset: resetting drums...
+    - MiniAcid::reset: Done
+  - MiniAcid::init: applySceneStateFromManager()...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+  - MiniAcid::init: Done
+[ACCEPT] voice=0
+[ACCEPT] working=melody
+[ACCEPT] dirty=1
+[ACCEPT] stage=preflight result=OK
+[ACCEPT] ref.address={voice:0, globalSlot:0}
+[ACCEPT] ref.id=0
+[ACCEPT] stage=resolve result=OK
+[ACCEPT] stage=validate result=OK
+[MELODY_CANDIDATE] address={v:0, g:0} activeSlot=255 currentGen=0 targetSlot=0 nextGen=1 path=/projects/g6-melody-b/melody/v0_g000_a.gpml
+[ACCEPT] stage=melody_payload result=OK gen=1
+[commitPageCandidate] OK proj=g6-melody-b page=0 slot=0 gen=1
+[ACCEPT] stage=page_candidate result=OK
+[ACCEPT] stage=nvs_publish result=OK
+[ACCEPT] stage=ram_publish result=OK
+[ACCEPT] voice=1
+[ACCEPT] working=melody
+[ACCEPT] dirty=1
+[ACCEPT] stage=preflight result=OK
+[ACCEPT] ref.address={voice:1, globalSlot:0}
+[ACCEPT] ref.id=0
+[ACCEPT] stage=resolve result=OK
+[ACCEPT] stage=validate result=OK
+[MELODY_CANDIDATE] address={v:1, g:0} activeSlot=255 currentGen=0 targetSlot=0 nextGen=1 path=/projects/g6-melody-b/melody/v1_g000_a.gpml
+[ACCEPT] stage=melody_payload result=OK gen=1
+[commitPageCandidate] OK proj=g6-melody-b page=0 slot=1 gen=2
+[ACCEPT] stage=page_candidate result=OK
+[ACCEPT] stage=nvs_publish result=OK
+[ACCEPT] stage=ram_publish result=OK
+[LoadScene] Starting load for: g6-melody-b
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+[LoadScene] loaded=1 recovery=0
+[LoadScene] Applying scene state...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+[LoadScene] SUCCESS
+[LoadScene] Starting load for: g6-melody-a
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+[LoadScene] loaded=1 recovery=0
+[LoadScene] Applying scene state...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+[LoadScene] SUCCESS
+[LoadScene] Starting load for: g6-melody-b
+[Parser] WARNING: Unknown array path, lastKey='out', parent_path=0, stackSize=2 (skipping)
+[LoadScene] loaded=1 recovery=0
+[LoadScene] Applying scene state...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+[LoadScene] SUCCESS
+G6_LATE_MELODY_READ files=2 loaded=1 canonical_equal=0 project=g6-melody-b heldA=0 heldB=0
+g6-late-hydration-probe: /tmp/gp-g6-late-hydration-probe.cpp:59: int main(int, char**): Assertion `retained && GroovePuterMaterial::versionForMelody(*retained)==workingVersion' failed.

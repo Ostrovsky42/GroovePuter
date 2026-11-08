@@ -1,0 +1,10 @@
+# Preserve historical evidence and migration scripts byte-for-byte; whitespace
+# inside these captured logs/patches and embedded code is part of the artifact.
+docs/acceptance/critical-review/g6-new-clear-reset/repair.patch -whitespace
+docs/acceptance/critical-review/g6-nonresident-validation/sdl-build.log -whitespace
+docs/acceptance/critical-review/g6-prepared-hydration/sdl-build.log -whitespace
+docs/acceptance/critical-review/g6-resident-melody-fix/sdl-build.log -whitespace
+docs/acceptance/critical-review/g6-sd-size-bound/host-suite.log -whitespace
+docs/acceptance/critical-review/g6-sd-size-bound/sdl-build.log -whitespace
+tools/apply_c9_midi_user_closure.py -whitespace
+tools/apply_c9_midi_user_closure_v2.py -whitespace

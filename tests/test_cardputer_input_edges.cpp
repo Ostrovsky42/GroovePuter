@@ -3,6 +3,7 @@
 #include <vector>
 
 #include "src/input/cardputer_input_edges.h"
+#include "src/input/cardputer_diagnostic_shortcut.h"
 
 namespace {
 struct FakeKeysState {
@@ -19,6 +20,26 @@ int main() {
   using namespace GroovePuterInput;
 
   FakeKeysState empty{};
+  FakeKeysState fnD{};
+  fnD.fn = true;
+  fnD.hid_keys = {0x07};
+  fnD.word = {'d'};
+  char diagnosticKey = 0;
+  uint32_t diagnosticMask = 0;
+  unsigned diagnosticDispatches = 0;
+  if (shouldDispatchHid(fnD, empty, true, 0x07) &&
+      claimDiagnosticFnD(fnD, 0x07, diagnosticKey, diagnosticMask))
+    ++diagnosticDispatches;
+  char diagnosticWord = 'd';
+  if (shouldDispatchWord(fnD, empty, true, diagnosticWord) &&
+      !wordLetterAlreadyDispatched(diagnosticWord, diagnosticMask))
+    ++diagnosticDispatches;
+  assert(diagnosticDispatches == 1 && diagnosticKey == 'd');
+  assert(!shouldDispatchHid(fnD, fnD, true, 0x07));
+  FakeKeysState releasedFn = fnD;
+  releasedFn.fn = false;
+  assert(!shouldDispatchHid(releasedFn, fnD, true, 0x07));
+  assert(!claimDiagnosticFnD(releasedFn, 0x07, diagnosticKey, diagnosticMask));
   FakeKeysState tab{};
   tab.hid_keys = {kCardputerTabHid};
   assert(shouldDispatchHid(tab, empty, true, kCardputerTabHid));
@@ -58,6 +79,29 @@ int main() {
   assert(!shouldDispatchWord(duplicateTab, empty, true, duplicateTabValue));
   assert(duplicateTabValue == '\t');
 
+  struct ArrowShadowCase {
+    uint8_t hid;
+    char plain;
+    char shifted;
+  };
+  const ArrowShadowCase arrowShadows[] = {
+      {kCardputerArrowUpHid, ';', ':'},
+      {kCardputerArrowLeftHid, ',', '<'},
+      {kCardputerArrowDownHid, '.', '>'},
+      {kCardputerArrowRightHid, '/', '?'},
+  };
+  for (const auto& shadow : arrowShadows) {
+    for (const char wordValue : {shadow.plain, shadow.shifted}) {
+      FakeKeysState physicalArrow{};
+      physicalArrow.hid_keys = {shadow.hid};
+      physicalArrow.word = {wordValue};
+      char dispatchedWord = physicalArrow.word.front();
+      assert(!shouldDispatchWord(
+          physicalArrow, empty, true, dispatchedWord));
+      assert(dispatchedWord == wordValue);
+    }
+  }
+
   char heldWordTabValue = wordOnlyTab.word.front();
   assert(!shouldDispatchWord(wordOnlyTab, wordOnlyTab, true, heldWordTabValue));
   assert(heldWordTabValue == '\t');
@@ -90,6 +134,25 @@ int main() {
   UIEvent bracket{};
   bracket.key = ']';
   assert(!mayRepeat(bracket));
+
+  // Alt+Up/Down repeats only where the page asks (Melody roll scrolling);
+  // Alt+Left/Right and other modifiers never do.
+  UIEvent altUp{};
+  altUp.scancode = GROOVEPUTER_UP;
+  altUp.alt = true;
+  assert(!mayRepeat(altUp));
+  assert(mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_DOWN;
+  assert(mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_RIGHT;
+  assert(!mayRepeat(altUp, true));
+  altUp.scancode = GROOVEPUTER_UP;
+  altUp.ctrl = true;
+  assert(!mayRepeat(altUp, true));
+  UIEvent altEnter{};
+  altEnter.key = '\n';
+  altEnter.alt = true;
+  assert(!mayRepeat(altEnter, true));
 
   FakeKeysState rightOnly{};
   rightOnly.hid_keys = {0x38};

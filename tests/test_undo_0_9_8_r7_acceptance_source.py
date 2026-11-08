@@ -15,23 +15,23 @@ def require(text: str, needle: str, context: str) -> None:
 
 undo_ux = read("src/ui/undo_ux.h")
 help_content = read("src/ui/global_help_content.h")
-core = read(".github/workflows/core-regressions.yml")
+cardputer = read(".github/workflows/cardputer-adv.yml")
+midi = read(".github/workflows/midi-targets.yml")
 dram = read("scripts/check_cardputer_dram_budget.sh")
 acceptance = read("docs/releases/0_9_8_R7_ADV_ACCEPTANCE.md")
 
 # R8 supersedes only the public chord; R7 resource/release evidence remains enforced.
 require(undo_ux, "event.event_type != GROOVEPUTER_KEY_DOWN || !event.ctrl", "Ctrl+Z modifier contract")
-require(undo_ux, "event.alt || event.meta || event.shift", "Ctrl+Z modifier contract")
+require(undo_ux, "event.alt || event.meta)", "Ctrl+Z modifier contract")
 require(undo_ux, "event.scancode == GROOVEPUTER_Z", "Ctrl+Z key contract")
 require(help_content, '"Ctrl+Z      Undo last edit"', "global help")
 require(help_content, '"Ctrl+A/X/C/V Reset parameter"', "Synth Sound compatibility")
 
 # Exact software acceptance must continue to exercise both Cardputer profiles
 # and the repository DRAM policy on every final Safe Editing candidate.
-require(core, "Compile Cardputer ADV firmware", "Core ADV gate")
-require(core, "Check fixed DRAM budget", "Core ADV gate")
-require(core, "scripts/check_cardputer_dram_budget.sh", "Core DRAM gate")
-require(core, "Compile and check SEQTRAK MIDI-only firmware", "Core SEQTRAK gate")
+require(cardputer, "bash scripts/build.sh --warnings all", "Cardputer ADV build gate")
+require(cardputer, "bash scripts/check_cardputer_dram_budget.sh", "Cardputer DRAM gate")
+require(midi, "bash scripts/build_seqtrak_midi_only.sh --warnings all", "SEQTRAK build gate")
 
 # Do not silently promote the current provisional static ceiling into a fully
 # derived hardware-safety claim.

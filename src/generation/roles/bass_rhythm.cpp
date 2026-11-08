@@ -100,6 +100,7 @@ RelationshipOp relationshipFor(BassRhythmId id) {
     case BassRhythmId::HalfTimePocket:
     case BassRhythmId::SyncopatedHook:
     case BassRhythmId::SustainAndDrop:
+    case BassRhythmId::ConnectedHook:
       return RelationshipOp::Exclude;
     case BassRhythmId::Auto:
     case BassRhythmId::Count:
@@ -162,6 +163,12 @@ BassRhythmResult realizeBassRhythm(const BassRhythmRequest& request) {
     case BassRhythmId::SyncopatedHook:
       onsets = mask({0, 3, 7, 10, 14});
       break;
+    case BassRhythmId::ConnectedHook:
+      // Keep the syncopated attacks; only selected links are held. Articulation
+      // remains downstream, including whether to glide.
+      onsets = mask({0, 3, 7, 10, 14});
+      continuations = mask({1, 2, 8, 9});
+      break;
     case BassRhythmId::SustainAndDrop:
       if (!(request.allowEmptyBar && (request.barOrdinal % 4u) == 1u)) {
         onsets = stepBit(0);
@@ -204,6 +211,7 @@ const char* bassRhythmName(BassRhythmId id) {
     case BassRhythmId::HalfTimePocket: return "HALF-TIME POCKET";
     case BassRhythmId::SyncopatedHook: return "SYNCOPATED HOOK";
     case BassRhythmId::SustainAndDrop: return "SUSTAIN/DROP";
+    case BassRhythmId::ConnectedHook: return "CONNECTED HOOK";
     case BassRhythmId::Count: break;
   }
   return "INVALID";

@@ -5,10 +5,29 @@
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
+#include "esp_rom_sys.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
 #include "src/dsp/miniacid_engine.h"
+#include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
+#include "src/platform/cardputer_usb_role_runtime.h"
+#include "src/platform/cardputer_usb_host_midi.h"
+// Single binary, two USB roles: only when the core does not start TinyUSB Device before
+// setup() (CDCOnBoot=default) can project code pick Device or Host from the saved role.
+#if !ARDUINO_USB_CDC_ON_BOOT
+#define GP_USB_ROLE_RUNTIME 1
+#endif
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+#include "src/midi/latency_histogram.h"
+#include "src/input/cardputer_diagnostic_shortcut.h"
+static GroovePuterMidi::LatencyHistogram g_queueLatency;  // dispatch push -> loop apply
+#endif
+// External Mod button: tap = delete the note under the cursor, hold = clear the melody.
+#include "src/midi/mod_hold_tracker.h"
+#include "src/midi/nudge_repeater.h"
+static GroovePuterMidi::ModHoldTracker g_modHold;
+static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
@@ -21,18 +40,32 @@
 #include "src/platform/cardputer_adv_hardware.h"
 #include "src/platform/cardputer_smf_player_registry.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_performance_config_store.h"
 #include "src/platform/cardputer_usb_midi_service.h"
 #include "src/platform/cardputer_wdt_diagnostics.h"
 #include "src/ui/key_normalize.h"
 #include "src/ui/ui_common.h"
 #include "src/input/performance_keyboard.h"
+#include "src/input/performance_control.h"
+#include "src/input/performance_harmony_bridge.h"
+#include "src/input/performance_harmony_route_cache.h"
+#include "src/input/call_response_listener.h"
+#include "src/input/call_response_harmony.h"
+#include "src/input/performance_harmony_lookahead.h"
+#include "src/input/call_response_motif.h"
+#include "src/input/call_response_planner.h"
+#include "src/input/looper.h"
+#include "src/input/performance_input_fanout.h"
+#include "src/audio/pattern_paging.h"
 #include "src/input/cardputer_input_edges.h"
 #include "src/input/internal_synth_output.h"
 #include "src/input/musical_event_queue.h"
 #include "src/midi/external_midi_clock_follower.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/transport_clock_runtime.h"
+#include "src/audio/follow_mute_ramp.h"
 #include "src/ui/workflow_mode.h"
+#include "src/output/output_ownership.h"
 #include <new>
 
 static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
@@ -41,9 +74,12 @@ CardputerDisplay g_display;
 MiniAcidDisplay* g_miniDisplay = nullptr;
 SceneStorageCardputer g_sceneStorage;
 CardputerAudioRecorder* g_audioRecorder = nullptr;
-#include "src/sampler/ram_sample_store.h"
 #include "src/audio/audio_out_i2s.h"
+#include "src/platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
+#include "src/sampler/ram_sample_store.h"
 RamSampleStore g_sampleStore;
+#endif
 
 static AudioOutI2S g_audioOut;
 static int16_t g_audioBuffer[kBlockFrames];
@@ -62,8 +98,12 @@ static MusicalEventQueue g_patternMusicalEventQueue;
 static ExternalMidiTransportEventQueue g_externalMidiTransportQueue;
 static GroovePuterMidi::ExternalMidiClockFollower g_externalClockFollower;
 static PerformanceKeyboard g_performanceKeyboard(g_musicalEventRouter);
+static GroovePuterPerformance::PerformanceHarmonyBridge g_performanceHarmonyBridge;
+static GroovePuterPerformance::PerformanceHarmonyRouteCache g_performanceHarmonyRouteCache;
 static InternalSynthOutput g_internalSynthOutput(g_miniAcidInstance, g_audioMutationGate);
 static uint32_t g_lastLiveInputEpoch = 0;
+// PERFORM input -> PARTNER + LOOPER (set in setup()).
+static PerformanceInputFanout g_performanceInputFanout;
 MiniAcid* volatile g_miniAcid = nullptr;
 Encoder8Miniacid* g_encoder8 = nullptr;
 
@@ -86,6 +126,28 @@ static float readPatternSequencerPhase(void* context) {
   auto* engine = static_cast<MiniAcid*>(context);
   return engine ? engine->transportPhaseSteps() : 0.0f;
 }
+
+#if defined(GROOVEPUTER_BLOCK_HIST)
+// Per-block render time of generateAudioBuffer: 64 bins of 8 us (last = overflow). Written by the audio task and read
+// by the 5 s report; the report reads without a lock (diagnostic only; a torn read shifts one count at most).
+static uint32_t g_blockHist[64];
+static uint32_t g_blockHistMaxUs = 0;
+static void blockHistAdd(uint32_t us) {
+  uint32_t bin = us / 32u;
+  g_blockHist[bin < 63u ? bin : 63u]++;
+  if (us > g_blockHistMaxUs) g_blockHistMaxUs = us;
+}
+static uint32_t blockHistPercentileUs(uint32_t permille, uint32_t total) {
+  if (total == 0) return 0;
+  uint32_t target = (total * permille + 999u) / 1000u;
+  uint32_t acc = 0;
+  for (uint32_t i = 0; i < 64u; ++i) {
+    acc += g_blockHist[i];
+    if (acc >= target) return i * 32u + 32u;
+  }
+  return g_blockHistMaxUs;
+}
+#endif
 
 void audioTask(void *param) {
   Serial.println("AudioTask: Starting...");
@@ -110,10 +172,28 @@ void audioTask(void *param) {
       const uint32_t midiBlockSequence = g_audioMidiBlockSequence++;
       const auto clockSource =
           GroovePuterMidi::transportClockRuntime().source();
+      // Notes of this block leave one output latency after `now`; follow the
+      // master at that moment so the notes, not the render, land on its beat.
       const auto externalClock = g_externalClockFollower.processBlock(
-          g_externalMidiTransportQueue, clockSource, now);
+          g_externalMidiTransportQueue, clockSource, now,
+          GroovePuterMidi::transportClockRuntime().externalFollowEnabled(),
+          cardputerUsbMidiOutputLatencyUs());
       GroovePuterMidi::transportClockRuntime().publishExternalEstimate(
           externalClock.estimate, g_externalClockFollower.failureCount());
+
+      // Clock ownership just returned from external follow: setExternalClockBpm()
+      // only ever wrote the effective tempo, never the project tempo, so nothing
+      // else resyncs it back. Without this, the engine keeps rendering at the
+      // last followed BPM until the next explicit tempo edit or a reboot.
+      if (externalClock.sourceChanged &&
+          clockSource != GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+        g_miniAcid->restoreProjectBpm();
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
+      }
+      // A new Start from the master is a new take: GroovePuter sounds again.
+      if (externalClock.command == GroovePuterMidi::ExternalTransportCommand::Start) {
+        GroovePuterMidi::transportClockRuntime().setFollowOutputMuted(false);
+      }
 
       bool restartFromBeginning = true;
       if (clockSource ==
@@ -127,9 +207,15 @@ void audioTask(void *param) {
           }
         }
       }
+      // Start arrives with the master's downbeat. Begin where the master will
+      // be when this block's notes leave, so the first bar is on its grid
+      // instead of catching up through the bounded trim.
+      double startedAtPhaseSteps = 0.0;
       switch (externalClock.command) {
         case GroovePuterMidi::ExternalTransportCommand::Start:
           g_miniAcid->start();
+          startedAtPhaseSteps =
+              g_miniAcid->advanceStartPhase(externalClock.startPhaseSteps);
           break;
         case GroovePuterMidi::ExternalTransportCommand::Continue:
           g_miniAcid->continueTransport();
@@ -152,9 +238,22 @@ void audioTask(void *param) {
           g_miniAcid->isPlaying(),
           GroovePuterMidi::transportClockSourcePublishesOutboundClock(
               clockSource),
-          restartFromBeginning);
+          restartFromBeginning,
+          static_cast<float>(startedAtPhaseSteps));
+#if defined(GROOVEPUTER_BLOCK_HIST)
+      const uint32_t blockT0 = micros();
+#endif
       g_miniAcid->generateAudioBuffer(g_audioBuffer, kBlockFrames);
+#if defined(GROOVEPUTER_BLOCK_HIST)
+      blockHistAdd(micros() - blockT0);
+#endif
       g_patternMusicalEventQueue.endMidiRenderBlock();
+      // Space while following silences GroovePuter but keeps it rendering in
+      // phase; MidiDispatchTask silences its MIDI notes on the same flag.
+      static float followMuteGain = 1.0f;
+      followMuteGain = applyFollowMuteRamp(
+          g_audioBuffer, kBlockFrames, followMuteGain,
+          GroovePuterMidi::followOutputSilenced() ? 0.0f : 1.0f);
       publishCardputerUsbMidiBlockAnchor(midiBlockSequence, now);
     } else {
       std::fill(g_audioBuffer, g_audioBuffer + kBlockFrames, 0);
@@ -219,9 +318,19 @@ void audioTask(void *param) {
   }
 }
 
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+static bool g_acceptanceOverlayEnabled = false;
+static void drawAcceptanceOverlay();
+#endif
+
 void drawUI() {
   const uint32_t startedAt = micros();
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  if (g_miniDisplay) g_miniDisplay->update(
+      g_acceptanceOverlayEnabled ? drawAcceptanceOverlay : nullptr);
+#else
   if (g_miniDisplay) g_miniDisplay->update();
+#endif
   g_lastUiDrawUs = micros() - startedAt;
   if (g_lastUiDrawUs > g_peakUiDrawUs) {
     g_peakUiDrawUs = g_lastUiDrawUs;
@@ -237,7 +346,128 @@ static void logHeapCaps(const char* tag) {
   Serial.printf("[%s] freeInt=%u largInt=%u free8=%u larg8=%u\n",
                 tag, (unsigned)freeInt, (unsigned)largInt,
                 (unsigned)free8, (unsigned)larg8);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+  esp_rom_printf("[BOOT-MEM %s] free=%u largest=%u\n", tag,
+                 (unsigned)freeInt, (unsigned)largInt);
+#endif
 }
+
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+static void drawAcceptanceOverlay() {
+  constexpr uint32_t caps = MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT;
+  char line[56];
+  g_display.fillRect(0, 54, 240, 81, CP_BLACK);
+  g_display.setTextColor(IGfxColor::White());
+  snprintf(line, sizeof(line), "ROLE %s att=%lu det=%lu on=%lu",
+           CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host ? "KBD" : "PC",
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::attachCount(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::detachCount(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::noteOnCount());
+  g_display.drawText(0, 55, line);
+  snprintf(line, sizeof(line), "MEM f=%u min=%u blk=%u",
+           (unsigned)heap_caps_get_free_size(caps),
+           (unsigned)heap_caps_get_minimum_free_size(caps),
+           (unsigned)heap_caps_get_largest_free_block(caps));
+  g_display.drawText(0, 64, line);
+  snprintf(line, sizeof(line), "STK loop=%u disp=%u aud=%u",
+           (unsigned)(uxTaskGetStackHighWaterMark(nullptr) * sizeof(StackType_t)),
+           (unsigned)cardputerUsbDispatchStackFreeBytes(),
+           (unsigned)(g_audioTaskHandle ? uxTaskGetStackHighWaterMark(g_audioTaskHandle) * sizeof(StackType_t) : 0));
+  g_display.drawText(0, 73, line);
+  const int page = g_miniDisplay ? g_miniDisplay->currentPageIndex() : -1;
+  if (g_miniAcid && (page == WorkflowPages::kPerform ||
+      page == WorkflowPages::kSynthA || page == WorkflowPages::kSynthB)) {
+    const int voice = page == WorkflowPages::kSynthB ? 1 :
+        page == WorkflowPages::kSynthA ? 0 :
+        g_performanceKeyboard.target() == MusicalEventTarget::SynthB ? 1 : 0;
+    int liveNote;
+    bool muted, patternOwned, testTone;
+    float master, trackVolume;
+    bool activeA, activeB;
+    float ampA, ampB;
+    int pcmPeak = 0;
+    bool delayOn, tapeOn;
+    int tapeMode;
+    std::string engineName;
+    {
+      // Snapshot engine state at an audio block boundary. Release the gate
+      // before formatting and drawing; no display work runs while audio waits.
+      AudioMutationScope mutationScope(g_audioMutationGate);
+      liveNote = g_miniAcid->liveNote(voice);
+      muted = g_miniAcid->is303Muted(voice);
+      patternOwned = g_miniAcid->patternOwnsInternalSynth(voice);
+      testTone = g_miniAcid->isTestToneEnabled();
+      master = g_miniAcid->mainVolume();
+      trackVolume = g_miniAcid->getTrackVolume(
+          voice == 0 ? VoiceId::SynthA : VoiceId::SynthB);
+      engineName = g_miniAcid->currentSynthEngineName(voice);
+      activeA = g_miniAcid->diagnostic303Active(0);
+      activeB = g_miniAcid->diagnostic303Active(1);
+      ampA = g_miniAcid->diagnostic303Envelope(0);
+      ampB = g_miniAcid->diagnostic303Envelope(1);
+      pcmPeak = g_miniAcid->lastAudioPeak();
+      delayOn = g_miniAcid->is303DelayEnabled(voice);
+      const auto& tape = g_miniAcid->sceneManager().currentScene().tape;
+      tapeOn = GROOVEPUTER_ENABLE_TAPE && tape.fxEnabled;
+      tapeMode = GROOVEPUTER_ENABLE_TAPE ? static_cast<int>(tape.mode) : static_cast<int>(TapeMode::Stop);
+    }
+    snprintf(line, sizeof(line), "KEY %s %s en%d nm%d arp%d",
+        g_performanceKeyboard.targetName(), g_performanceKeyboard.voiceModeName(),
+        g_performanceKeyboard.enabled(), g_performanceKeyboard.noteModeEnabled(),
+        g_performanceKeyboard.arpeggiatorEnabled());
+    g_display.drawText(0, 82, line);
+    snprintf(line, sizeof(line), "NOTE h=%u key=%d live%c=%d",
+        (unsigned)g_performanceKeyboard.heldCount(), g_performanceKeyboard.activeNote(),
+        'A' + voice, liveNote);
+    g_display.drawText(0, 91, line);
+    snprintf(line, sizeof(line), "INT%d MUTE%d PAT%d LEAD%u VOL%.0f",
+        GroovePuterOutput::allowsInternal(g_performanceKeyboard.target(),
+            GroovePuterOutput::SourceClass::Performance), muted, patternOwned,
+        (unsigned)g_performanceKeyboard.leadMode(), trackVolume * 100.0f);
+    g_display.drawText(0, 100, line);
+    snprintf(line, sizeof(line), "ENG%c %.10s MASTER%.0f TONE%d",
+        'A' + voice, engineName.c_str(), master * 100.0f, testTone);
+    g_display.drawText(0, 109, line);
+    if (engineName == "TB303") {
+      snprintf(line, sizeof(line), "DSP A%d:%.2f B%d:%.2f P%d",
+          activeA, ampA, activeB, ampB, pcmPeak);
+      g_display.drawText(0, 118, line);
+      snprintf(line, sizeof(line), "FX D%d T%d L%d Q%u DROP%u",
+          delayOn, tapeOn, tapeMode,
+          (unsigned)g_performanceKeyboard.scheduledDepth(),
+          (unsigned)g_performanceKeyboard.staleGeneratedNoteOnDrops());
+      g_display.drawText(0, 127, line);
+    }
+    return;
+  }
+  snprintf(line, sizeof(line), "Q held=%u drop=%lu ring=%lu",
+           (unsigned)g_performanceKeyboard.externalHeldCount(),
+           (unsigned long)cardputerExternalNoteQueue().dropped(),
+           (unsigned long)GroovePuterMidi::CardputerUsbHostMidi::droppedPackets());
+  g_display.drawText(0, 82, line);
+  const auto& ringLat = cardputerUsbRingLatency();
+  snprintf(line, sizeof(line), "LAT usb>disp n=%lu %lu/%lu/%lu",
+           (unsigned long)ringLat.count(), (unsigned long)ringLat.percentileUs(50),
+           (unsigned long)ringLat.percentileUs(95), (unsigned long)ringLat.maxUs());
+  g_display.drawText(0, 91, line);
+  snprintf(line, sizeof(line), "LAT disp>keys n=%lu %lu/%lu/%lu",
+           (unsigned long)g_queueLatency.count(),
+           (unsigned long)g_queueLatency.percentileUs(50),
+           (unsigned long)g_queueLatency.percentileUs(95),
+           (unsigned long)g_queueLatency.maxUs());
+  g_display.drawText(0, 100, line);
+  cardputerUsbClockRxText(line, sizeof(line));
+  g_display.drawText(0, 109, line);
+  cardputerUsbLastRawText(line, sizeof(line));
+  g_display.drawText(0, 118, line);
+  {
+    char cc[40], pb[40];
+    cardputerUsbRampText(cc, sizeof(cc), pb, sizeof(pb));
+    snprintf(line, sizeof(line), "%s  %s", cc, pb);
+    g_display.drawText(0, 127, line);
+  }
+}
+#endif
 
 static void startAudioTask() {
   // Reserve the realtime stack before allocating lazy UI pages. Reducing this
@@ -300,20 +530,6 @@ void setup() {
   
   Serial.println("[Audio] ES8311 custom I2C Config complete (MCLK derived from BCLK)");
 
-  // Reserve the I2S channel and DMA while internal RAM is still contiguous.
-  // Starting the audio task later keeps setup and driver initialization
-  // serialized on one task.
-  markBootStage(21, "before direct I2S init");
-  g_audioOutputReady = g_audioOut.begin(kSampleRate, kBlockFrames);
-  markBootStage(g_audioOutputReady ? 22 : 922,
-                g_audioOutputReady ? "after direct I2S init"
-                                   : "direct I2S init failed");
-  
-  // Seed random number generator with hardware RNG
-  srand(esp_random());
-  
-  logHeapCaps("after-m5-begin");
-  
   esp_reset_reason_t reason = esp_reset_reason();
   Serial.println("\n\n=== MiniAcid STARTUP DIAGNOSTICS ===");
   Serial.printf("Reset Reason: %d\n", (int)reason);
@@ -324,12 +540,37 @@ void setup() {
   markBootStage(30, "before display.begin");
   g_display.setRotation(1);
   g_display.begin();
+  if (!g_display.bufferReady()) {
+    markBootStage(930, "display framebuffer allocation failed");
+    esp_rom_printf("[BOOT-FAIL] framebuffer unavailable; free=%u largest=%u\n",
+        (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT),
+        (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+    M5Cardputer.Display.fillScreen(0);
+    M5Cardputer.Display.setCursor(0, 0);
+    M5Cardputer.Display.setTextColor(0xffff);
+    M5Cardputer.Display.println("BOOT: DISPLAY MEMORY LOW");
+    M5Cardputer.Display.println("See serial startup log");
+    while (true) delay(1000);
+  }
   markBootStage(31, "after display.begin");
   
   Serial.println("Clearing Display...");
   g_display.clear(CP_BLACK);
   g_display.setTextColor(IGfxColor::White());
   logHeapCaps("after-display");
+
+  // The display framebuffer needs one contiguous 64,800-byte allocation.
+  // Allocate it before I2S reserves its internal stereo/DMA buffers, then
+  // initialize I2S before creating the audio task as before.
+  markBootStage(21, "before direct I2S init");
+  g_audioOutputReady = g_audioOut.begin(kSampleRate, kBlockFrames);
+  markBootStage(g_audioOutputReady ? 22 : 922,
+                g_audioOutputReady ? "after direct I2S init"
+                                   : "direct I2S init failed");
+  logHeapCaps("after-i2s-init");
+
+  // Seed random number generator with hardware RNG
+  srand(esp_random());
   
   
   // Speaker initialization removed - using direct I2S in audioTask
@@ -376,14 +617,12 @@ void setup() {
   g_sceneStorage.initializeStorage();
   markBootStage(83, "after early SD init");
 
-  // Reserve the SMF task stack and bounded timing buffers before DSP and lazy
-  // UI allocations fragment the DRAM-only Cardputer ADV heap.
-  screenLog("4c. SMF Runtime...");
-  markBootStage(84, "before SMF runtime init");
-  if (!beginCardputerSmfPlayerService()) {
-    Serial.println("[WARN] SMF runtime unavailable; groovebox remains usable");
-  }
-  markBootStage(85, "after SMF runtime init");
+  // LazyCardputerSmfPlayer registers itself statically. Allocate the SMF task
+  // stack and parser/timing storage only on the first player command; eager boot
+  // startup was the measured 7.0-7.4 KiB residency loss banked before MEMORY-R1.
+  screenLog("4c. SMF Runtime (lazy)...");
+  markBootStage(84, "SMF runtime deferred");
+  markBootStage(85, "after SMF runtime deferral");
 
   // Global MIDI settings must be restored before the dispatcher starts. The
   // profile runtime is an input to later route projection; letting UI creation
@@ -394,6 +633,13 @@ void setup() {
   // statically reserved, so startup no longer depends on the largest free heap
   // block left by SD and SMF initialization.
   g_musicalEventRouter.addSink(g_internalSynthOutput);
+  CardputerUsbRoleRuntime::init();
+#ifdef GP_USB_ROLE_RUNTIME
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    screenLog("4d. USB Host Init...");
+    if (!GroovePuterMidi::CardputerUsbHostMidi::begin(nullptr)) markBootStage(952, "USB Host begin failed");
+  }
+#endif
   screenLog("4d. USB MIDI Runtime...");
   markBootStage(52, "before USB MIDI sink");
   if (!registerCardputerUsbMidiSink(
@@ -404,7 +650,20 @@ void setup() {
     markBootStage(952, "USB MIDI runtime unavailable");
   } else {
     markBootStage(53, "after USB MIDI sink");
+    GroovePuterPlatform::initializeCardputerMidiInputSettings();
   }
+  GroovePuterPlatform::initializeCardputerPerformanceConfig(
+      g_performanceKeyboard);
+  GroovePuterCallResponse::callResponseListener().setNowFunction(callResponseNowMicros);
+  GroovePuterCallResponse::callResponseListener().setOutputRouter(&g_musicalEventRouter);
+  // LOOPER: borrows the PARTNER's ResponsePlayer (one player, never both
+  // playing: Z/C refuse while the PARTNER is on, PARTNER ON stops the loop).
+  // PERFORM input goes to both through a fixed two-way fan-out.
+  GroovePuterLooper::looper().setNowFunction(callResponseNowMicros);
+  GroovePuterLooper::looper().setPlayer(&GroovePuterCallResponse::callResponseListener().responder());
+  g_performanceInputFanout.set(&GroovePuterCallResponse::callResponseListener(),
+                               &GroovePuterLooper::looper());
+  g_performanceKeyboard.setInputObserver(&g_performanceInputFanout);
 
   screenLog("5. Creating Encoder8");
   markBootStage(40, "before Encoder8 alloc");
@@ -418,7 +677,9 @@ void setup() {
 
   screenLog("6. Engine Init...");
   // Link sample store before init
+#if GROOVEPUTER_ENABLE_SAMPLER
   g_miniAcidInstance.sampleStore = &g_sampleStore;
+#endif
   markBootStage(50, "before MiniAcid::init");
   g_miniAcidInstance.init();
   g_miniAcid = &g_miniAcidInstance;
@@ -428,6 +689,7 @@ void setup() {
   g_lastLiveInputEpoch = g_miniAcid->liveInputEpoch();
   markBootStage(51, "after MiniAcid::init");
 
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Scan samples from SD card (SD initialized by engine->init->sceneStorage)
   screenLog("6b. Scan /sd/samples...");
   markBootStage(60, "before sample scan");
@@ -445,6 +707,7 @@ void setup() {
       // Note: "registerFile" just stores the path for lazy loading.
       g_sampleStore.registerFile(file.id, file.fullPath);
   }
+#endif
 
   
   Serial.println("7a. UI Instance Created");
@@ -470,6 +733,7 @@ void setup() {
       static_cast<AudioMutationGate*>(context)->unlockControl();
   };
   g_miniDisplay->setAudioGuard(guard);
+  g_miniAcid->setAcceptAudioMutationGate(&g_audioMutationGate);
   
   Serial.println("7c. UI setAudioRecorder");
   // Initialize audio recorder (done after other initialization to avoid boot issues)
@@ -494,27 +758,552 @@ void setup() {
 }
 
 
+// One external pitch-button step: the active page may take it (notes tab: cursor), otherwise it steps
+// the ARP rate when ARP is on. Returns true when the page took it (those steps auto-repeat).
+static bool applyExternalNudge(int direction) {
+  bool pageTookIt = false;
+  if (g_miniDisplay) {
+    UIEvent offered{};
+    offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE;
+    offered.x = direction;
+    pageTookIt = g_miniDisplay->handleEvent(offered);
+  }
+  if (!pageTookIt && g_performanceKeyboard.arpeggiatorEnabled()) {
+    g_performanceKeyboard.cycleArpRate(direction);
+    char toast[32];
+    snprintf(toast, sizeof(toast), "ARP RATE: %s", g_performanceKeyboard.arpRateName());
+    UI::showToast(toast, 700);
+  }
+  return pageTookIt;
+}
+
+static void updatePerformanceHarmonyContext() {
+  GroovePuterHarmony::HarmonySnapshot snapshot{};
+  snapshot.status = GroovePuterHarmony::HarmonyStatus::NoHarmony;
+  GroovePuterPerformance::HarmonyPlaybackPosition position{};
+  const auto* origin = g_miniAcid ? g_miniAcid->generatedSynthAOrigin() : nullptr;
+  const auto* recipe = g_miniAcid ? g_miniAcid->generatedPhraseRecipe() : nullptr;
+  if (g_miniAcid && origin && recipe &&
+      g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+    if (origin->common.harmonicAuthority ==
+        GroovePuterHarmony::HarmonicAuthority::Graph) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      if (recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          g_miniAcid->tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars,
+              participants, GroovePuterHarmony::kMaxSongHarmonyParticipants,
+              participantCount)) {
+        auto& cache = g_performanceHarmonyRouteCache;
+        const std::string& project = PatternPagingService::currentProjectName();
+        const uint32_t now = millis();
+        if (cache.shouldLookup(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now)) {
+          GroovePuterHarmony::SongHarmonicState loaded{};
+          const auto result = PatternPagingService::loadSongHarmonicState(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), participants,
+              participantCount, loaded);
+          const bool ok = result == SongHarmonicStorageStatus::Ok;
+          const bool retryable = result == SongHarmonicStorageStatus::NotFound ||
+                                 result == SongHarmonicStorageStatus::IoError;
+          cache.rememberResult(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now, ok,
+                               retryable, ok ? &loaded : nullptr);
+        }
+        if (const auto* state = cache.stateFor(
+                project, static_cast<uint8_t>(recipe->songSlot),
+                static_cast<uint8_t>(recipe->songStart), participants,
+                participantCount)) {
+          (void)GroovePuterPerformance::makeGraphHarmonySnapshot(
+              *state, participants, participantCount, *origin, *recipe,
+              position, snapshot);
+        }
+      }
+    } else {
+      (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+          *origin, *recipe, position, snapshot);
+    }
+  } else if (g_miniAcid && !g_miniAcid->songModeEnabled()) {
+    const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
+    GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+    if (patternOrigin &&
+        g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition))
+      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+          *patternOrigin, patternPosition, snapshot);
+  }
+  g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
+}
+
+static uint32_t callResponseNowMicros() { return micros(); }
+
+// CALL/RESPONSE phase 2: the chord of every strong beat of the answer (answer
+// steps 0, 4, ..., 28), looked ahead from the published playback position with
+// in-memory data only (origin/recipe, Song participants from the Song table, the
+// Graph state already in the route cache; never loadSongHarmonicState). A beat
+// without a lookahead snapshot falls back to the current PERFORM harmony, then
+// to none (phase 1). answerStartStep is in transport steps (the CALL clock).
+// Phase 4: windowSteps 64 (BARS 4) looks 16 beats ahead (offset <= 80 steps,
+// up to 4 Song rows); 16 and 32 keep the phase-2 span (8 beats, <= 48, 2 rows).
+static void collectCallResponseHarmony(
+    int32_t answerStartStep, int32_t windowSteps,
+    const GroovePuterPerformance::PerformanceContext& context,
+    GroovePuterCallResponse::ResponseHarmony& harmony) {
+  using GroovePuterCallResponse::ResponseHarmony;
+  using GroovePuterCallResponse::kStrongBeatSteps;
+  harmony = ResponseHarmony{};
+  const bool longWindow =
+      windowSteps > GroovePuterCallResponse::PhraseCapture::kWindowSteps;
+  const uint8_t beats = longWindow ? ResponseHarmony::kBeats : ResponseHarmony::kDefaultBeats;
+  const int64_t maxOffset = longWindow ? 80 : 48;
+  const int32_t maxRows = longWindow ? 4 : 2;
+  // Bits 0..11 chord pcs, bits 12..15 root pc + 1 (phase 8; 0 = unknown).
+  uint16_t ahead[ResponseHarmony::kBeats]{};
+  bool aheadOk[ResponseHarmony::kBeats]{};
+  auto packed = [](uint16_t pcs, uint8_t rootPc) -> uint16_t {
+    return static_cast<uint16_t>((pcs & 0x0fffu) | (rootPc < 12 ? (rootPc + 1u) << 12 : 0u));
+  };
+  if (g_miniAcid && g_miniAcid->isPlaying()) {
+    GroovePuterHarmony::HarmonySnapshot snapshot{};
+    GroovePuterPerformance::HarmonyPlaybackPosition position{};
+    const auto* origin = g_miniAcid->generatedSynthAOrigin();
+    const auto* recipe = g_miniAcid->generatedPhraseRecipe();
+    if (origin && recipe && g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      const bool haveParticipants =
+          recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          g_miniAcid->tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars, participants,
+              GroovePuterHarmony::kMaxSongHarmonyParticipants, participantCount);
+      // Rows reachable by plain +1 steps: not in reverse, not past the loop end
+      // or the Song end (the next row would jump elsewhere).
+      int16_t lastSequentialRow = position.songRow;
+      if (!g_miniAcid->isSongReverse()) {
+        int last = g_miniAcid->songLength() - 1;
+        if (g_miniAcid->loopModeEnabled() && position.songRow >= g_miniAcid->loopStartRow() &&
+            position.songRow <= g_miniAcid->loopEndRow()) {
+          last = g_miniAcid->loopEndRow();
+        }
+        if (last > position.songRow) lastSequentialRow = static_cast<int16_t>(last);
+      }
+      const GroovePuterHarmony::SongHarmonicState* state = nullptr;
+      const bool graph = origin->common.harmonicAuthority ==
+                         GroovePuterHarmony::HarmonicAuthority::Graph;
+      // Phase 8: a genre template (Idiom authority) has no snapshot; its
+      // chord comes from the template's stabs (flash tables, no generator).
+      const bool idiom = origin->common.harmonicAuthority ==
+                         GroovePuterHarmony::HarmonicAuthority::Idiom;
+      if (graph && haveParticipants) {
+        state = g_performanceHarmonyRouteCache.stateFor(
+            PatternPagingService::currentProjectName(),
+            static_cast<uint8_t>(recipe->songSlot),
+            static_cast<uint8_t>(recipe->songStart), participants, participantCount);
+      }
+      for (uint8_t beat = 0; beat < beats; ++beat) {
+        const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
+        const int64_t offset = target - static_cast<int64_t>(position.absoluteStep);
+        if (offset < -16 || offset > maxOffset) continue;
+        bool ok = false;
+        if (idiom) {
+          uint16_t pcs = 0;
+          uint8_t rootPc = 0xFF;
+          if (GroovePuterPerformance::idiomChordAhead(
+                  *origin, *recipe, haveParticipants ? participants : nullptr,
+                  participantCount, position, static_cast<int32_t>(offset),
+                  lastSequentialRow, pcs, rootPc, maxRows)) {
+            ahead[beat] = packed(pcs, rootPc);
+            aheadOk[beat] = true;
+          }
+          continue;
+        }
+        if (graph) {
+          ok = state && GroovePuterPerformance::graphHarmonyAhead(
+              *state, participants, participantCount, *origin, *recipe, position,
+              static_cast<int32_t>(offset), lastSequentialRow, snapshot, maxRows);
+        } else {
+          ok = GroovePuterPerformance::legacyHarmonyAhead(
+              *origin, *recipe, haveParticipants ? participants : nullptr,
+              participantCount, position, static_cast<int32_t>(offset),
+              lastSequentialRow, snapshot, maxRows);
+        }
+        if (ok) { ahead[beat] = packed(snapshot.base.pitchMask, snapshot.base.rootPc); aheadOk[beat] = true; }
+      }
+    } else if (!g_miniAcid->songModeEnabled()) {
+      const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
+      GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+      if (patternOrigin &&
+          g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition)) {
+        for (uint8_t beat = 0; beat < beats; ++beat) {
+          const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
+          const int64_t offset = target - static_cast<int64_t>(patternPosition.absoluteStep);
+          if (offset < 0 || offset > maxOffset) continue;
+          if (patternOrigin->authority == GroovePuterHarmony::HarmonicAuthority::Idiom) {
+            uint16_t pcs = 0;
+            uint8_t rootPc = 0xFF;
+            if (GroovePuterPerformance::idiomPatternChordAhead(
+                    *patternOrigin, patternPosition, static_cast<int32_t>(offset), pcs, rootPc,
+                    static_cast<int32_t>(maxOffset))) {
+              ahead[beat] = packed(pcs, rootPc);
+              aheadOk[beat] = true;
+            }
+            continue;
+          }
+          if (GroovePuterPerformance::patternHarmonyAhead(
+                  *patternOrigin, patternPosition, static_cast<int32_t>(offset), snapshot,
+                  static_cast<int32_t>(maxOffset))) {
+            ahead[beat] = packed(snapshot.base.pitchMask, snapshot.base.rootPc);
+            aheadOk[beat] = true;
+          }
+        }
+      }
+    }
+  }
+  for (uint8_t beat = 0; beat < beats; ++beat) {
+    GroovePuterCallResponse::ChordSource source = GroovePuterCallResponse::ChordSource::None;
+    const uint16_t chord = GroovePuterCallResponse::chooseAnswerChord(
+        aheadOk[beat], ahead[beat], context.hasHarmony, context.harmonyPitchClasses, &source);
+    // Phase 8: the chord root (genre ending colour): the snapshot / template
+    // root, or the current PERFORM chord root (rootMidi is the chord root).
+    const uint8_t rootPc = source == GroovePuterCallResponse::ChordSource::Ahead
+        ? ((ahead[beat] >> 12) ? static_cast<uint8_t>((ahead[beat] >> 12) - 1u) : 0xFF)
+        : source == GroovePuterCallResponse::ChordSource::Current
+        ? static_cast<uint8_t>(context.rootMidi % 12u) : 0xFF;
+    harmony.set(beat, chord, source, rootPc);
+  }
+}
+
+// CALL/RESPONSE: phase 0 capture + [CR] log; phase 1 (PARTNER ANSWER) plays a
+// template answer on the PERFORM DX MIDI route and logs it as [CR-A]. Off by
+// default (PERFORMANCE TOOLS > INPUT > PARTNER). Main loop only.
+static void logCallResponseCancel() {
+  static uint32_t s_seenCancels = 0;
+  const auto& responder = GroovePuterCallResponse::callResponseListener().responder();
+  if (responder.answersCancelled() == s_seenCancels) return;
+  s_seenCancels = responder.answersCancelled();
+  Serial.printf("[CR-A] cancel played=%u human=%lu\n",
+                static_cast<unsigned>(responder.lastCancelPlayed()),
+                static_cast<unsigned long>(
+                    GroovePuterCallResponse::callResponseListener().humanCancels()));
+}
+
+static void serviceCallResponseLog() {
+  auto& listener = GroovePuterCallResponse::callResponseListener();
+  logCallResponseCancel();
+  if (!listener.enabled()) return;
+  GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
+  GroovePuterCallResponse::TransportView transport{};
+  if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+    // Writer mid-update (seqlock retries exhausted): not "PLAY stopped". Keep
+    // the previous view so the CALL clock is not reset for one loop pass.
+    transport = listener.lastTransport();
+  } else if (snapshot.valid && snapshot.playing && snapshot.bpmQ16 != 0) {
+    transport.playing = true;
+    transport.epoch = snapshot.transportEpoch;
+    transport.blockSequence = snapshot.blockSequence;
+    transport.steps = snapshot.absoluteSteps();
+    transport.bpm = snapshot.bpm();
+  }
+  GroovePuterCallResponse::PhraseCapture::Phrase phrase;  // 136 bytes, loop stack
+  // LOOP: human notes of a window too thin to replace the loop (phase 5).
+  GroovePuterCallResponse::PhraseCapture::Phrase heard;  // 136 bytes, loop stack
+  if (listener.service(micros(), transport, g_performanceKeyboard.tempoBpm(), phrase,
+                       &heard) != GroovePuterCallResponse::PhraseCapture::CloseResult::Phrase) {
+    return;
+  }
+  const int8_t* intervals = nullptr;
+  uint8_t intervalCount = 0;
+  if (!g_performanceKeyboard.scaleIntervals(intervals, intervalCount)) return;
+  GroovePuterCallResponse::MotifDescriptor motif{};
+  if (!GroovePuterCallResponse::describe(phrase, g_performanceKeyboard.rootPitchClass(),
+                                         intervals, intervalCount, motif)) {
+    return;
+  }
+  char line[224];  // 4 bars: 64-bit mask
+  // [CR] shows what the person played: the thin window when the loop was kept.
+  GroovePuterCallResponse::MotifDescriptor heardMotif{};
+  const bool logHeard = heard.count > 0 &&
+      GroovePuterCallResponse::describe(heard, g_performanceKeyboard.rootPitchClass(),
+                                        intervals, intervalCount, heardMotif);
+  GroovePuterCallResponse::formatMotifLog(
+      line, sizeof(line), static_cast<uint32_t>(phrase.firstBar() + 1),
+      logHeard ? heardMotif : motif, listener.clockName(),
+      logHeard ? heard.dropped : phrase.dropped);
+  Serial.println(line);
+
+  // Answer key: the Smart Play harmony key when the project provides one, else the PERFORM key.
+  // Phase 8: its tonic is the key's tonic (snapshot tonal.tonicPc), not the chord root.
+  const GroovePuterPerformance::PerformanceContext context =
+      g_performanceKeyboard.performanceContextSnapshot();
+  const GroovePuterCallResponse::ResponseKey key = context.hasHarmony
+      ? GroovePuterCallResponse::responseKeyFromHarmony(context.tonicPc, context.rootMidi,
+                                                        context.scalePitchClasses)
+      : GroovePuterCallResponse::responseKeyFromIntervals(
+            g_performanceKeyboard.rootPitchClass(), intervals, intervalCount);
+  if (!listener.canAnswer(phrase)) return;
+  // Phase 2: chord per strong beat (next bar = +16, fallback current, then none)
+  // and the genre's ending from the idiom dictionary (no generator call).
+  GroovePuterCallResponse::ResponseHarmony harmony;  // 36 bytes, loop stack
+  collectCallResponseHarmony(
+      phrase.windowStartStep + phrase.windowSteps,
+      phrase.windowSteps, context, harmony);
+  // PARTNER GENRE: AUTO = project genre (phase 2), NONE = phase-1 ending.
+  const uint8_t genre = listener.answerGenre(g_miniAcid
+      ? static_cast<uint8_t>(g_miniAcid->genreManager().generativeMode())
+      : GroovePuterCallResponse::kNoGenre);
+  const GroovePuterCallResponse::ResponseStyle style =
+      GroovePuterCallResponse::pickResponseStyle(genre,
+                                                 GroovePuterCallResponse::responseSeed(phrase));
+  using namespace GroovePuterCallResponse;
+  const uint32_t callSignatureValue = callSignature(phrase, motif);
+  ReplyStrategy replyStrategy{};
+  ResponsePlan plan;
+  ResponseHarmonyReport report;
+  if (!planPerformanceReply(phrase, motif, key, harmony, style, listener.replyMemory(),
+      listener.mode() == CallResponseListener::Mode::Loop,
+      listener.mode() == CallResponseListener::Mode::Duet,
+      listener.loopEvolve(), plan, replyStrategy, report,
+      listener.answerCadence(), listener.loopCycle())) return;
+  const uint32_t startMicros = micros();
+  if (!listener.startAnswer(phrase, plan, startMicros)) return;
+  listener.rememberStartedReply(callSignatureValue, replyStrategy);
+  // loop=0: new loop phrase, loop=n: n-th replay (LOOP: always on the grid);
+  // skip=k: human notes that did not replace the loop (PARTNER REPLACE).
+  // Phase 7: late=us how long after the window downbeat the reply was started
+  // (its first NoteOn waits for that; > one 1/16 drops a 1-step note), stale=
+  // answer notes dropped as too late since boot (ResponsePlayer::staleDrops).
+  Serial.printf("[CR-A] strategy=%u evolve=%u hold=%u loop=%u skip=%u late=%ld stale=%lu\n",
+                static_cast<unsigned>(replyStrategy), listener.loopEvolve(), listener.loopHold(),
+                static_cast<unsigned>(listener.loopCycle()), static_cast<unsigned>(heard.count),
+                static_cast<long>(static_cast<int32_t>(startMicros - listener.lastReplyGridMicros())),
+                static_cast<unsigned long>(listener.responder().staleDrops()));
+  char answer[576];  // 4 bars: up to 32 notes of "ss:nn:vvv:ll,"
+  const int used = GroovePuterCallResponse::formatResponseLog(
+      answer, sizeof(answer),
+      static_cast<uint32_t>(phrase.firstBar() + 1 +
+                            phrase.windowSteps /
+                                GroovePuterCallResponse::PhraseCapture::kStepsPerBar),
+      plan);
+  if (used > 0 && static_cast<size_t>(used) < sizeof(answer)) {
+    GroovePuterCallResponse::formatHarmonyLog(answer + used, sizeof(answer) - used, harmony,
+                                              performanceReplyStyle(style, listener.mode() == CallResponseListener::Mode::Loop, listener.loopEvolve()), report);
+  }
+  // Phase 3: where the answer goes (0 = PERFORM DX route) and the CALL length;
+  // phase 9: len= PARTNER LENGTH in % (already applied to the logged lengths).
+  const size_t logged = strnlen(answer, sizeof(answer));
+  if (logged + 1 < sizeof(answer)) {
+    snprintf(answer + logged, sizeof(answer) - logged, " ch=%u bars=%u len=%u",
+             static_cast<unsigned>(listener.answerChannel()),
+             static_cast<unsigned>(listener.answerBars()),
+             static_cast<unsigned>(listener.answerLengthPercent()));
+  }
+  Serial.println(answer);
+}
+
+// LOOPER (phase 1): clock + passes, after serviceCallResponseLog() so the two
+// loop-stack frames never add up. [LP] one line per state change and per pass:
+// late=us how long after the pass downbeat the pass was started (its first
+// NoteOn waits for that), stale= notes the shared player dropped as too late
+// since boot. Main loop only.
+static void serviceLooper() {
+  auto& lp = GroovePuterLooper::looper();
+  GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
+  GroovePuterCallResponse::TransportView transport{};
+  const GroovePuterCallResponse::TransportView* view = &transport;
+  if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+    view = nullptr;  // writer mid-update: not "PLAY stopped", the clock extrapolates
+  } else if (snapshot.valid && snapshot.playing && snapshot.bpmQ16 != 0) {
+    transport.playing = true;
+    transport.epoch = snapshot.transportEpoch;
+    transport.blockSequence = snapshot.blockSequence;
+    transport.steps = snapshot.absoluteSteps();
+    transport.bpm = snapshot.bpm();
+  }
+  const uint32_t now = micros();
+  const bool passStarted = lp.service(now, view, g_performanceKeyboard.tempoBpm());
+  static uint8_t s_lastState = 0;
+  const uint8_t state = static_cast<uint8_t>(lp.state()) | (lp.hold() ? 0x80u : 0u);
+  if (!passStarted && state == s_lastState) return;
+  s_lastState = state;
+  Serial.printf("[LP] state=%s%s pass=%u notes=%u new=%u drop=%u bars=%u ch=%u late=%ld stale=%lu\n",
+                lp.stateName(), lp.hold() ? "+HOLD" : "",
+                static_cast<unsigned>(lp.passCount()),
+                static_cast<unsigned>(lp.noteCount()),
+                static_cast<unsigned>(lp.layer().newCount()),
+                static_cast<unsigned>(lp.layer().dropped()),
+                static_cast<unsigned>(lp.bars()),
+                static_cast<unsigned>(lp.channel()),
+                passStarted ? static_cast<long>(static_cast<int32_t>(now - lp.passDownbeatMicros())) : 0L,
+                static_cast<unsigned long>(
+                    GroovePuterCallResponse::callResponseListener().responder().staleDrops()));
+}
+
 void loop() {
+  // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
+  MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
+  GroovePuterPlatform::serviceCardputerPerformanceConfig(
+      g_performanceKeyboard, millis());
   LedManager::instance().update();
+#ifdef GP_USB_ROLE_RUNTIME
+  if (CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host) {
+    GroovePuterMidi::CardputerUsbHostMidi::service();
+  }
+#endif
 
   if (g_miniAcid && g_miniDisplay) {
     g_performanceKeyboard.setEnabled(
         WorkflowPages::allowsPerformanceKeyboard(g_miniDisplay->currentPageIndex()));
     g_performanceKeyboard.setTransportPlaying(g_miniAcid->isPlaying());
+    updatePerformanceHarmonyContext();
+    g_performanceKeyboard.service(micros());
+    g_internalSynthOutput.syncPatternOwnership();
+    // External keyboard (MIDI IN target PERFORM): the dispatch task only enqueues; the PERFORM
+    // keyboard is owned here, so chords / arp / latch / rhythms see the notes like built-in keys.
+    {
+      auto& externalNotes = cardputerExternalNoteQueue();
+      GroovePuterMidi::ExternalNoteQueue::Event note;
+      while (externalNotes.pop(note)) {
+        if (note.hasInputIdentity &&
+            !cardputerMidiInputIdentityCurrent(note.input)) {
+          continue;
+        }
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+        if (note.stampUs != 0) g_queueLatency.add(micros() - note.stampUs);
+#endif
+        if (note.controlChange) {
+          PerformanceIntent intent{};
+          if (GroovePuterPerformance::makeGenericMidiToggleIntent(
+                  note.controller, note.velocity, note.input, intent) &&
+              !g_performanceKeyboard.dispatchIntent(intent) &&
+              intent.kind == PerformanceIntentKind::SetLatchEnabled &&
+              intent.value != 0u) {
+            UI::showToast("LATCH NEEDS ARP", 900);
+          }
+          continue;
+        }
+        if (note.sustain) {
+          if (note.hasInputIdentity)
+            g_performanceKeyboard.externalSustain(note.on, note.input);
+          else
+            g_performanceKeyboard.externalSustain(note.on);
+          continue;
+        }
+        if (note.allSoundOff) {
+          if (note.hasInputIdentity) {
+            g_performanceKeyboard.releaseExternalChannel(
+                note.input.source, note.input.generation, note.input.channel,
+                note.input.cable);
+          }
+          continue;
+        }
+        if (note.mod != 0) {
+          // Mod button: a tap deletes the sound under the cursor (on the release), holding it for
+          // ModHoldTracker::kHoldMs clears the whole melody (fired by the timer below). The active page
+          // decides whether it uses either; elsewhere the button is unused.
+          if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Press)) {
+            g_modHold.onPress(millis());
+          } else if (note.mod == static_cast<uint8_t>(GroovePuterMidi::ModPhase::Release)) {
+            if (g_modHold.onRelease() && g_miniDisplay) {
+              UIEvent offered{};
+              offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+              offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_MOD;
+              (void)g_miniDisplay->handleEvent(offered);
+            }
+          } else {
+            g_modHold.reset();   // cancel: the session ended while the button was down
+          }
+          continue;
+        }
+        if (note.nudge != 0) {
+          // Pitch buttons: the active page first (notes tab: cursor), otherwise the ARP rate. Only a
+          // step the page took auto-repeats while the button stays down (like a held arrow key).
+          if (note.nudge == GroovePuterMidi::ExternalNoteQueue::kNudgeEnd) {
+            g_nudgeRepeat.onRelease();
+          } else if (applyExternalNudge(note.nudge)) {
+            g_nudgeRepeat.onPress(note.nudge, millis());
+          } else {
+            g_nudgeRepeat.reset();
+          }
+          continue;
+        }
+        // The active page gets the note first (MELODY notes tab: step entry); otherwise PERFORM plays it.
+        bool consumed = false;
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE;
+          offered.x = note.note;
+          offered.y = note.on ? note.velocity : 0;
+          consumed = g_miniDisplay->handleEvent(offered);
+        }
+        if (consumed) continue;
+        if (note.on) {
+          if (note.hasInputIdentity)
+            g_performanceKeyboard.externalNoteOn(note.note, note.velocity, note.input);
+          else
+            g_performanceKeyboard.externalNoteOn(note.note, note.velocity);
+        } else if (note.hasInputIdentity) {
+          g_performanceKeyboard.externalNoteOff(note.note, note.input);
+        } else {
+          g_performanceKeyboard.externalNoteOff(note.note);
+        }
+      }
+      {
+        const int repeatDirection = g_nudgeRepeat.poll(millis());
+        if (repeatDirection != 0 && !applyExternalNudge(repeatDirection)) g_nudgeRepeat.reset();
+      }
+      if (g_modHold.pollLongHold(millis())) {
+        if (g_miniDisplay) {
+          UIEvent offered{};
+          offered.event_type = GROOVEPUTER_APPLICATION_EVENT;
+          offered.app_event_type = GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR;
+          (void)g_miniDisplay->handleEvent(offered);
+        }
+      }
+      if (externalNotes.takeGlobalRecovery()) {
+        g_modHold.reset();
+        g_nudgeRepeat.reset();
+        g_performanceKeyboard.releaseAllExternalNotes();
+        g_performanceKeyboard.externalSustain(false);
+      } else {
+        PerformanceInputIdentity recovery{};
+        while (externalNotes.popRecovery(recovery)) {
+          g_modHold.reset();
+          g_nudgeRepeat.reset();
+          g_performanceKeyboard.releaseExternalInput(recovery.source,
+                                                    recovery.generation);
+        }
+      }
+    }
     const uint32_t epoch = g_miniAcid->liveInputEpoch();
     if (epoch != g_lastLiveInputEpoch) {
       g_performanceKeyboard.panic();
+      GroovePuterCallResponse::callResponseListener().cancelAnswer();
       g_lastLiveInputEpoch = epoch;
     }
+    serviceCallResponseLog();
+    serviceLooper();
   }
 
   if (g_encoder8) g_encoder8->update();
 
   if (M5Cardputer.BtnA.wasClicked()) {
-    if (GroovePuterMidi::transportClockRuntime().source() ==
-        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-      UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+    if (GroovePuterMidi::externalClockOwnsTransport()) {
+      UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
     } else {
       AudioMutationScope mutationScope(g_audioMutationGate);
       if (g_miniAcid->isPlaying()) {
@@ -548,6 +1337,23 @@ void loop() {
       evt.meta ? 1 : 0, evt.alt ? 1 : 0, evt.ctrl ? 1 : 0,
       evt.shift ? 1 : 0, (uint8_t)evt.key, evt.scancode);
     evt.event_type = GROOVEPUTER_KEY_DOWN;
+
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    if (!repeat && evt.meta && !evt.alt && !evt.ctrl &&
+        (evt.key == 'd' || evt.key == 'D')) {
+      g_acceptanceOverlayEnabled = !g_acceptanceOverlayEnabled;
+      Serial.printf("[DIAG-OVERLAY] %s (Fn+D toggles)\n",
+                    g_acceptanceOverlayEnabled ? "ON" : "OFF");
+      drawUI();
+      return;
+    }
+#endif
+
+    if (evt.scancode == GROOVEPUTER_ESCAPE || evt.key == '`' || evt.key == 0x1B) {
+      if (UI::dismissHintOverlay()) {
+        drawUI();
+      }
+    }
 
     bool handled = false;
     {
@@ -646,9 +1452,8 @@ void loop() {
       } else if (c == ';' || c == '\'') {
         needsDraw = true;
       } else if (c == ' ') {
-        if (GroovePuterMidi::transportClockRuntime().source() ==
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-          UI::showToast("SEQ MASTER: USE SEQTRAK", 900);
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+          UI::showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
         } else if (g_miniAcid->isPlaying()) {
           g_miniAcid->stop();
         } else {
@@ -725,7 +1530,7 @@ void loop() {
       UIEvent evt{};
       evt.alt = ks.alt;
       evt.ctrl = ks.ctrl;
-      evt.shift = ks.shift;
+      evt.shift = false;  // Shift is not a control modifier.
       evt.meta = ks.fn;
       bool shouldSend = false;
       auto mapFKey = [&](uint8_t h, KeyScanCode& sc) -> bool {
@@ -764,6 +1569,13 @@ void loop() {
         evt.key = hid == 0x27 ? '0' : static_cast<char>('1' + (hid - 0x1E));
         dispatchedDigitMask |= GroovePuterInput::digitDispatchMask(evt.key);
         shouldSend = true;
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+      } else if (GroovePuterInput::claimDiagnosticFnD(
+                     ks, hid, evt.key, dispatchedLetterMask)) {
+        // Fn+D is reserved only in the diagnostic image for the overlay toggle.
+        mapHidLetterScancode(hid, evt.scancode);
+        shouldSend = true;
+#endif
       } else if (!ks.ctrl && !ks.alt && !ks.fn && hid >= 0x04 && hid <= 0x1D) {
         evt.key = static_cast<char>('a' + (hid - 0x04));
         mapHidLetterScancode(hid, evt.scancode);
@@ -782,7 +1594,8 @@ void loop() {
       dispatched = true;
 
       if (GroovePuterInput::mayArmRepeatForPhysicalKey(
-              ks, static_cast<uint8_t>(hid), evt)) {
+              ks, static_cast<uint8_t>(hid), evt,
+              g_miniDisplay != nullptr && g_miniDisplay->repeatsAltVertical())) {
         repeatEvent = evt;
         repeatHid = static_cast<uint8_t>(hid);
         repeatPressId = pressId;
@@ -824,7 +1637,7 @@ void loop() {
         UIEvent evt{};
         evt.alt = ks.alt;
         evt.ctrl = ks.ctrl;
-        evt.shift = ks.shift;
+        evt.shift = false;  // Shift is not a control modifier.
         evt.meta = ks.fn;
         evt.key = normalizeKeyChar(inputChar);
         evt.scancode = mapAsciiLetterScancode(evt.key);
@@ -849,6 +1662,50 @@ void loop() {
   const Keyboard_Class::KeysState currentKeysState =
       M5Cardputer.Keyboard.keysState();
   reconcilePerformanceKeys(currentKeysState);
+  // Opt alone (a modifier the library reports without a key code): one key
+  // for Alt+R, STEPS <-> MELODY on the synth pages. Alt+R stays for SDL.
+  if (currentKeysState.opt && !(hasPreviousKeysState && previousKeysState.opt) &&
+      currentKeysState.hid_keys.empty() && currentKeysState.word.empty() &&
+      g_miniDisplay) {
+    UIEvent toggle{};
+    toggle.event_type = GROOVEPUTER_APPLICATION_EVENT;
+    toggle.app_event_type = GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE;
+    if (!g_miniDisplay->handleEvent(toggle)) UI::showToast("OPT: ON SYNTH A/B", 900);
+  }
+  // Aa (Shift) tapped alone: the Melody grid step. Fires on release, and only
+  // when nothing else was pressed while it was held, so Shift+arrows and
+  // capitals keep working.
+  static bool shiftTapArmed = false;
+  const bool shiftAlone = currentKeysState.shift && currentKeysState.hid_keys.empty() &&
+                          currentKeysState.word.empty() && !currentKeysState.alt &&
+                          !currentKeysState.ctrl && !currentKeysState.fn &&
+                          !currentKeysState.opt && !currentKeysState.tab &&
+                          !currentKeysState.del && !currentKeysState.enter &&
+                          !currentKeysState.space;
+  if (currentKeysState.shift && !(hasPreviousKeysState && previousKeysState.shift)) {
+    shiftTapArmed = shiftAlone;
+  } else if (currentKeysState.shift && !shiftAlone) {
+    shiftTapArmed = false;
+  } else if (!currentKeysState.shift && hasPreviousKeysState &&
+             previousKeysState.shift && shiftTapArmed) {
+    shiftTapArmed = false;
+    if (g_miniDisplay) {
+      UIEvent grid{};
+      grid.event_type = GROOVEPUTER_APPLICATION_EVENT;
+      grid.app_event_type = GROOVEPUTER_APP_EVENT_CYCLE_GRID;
+      if (!g_miniDisplay->handleEvent(grid)) UI::showToast("Aa: GRID ON MELODY", 900);
+    }
+  }
+
+  const bool hHeld = (GroovePuterInput::containsHid(currentKeysState, 0x0B) ||
+                      GroovePuterInput::containsWord(currentKeysState, 'h') ||
+                      GroovePuterInput::containsWord(currentKeysState, 'H') ||
+                      M5Cardputer.Keyboard.isKeyPressed('h') ||
+                      M5Cardputer.Keyboard.isKeyPressed('H')) &&
+                     !currentKeysState.alt && !currentKeysState.ctrl && !currentKeysState.fn;
+  if (UI::updateHintOverlay(hHeld, millis())) {
+    drawUI();
+  }
 
   const uint32_t candidatePressId = nextPressId;
   const bool dispatched = processKeyEdges(
@@ -882,7 +1739,7 @@ void loop() {
   static unsigned long lastUIUpdate = 0;
   if (millis() - lastUIUpdate > 40) {
     lastUIUpdate = millis();
-    if (g_miniDisplay) g_miniDisplay->update();
+    drawUI();
   }
 
   static unsigned long lastMemLog = 0;
@@ -914,6 +1771,18 @@ void loop() {
            (unsigned)g_lastUiDrawUs, (unsigned)g_peakUiDrawUs,
            (unsigned)freeInt, (unsigned)largestInt,
            (unsigned)dv, (unsigned)dd, (unsigned)ds, (unsigned)df);
+#if defined(GROOVEPUTER_BLOCK_HIST)
+       {
+         uint32_t total = 0;
+         for (uint32_t i = 0; i < 64u; ++i) total += g_blockHist[i];
+         Serial.printf("[BLOCK] n=%u budget=%uus p50=%uus p95=%uus p99=%uus max=%uus\n",
+             (unsigned)total, (unsigned)(kBlockFrames * 1000000u / kSampleRate),
+             (unsigned)blockHistPercentileUs(500, total), (unsigned)blockHistPercentileUs(950, total),
+             (unsigned)blockHistPercentileUs(990, total), (unsigned)g_blockHistMaxUs);
+         for (uint32_t i = 0; i < 64u; ++i) g_blockHist[i] = 0;
+         g_blockHistMaxUs = 0;
+       }
+#endif
        g_peakUiDrawUs = g_lastUiDrawUs;
     }
   }

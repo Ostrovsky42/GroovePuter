@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "drum_sampler_track.h"
 
 #include "src/output/output_ownership.h"
@@ -58,3 +60,5 @@ void DrumSamplerTrack::process(float* output, uint32_t numFrames, ISampleStore& 
     if (!enabled_) return;
     pool_.process(output, numFrames, store);
 }
+
+#endif

@@ -19,6 +19,11 @@
 #include <algorithm>
 #include <cstring>
 #include <cstdlib>
+#if defined(GROOVEPUTER_USB_ACCEPT_DIAG) && defined(ARDUINO)
+#include <Arduino.h>
+#include <esp_heap_caps.h>
+#include <esp_rom_sys.h>
+#endif
 
 #if defined(ARDUINO)
   #if __has_include(<M5Cardputer.h>)
@@ -46,7 +51,15 @@ void CardputerDisplay::begin() {
 #else
   // Desktop / fallback: nothing to initialize
 #endif
-  frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor());
+#if defined(GROOVEPUTER_USB_ACCEPT_DIAG) && defined(ARDUINO)
+  const size_t pixels = static_cast<size_t>(w_) * static_cast<size_t>(h_);
+  Serial.printf("[DISPLAY-BUFFER] phase=begin size=%dx%d pixels=%u bytes=%u free=%u largest=%u\n",
+                w_, h_, static_cast<unsigned>(pixels),
+                static_cast<unsigned>(pixels * sizeof(uint16_t)),
+                static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+#endif
+  if (!frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor())) return;
   dirty_tiles_.reset(w_, h_);
   flush();
 }
@@ -296,7 +309,22 @@ void CardputerDisplay::setRotation(int rot) {
   (void)rot;
   return;
 #endif
-  frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor());
+#if defined(GROOVEPUTER_USB_ACCEPT_DIAG) && defined(ARDUINO)
+  const size_t pixels = static_cast<size_t>(w_) * static_cast<size_t>(h_);
+  const unsigned free_internal = static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  const unsigned largest_internal = static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT));
+  // Serial may be buffered on USB CDC. Use the ROM logger as well so the
+  // allocation request and heap state survive an immediate bad_alloc/abort.
+  esp_rom_printf("[DISPLAY-BUFFER] phase=rotation rot=%d size=%dx%d pixels=%u bytes=%u free=%u largest=%u\n",
+                 rot, w_, h_, static_cast<unsigned>(pixels),
+                 static_cast<unsigned>(pixels * sizeof(uint16_t)),
+                 free_internal, largest_internal);
+  Serial.printf("[DISPLAY-BUFFER] phase=rotation rot=%d size=%dx%d pixels=%u bytes=%u free=%u largest=%u\n",
+                rot, w_, h_, static_cast<unsigned>(pixels),
+                static_cast<unsigned>(pixels * sizeof(uint16_t)),
+                free_internal, largest_internal);
+#endif
+  if (!frame_.assign(w_ * h_, IGfxColor::Black().toCardputerColor())) return;
   dirty_tiles_.reset(w_, h_);
 }
 

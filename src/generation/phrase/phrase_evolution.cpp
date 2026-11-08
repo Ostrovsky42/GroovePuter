@@ -37,6 +37,7 @@ BarEvolutionResult evolveSegment(const PhraseEvolutionRequest& request,
   core.phraseBars = bars;
   core.level = request.level;
   core.generation = generation;
+  core.structuralDensityTarget = request.structuralDensityTarget;
   core.requestedTrajectoryId = request.requestedTrajectoryId;
   core.reuseIdentity = reuseIdentity;
   return evolveRhythmPhrase(core);

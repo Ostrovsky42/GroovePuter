@@ -26,7 +26,7 @@ def main() -> None:
     # another page on behalf of the active page.
     require("event.ctrl" in ux and "GROOVEPUTER_Z" in ux and "key == 26" in ux,
             "current global Ctrl+Z recognition is incomplete")
-    require("event.alt || event.meta || event.shift" in ux,
+    require("event.alt || event.meta)" in ux,  # Shift is not a control modifier
             "Undo shortcut must reject modified Ctrl+Z variants")
     require("GROOVEPUTER_APP_EVENT_UNDO" in ux and
             "GROOVEPUTER_APPLICATION_EVENT" in ux,
@@ -59,26 +59,24 @@ def main() -> None:
     # SYNTH parent only admits Pattern Undo while NOTES is already visible and
     # does not call the Pattern child directly across tabs. The Pattern child
     # remains the authority for decoding/exchanging a retained receipt during
-    # Ctrl+Z. R9's hardware follow-up separately lets the parent PREPARE a new
-    # bounded Pattern receipt for STOP-state Synth G before legacy dispatch.
+    # Ctrl+Z. Synth generation is dispatched to that same NOTES child; its
+    # Generation ownership is verified by the runtime behavioral gate.
     require('"UNDO: PATTERN"' in pattern and '"UNDO: EMPTY"' in pattern,
             "Pattern retained Undo handler disappeared")
     require("synth_tab_ == SynthTab::Notes" in synth_parent and
             "owner.kind() == GroovePuterUndo::UndoKind::Pattern" in synth_parent and
             "MultiPage::handleEvent(ui_event)" in synth_parent and
             "pattern_page_->handleEvent(ui_event)" not in synth_parent and
-            "SynthPatternUndoPayload retained" not in synth_parent and
-            "SynthPatternUndoPayload before" in synth_parent and
-            "captureCurrentSynthPatternUndo" in synth_parent and
-            "synthPatternUndoTargetAvailable" in synth_parent,
-            "Pattern Undo routing must stay local while STOP Synth G gains bounded prepare ownership")
-    require('"REDO: PATTERN"' in synth_parent and '"UNDO: PATTERN"' in synth_parent,
-            "Pattern one-slot feedback must distinguish Undo from Redo")
+            "SynthPatternUndoPayload retained" not in synth_parent,
+            "Pattern Undo routing must stay local to the existing NOTES child")
+    require('"REDO: MATERIAL"' in synth_parent and '"UNDO: MATERIAL"' in synth_parent and
+            '"REDO: STEPS"' in synth_parent and '"UNDO: STEPS"' in synth_parent,
+            "Synth one-slot feedback must distinguish Material/Steps Undo from Redo")
     require('"REDO: SONG"' in song and '"UNDO: SONG"' in song,
             "Song one-slot feedback must distinguish Undo from Redo")
-    require('"REDO: PHRASE"' in phrase and '"UNDO: PHRASE"' in phrase and
+    require('"REDO: MATERIAL"' in phrase and '"UNDO: MATERIAL"' in phrase and
             '"REDO: SONG"' in phrase and '"UNDO: SONG"' in phrase,
-            "Phrase one-slot feedback must distinguish Undo from Redo")
+            "Material one-slot feedback must distinguish Undo from Redo while preserving Song feedback")
 
     # Ctrl+Z is globally reserved. The former Cutoff reset moves to Ctrl+A;
     # X/C/V retain their existing reset functions.

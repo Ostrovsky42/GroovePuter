@@ -1,8 +1,10 @@
 #pragma once
+#ifndef GROOVEPUTER_SRC_PLATFORM_LOG_H
+#define GROOVEPUTER_SRC_PLATFORM_LOG_H
 
 // Logging layer for both Arduino (ESP32) and Desktop/SDL builds.
 // Usage:
-//   LOG_DEBUG("value=%d\n", x);
+//   LOG_PLATFORM_DEBUG("value=%d\n", x);
 //   LOG_PRINTLN("hello");
 
 #if defined(ARDUINO)
@@ -18,11 +20,15 @@
   }
 
   #define LOG_PRINTLN(msg) ::log_println(msg)
-  #define LOG_DEBUG(...)   ::log_debug(__VA_ARGS__)
+  #define LOG_PLATFORM_DEBUG(...)   ::log_debug(__VA_ARGS__)
 
   inline void logMem() {
-    Serial.printf("heapFree=%u heapMin=%u\n", ESP.getFreeHeap(), ESP.getMinFreeHeap());
-    Serial.printf("psramSize=%u psramFree=%u\n", ESP.getPsramSize(), ESP.getFreePsram());
+    Serial.printf("heapFree=%lu heapMin=%lu\n",
+                 static_cast<unsigned long>(ESP.getFreeHeap()),
+                 static_cast<unsigned long>(ESP.getMinFreeHeap()));
+    Serial.printf("psramSize=%lu psramFree=%lu\n",
+                 static_cast<unsigned long>(ESP.getPsramSize()),
+                 static_cast<unsigned long>(ESP.getFreePsram()));
   }
 
 #else
@@ -38,10 +44,11 @@
   }
 
   #define LOG_PRINTLN(msg) ::log_println(msg)
-  #define LOG_DEBUG(...)   ::log_debug(__VA_ARGS__)
+  #define LOG_PLATFORM_DEBUG(...)   ::log_debug(__VA_ARGS__)
   
   inline void logMem() {
       // Desktop stub
       std::printf("[Mem] Heap monitoring not implemented for SDL build.\n");
   }
 #endif
+#endif // GROOVEPUTER_SRC_PLATFORM_LOG_H

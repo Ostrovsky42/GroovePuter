@@ -36,5 +36,17 @@ int main() {
     snapshot = health.snapshot(400);
     assert(snapshot.state == UsbEndpointHealthState::Ready);
     assert(snapshot.currentBlockedMs == 0);
+
+    // A stall is only a live block while rejects keep arriving. Once the host
+    // goes quiet, the sticky Stalled label must stop reading as BLOCKED.
+    UsbEndpointHealth quiet(50);
+    quiet.observeWrite(true, false, 1000);
+    quiet.observeWrite(true, false, 1060);
+    assert(quiet.isFreshlyStalled(1060, 1000));
+    assert(quiet.isFreshlyStalled(2060, 1000));
+    assert(!quiet.isFreshlyStalled(2061, 1000));
+    assert(quiet.snapshot(2061).state == UsbEndpointHealthState::Stalled);
+    quiet.observeWrite(true, true, 2100);
+    assert(!quiet.isFreshlyStalled(2100, 1000));
     return 0;
 }

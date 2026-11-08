@@ -1,250 +1,207 @@
 # GroovePuter
 
-[![Status](https://img.shields.io/badge/status-active%20development-yellow)](#development-status)
+[![Status](https://img.shields.io/badge/status-v0.9.19%20release-blue)](#current-status)
 [![Platform](https://img.shields.io/badge/platform-M5Stack%20Cardputer%20ADV-blue)](#hardware)
 [![License](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
-> **Portable standalone groovebox and hardware musical brain for M5Stack Cardputer ADV.**
->
-> GroovePuter generates, varies, performs, and commits editable musical material for its
-> own synths and drums, external instruments such as Yamaha SEQTRAK, and DAWs such as REAPER.
+## Generate a groove. Keep what works. Develop it into a song.
 
-GroovePuter is designed to remain fully useful with nothing connected while also serving
-as a portable MIDI companion/controller and a source of structured musical material for
-hardware synths and VST instruments.
+**GroovePuter is a pocket composition groovebox for M5Stack Cardputer ADV.**
 
-Based on the original **MiniAcid** by [urtubia/miniacid](https://github.com/urtubia/miniacid).
+It generates editable drums, bass, harmony and melody, lets you keep the material you like, and develops related sections instead of solving every musical decision with another unrelated random pattern.
 
-## Development status
+```text
+GENERATE
+   ↓
+KEEP + EDIT
+   ↓
+DEVELOP
+   ↓
+SONG / MIDI / external gear
+```
 
-GroovePuter is under active development.
+GroovePuter works standalone with its internal synths and drums, and can also play or control external MIDI instruments such as Yamaha SEQTRAK.
 
-The repository uses versioned development, integration, research and hardware-acceptance
-branches. **`main` is the public project landing branch and must not be treated as the
-source of truth for the newest experimental firmware behavior.**
+Originally based on [MiniAcid](https://github.com/urtubia/miniacid); the current project has grown into a substantially larger composition, sequencing, MIDI and musical-material system.
 
-Current release work is developed and validated on versioned branches such as:
+## Start in five minutes
 
-- [`dev_0.9.8`](https://github.com/Ostrovsky42/GroovePuter/tree/dev_0.9.8) — safe persistent editing / Undo and hardware closure;
-- [`dev_0.9.9`](https://github.com/Ostrovsky42/GroovePuter/tree/dev_0.9.9) — musical-material lifecycle and bounded activation;
-- later research/stacked branches — MIDI input/controllers and future workflow work.
+If this is your first session, start with **[`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md)**.
 
-Before flashing a build, use the README, release document and acceptance notes from the
-**exact branch/commit you intend to run**. A green software build is not automatically a
-claim of Cardputer ADV hardware acceptance.
+The first-session key vocabulary is intentionally small:
 
-The longer-term product direction is documented in
-[`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md).
+```text
+Space     PLAY / STOP
+Fn+M      workspace launcher → GENRE / MATERIAL
+G         generate the thing on screen
+D         DEVELOP on MATERIAL
+Ctrl+Z    undo
+Alt+H     help for this page
+```
 
-## Product model
+The full expert key map remains available after you have made some music; it is not prerequisite reading.
 
-GroovePuter is **standalone-first, but not standalone-only**. It has three first-class
-roles:
+## Why it is different
+
+### Generate
+Genre-aware rhythm, bass, harmonic and melodic material is generated as editable project data, not as an opaque audio result.
+
+### Keep + edit
+Accepted material remains yours: it can be edited, arranged, saved, undone and reused rather than disappearing when you ask for another idea.
+
+### Develop
+The development workflow is built around a different question from ordinary randomization:
+
+> Given the material I accepted, what may change, what must stay recognizable, and what related section should come next?
+
+## Current status
+
+**v0.9.19** remains the latest published and packaged release. **0.9.20 is under release-readiness review**; it has no published image or hardware acceptance yet. See [`docs/releases/0_9_20_RELEASE.md`](docs/releases/0_9_20_RELEASE.md) for candidate evidence and open gates. It includes the 0.9.18 genre idioms, phrase ideas, DnB, GRAB, FORM and local GEN generation-control panel, plus fixes for SYNTH B, MIDI/SD watchdog and synth-engine reboots, cheaper audio rendering, and MIDI loop controls from HUB MIDI.
+
+**v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. For the exact v0.9.19 binary, build provenance and acceptance boundary, use its release notes.
+
+The first-user goal remains deliberately small: a new owner should be able to start GroovePuter, choose a musical direction, generate a result, make a TAKE, develop it, recover from a mistake and save without first learning the internal architecture.
+
+The 0.9.19 GENERATE workflow still has **two workflow pages**:
+
+```text
+GENRE -> FEEL
+```
+
+Inside GENRE, `Tab` opens the `GEN 2/3` local panel; another `Tab` continues to FEEL. **GEN is the optional middle local panel** for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
+
+Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). The 0.9.20 candidate is not a download or installation target yet.
+Earlier hardware-accepted foundation: [`v0.9.16`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
+
+## First musical win
+
+The current bounded development gesture is:
+
+```text
+CHOOSE DIRECTION
+      ↓
+MAKE TAKE
+      ↓
+DEVELOP
+```
+
+The default MATERIAL settings (`LENGTH 4B`, `STYLE REWORK`) make a TAKE that `D` can develop:
+
+1. `Space` — start playback.
+2. `Alt+V` (or `Fn+M` -> GENRE) — choose Genre / Variant / Rhythm.
+3. `G` — generate and listen.
+4. `Fn+M` — open the workspace launcher and go to MATERIAL.
+5. `G` — create a fresh TAKE.
+6. `D` — develop it into related DEVELOPMENT / BREAK material.
+7. `Ctrl+Z` — undo the retained cycle if you do not want it.
+8. `Alt+2` — PROJECT; use the on-screen Save action.
+
+Acid and House do not grow: pick another genre on GENRE first.
+
+For the complete current key map, see [`src/ui/docs/keys.md`](src/ui/docs/keys.md). On-device page-aware help is available with `Alt+H`.
+
+## Screenshots
+
+The current 0.9.21 development interface has two themes: **CLEAN** on the left
+and **CYBER** on the right. Each diagonal combines two SDL captures of the same
+screen. Use `Alt+\` to switch themes, or choose **Theme** in PROJECT → DEVICE.
+These are development screenshots, not images of a published release.
+
+| Screen | CLEAN / CYBER | Full screenshots |
+|:---|:---|:---|
+| **GENRE** | ![GENRE: CLEAN and CYBER themes](docs/screenshots/themes/genre-themes.svg) | [CLEAN](docs/screenshots/themes/genre-clean.png) · [CYBER](docs/screenshots/themes/genre-cyber.png) |
+| **OVERVIEW** | ![OVERVIEW: CLEAN and CYBER themes](docs/screenshots/themes/overview-themes.svg) | [CLEAN](docs/screenshots/themes/overview-clean.png) · [CYBER](docs/screenshots/themes/overview-cyber.png) |
+| **SYNTH** | ![SYNTH: CLEAN and CYBER themes](docs/screenshots/themes/synth-themes.svg) | [CLEAN](docs/screenshots/themes/synth-clean.png) · [CYBER](docs/screenshots/themes/synth-cyber.png) |
+| **DRUMS** | ![DRUMS: CLEAN and CYBER themes](docs/screenshots/themes/drums-themes.svg) | [CLEAN](docs/screenshots/themes/drums-clean.png) · [CYBER](docs/screenshots/themes/drums-cyber.png) |
+| **SONG** | ![SONG: CLEAN and CYBER themes](docs/screenshots/themes/song-themes.svg) | [CLEAN](docs/screenshots/themes/song-clean.png) · [CYBER](docs/screenshots/themes/song-cyber.png) |
+| **PERFORM** | ![PERFORM: CLEAN and CYBER themes](docs/screenshots/themes/perform-themes.svg) | [CLEAN](docs/screenshots/themes/perform-clean.png) · [CYBER](docs/screenshots/themes/perform-cyber.png) |
+| **PROJECT** | ![PROJECT: CLEAN and CYBER themes](docs/screenshots/themes/project-themes.svg) | [CLEAN](docs/screenshots/themes/project-clean.png) · [CYBER](docs/screenshots/themes/project-cyber.png) |
+
+## Standalone + MIDI
+
+GroovePuter is **standalone-first, but not standalone-only**.
 
 ```text
                          GroovePuter
                               |
           +-------------------+-------------------+
           |                   |                   |
-      STANDALONE          COMPANION           DAW BRAIN
+      STANDALONE          COMPANION           DAW / MIDI
           |                   |                   |
- internal synths         external synths       REAPER / VST
- drums + Song/Phrase     SEQTRAK first-class   editable MIDI material
- live performance        generic MIDI devices  arrangement / mix in DAW
+ internal synths         external synths       editable material
+ drums + Song/Phrase     SEQTRAK / MIDI        routing / recording
+ live performance        external keyboard      downstream arrange
 ```
 
-### Standalone groovebox
-
-GroovePuter must remain a self-contained instrument. Internal synths/drums, generation,
-Pattern, Song, Phrase, performance and project workflows are first-class even when no
-computer or external MIDI device is connected.
-
-### Hardware companion
-
-GroovePuter can own musical structure and performance intent while an external device
-owns sound generation. Yamaha SEQTRAK is the first-class reference integration, while
-the musical core remains generic enough for other MIDI instruments.
-
-### DAW musical brain
-
-With REAPER, GroovePuter is intended to generate and perform editable musical material,
-not duplicate a desktop DAW. Long-form arrangement, detailed automation, audio editing,
-mixing and mastering stay on the DAW side.
-
-The target handoff is:
-
-```text
-Generate
-   -> Audition / Variation
-   -> Commit
-   -> internal engines / SEQTRAK / generic MIDI / REAPER
-```
-
-## Architectural principles
-
-The project deliberately separates musical identity, timing, persistence and routing.
-The core rules are:
-
-```text
-GENRE != FEEL != GENERATION REQUEST != SOUND
-PREPARE != COMMIT != ACTIVATE
-MUSICAL ROLE != MIDI CHANNEL
-STANDALONE != HOST DEPENDENCY
-```
-
-### Genre / Feel / Generation / Sound
-
-- **GENRE** chooses the musical corridor and vocabulary.
-- **FEEL** owns timing and velocity character.
-- **GENERATION REQUEST** controls realization/variation intent.
-- **SOUND** belongs to synth/drum/FX owners rather than being hidden inside generation.
-
-### Prepare / Commit / Activate
-
-Persistent musical work is moving toward an explicit lifecycle:
-
-```text
-PREPARE
-  candidate creation
-  no persistent mutation
-        |
-        v
-COMMIT
-  one persistent mutation
-  one revision / Undo owner
-        |
-        v
-ACTIVATE
-  publish at the correct musical boundary
-  no second persistent mutation
-```
-
-This keeps realtime activation separate from project-state ownership.
-
-### Musical role / MIDI channel
-
-Roles such as drums, bass, chords and melody express musical intent. Device Profiles
-project those roles onto physical MIDI channels and destinations for SEQTRAK, Generic
-MIDI, REAPER-oriented routing or future devices.
-
-## Current 0.9.x development line
-
-The active 0.9.x firmware line includes or is actively consolidating these capabilities:
-
-- two swappable synth voices and an internal drum engine;
-- genre-aware rhythm/tonal generation with bounded P1/P2/P3 variation semantics;
-- Pattern, Song and Phrase workflows;
-- live performance tools including arpeggiation, chords, strum, ratchet and Euclidean transformations;
-- USB-MIDI output and transport integration;
-- realtime SMF/MIDI-file playback, inspection, mute and routing workflows;
-- SEQTRAK-specific routing/capability support without hardcoding SEQTRAK into the musical core;
-- Generic MIDI / General MIDI / SEQTRAK Device Profile work;
-- INTERNAL / MIDI / LAYER output ownership for local/external playback choices;
-- bounded persistent-mutation / Undo ownership work;
-- musical-boundary generation activation work;
-- Scene/project persistence and recovery work;
-- Cardputer ADV memory, realtime and hardware acceptance gates.
-
-Exact availability varies by release branch. Treat branch-specific release documents and
-acceptance evidence as authoritative over this summary.
-
-## Product north star
-
-A high-value end-to-end workflow is:
-
-> Create synchronized **drums, bass, chords and melody**, audition alternatives through
-> GroovePuter or SEQTRAK, commit the chosen material, and record it into separate REAPER
-> tracks with stable timing and clean note lifecycle.
-
-The project should be judged less by raw feature count and more by how reliably it turns
-musical intent into reusable, editable material.
-
-Preferred reusable musical units are generally:
-
-```text
-1 bar
-2 bars
-4 bars
-8 bars
-```
-
-These lengths map naturally between GroovePuter Phrase/Song workflows, hardware targets
-and DAW clips/items.
-
-## What GroovePuter should not become
-
-GroovePuter is not intended to replace REAPER or another full DAW.
-
-Lower-priority or out-of-scope directions include:
-
-- desktop-style unrestricted arrangement timelines;
-- large general-purpose automation editors;
-- full DAW-scale mixing/mastering workflows;
-- audio comping and detailed waveform editing;
-- plugin hosting/management as a central product feature.
-
-A useful boundary is:
-
-> If a control expresses a **musical decision**, it may belong in GroovePuter.  
-> If it expresses detailed **production automation**, it probably belongs in the DAW.
-
-## Screenshots
-
-| Firmware screen | Preview |
-|:---|:---|
-| **GENRE** | ![GENRE screen](docs/screenshots/genre.png) |
-| **OVERVIEW / SEQUENCER HUB** | ![OVERVIEW screen](docs/screenshots/sequencer_hub.png) |
-| **DRUMS** | ![DRUMS screen](docs/screenshots/drum_page_cyber.png) |
-| **SYNTH** | ![SYNTH screen](docs/screenshots/synth_params.png) |
-| **PATTERN / NOTES** | ![PATTERN screen](docs/screenshots/pattern_edit.png) |
-| **SONG** | ![SONG screen](docs/screenshots/song_page.png) |
+The musical material remains independent of where sound is produced. A bass or melody idea can belong to GroovePuter even when an external device owns the actual synth voice.
 
 ## Hardware
 
 Primary target:
 
-- **M5Stack Cardputer ADV**;
-- **ESP32-S3**;
-- internal Cardputer display/keyboard;
-- current normal release profiles do not rely on PSRAM;
-- USB is used for MIDI/serial workflows depending on the selected build profile.
+- **M5Stack Cardputer ADV** / ESP32-S3;
+- internal display and keyboard;
+- DRAM-only product configuration (no PSRAM dependency);
+- internal synth and drum engines;
+- SD-backed project/material storage;
+- USB Device / USB Host MIDI roles supported by the accepted foundation.
 
-Yamaha SEQTRAK is the main external hardware reference target, but it is optional.
-GroovePuter must continue to boot, generate, edit, perform, save and play without it.
+Yamaha SEQTRAK is the main external reference device but is optional.
 
-## Building and testing
+## Building
 
-The active development branches contain the current build scripts, CI contracts and
-release-specific instructions. Typical 0.9.x validation uses:
+For development builds:
 
 ```bash
 bash scripts/install_arduino_deps.sh
 bash tests/run_host_tests.sh
 bash scripts/build.sh --warnings all
-bash scripts/check_cardputer_dram_budget.sh \
-  build/cardputer-adv-current/GroovePuter.ino.elf
 ```
 
-SEQTRAK MIDI-only builds on branches that provide that profile use:
+Release artifacts and exact acceptance evidence belong to the corresponding GitHub release and release documents; a green arbitrary development build is not automatically a hardware-release claim.
 
-```bash
-bash scripts/build_seqtrak_midi_only.sh --warnings all
+The active GitHub Actions surface is intentionally small:
+
+```text
+core.yml
+cardputer-adv.yml
+midi-targets.yml
+memory.yml
+release.yml
+nightly.yml
+research-manual.yml
 ```
 
-Do not use this landing-page summary as a substitute for the acceptance checklist tied
-to the exact firmware SHA being tested.
+Many more test scripts and research contracts remain behind those entry points. CI surface was reduced; verification depth was not.
 
 ## Documentation
 
-Start with:
+Start at [`docs/README.md`](docs/README.md).
 
-- [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md) — product identity, boundaries and prioritization;
-- the README on the versioned branch you intend to build;
-- that branch's `docs/releases/` documents for release scope and acceptance;
-- hardware acceptance notes for the exact Cardputer ADV candidate being flashed.
+Useful direct links:
 
-The repository intentionally keeps research, architecture, release and hardware evidence
-separate so unfinished ideas are not silently presented as shipped behavior.
+- [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) — first session;
+- [`MANUAL.md`](MANUAL.md) — complete current user workflow manual;
+- [`src/ui/docs/keys.md`](src/ui/docs/keys.md) — canonical current key map;
+- [`docs/PRODUCT_POSITIONING.md`](docs/PRODUCT_POSITIONING.md) — product boundaries and long-term direction;
+- [`docs/releases/`](docs/releases/) — release and hardware-acceptance evidence;
+- [`docs/0.9.14/`](docs/0.9.14/) — musical-development research and contracts incorporated into the foundation;
+- [`docs/ci/CI_ORCHESTRATION.md`](docs/ci/CI_ORCHESTRATION.md) — CI ownership after productization.
+
+The repository contains a large historical research corpus. Historical stage/checkpoint documents are evidence and design history; they are not automatically descriptions of the current UI.
+
+## Engineering notes
+
+GroovePuter deliberately separates musical identity, realtime timing, persistence and routing. Some recurring architectural rules are:
+
+```text
+GENRE != FEEL != SOUND
+PREPARE != COMMIT != ACTIVATE
+MUSICAL ROLE != MIDI CHANNEL
+VERIFICATION DEPTH != CI SURFACE
+```
+
+The deeper architecture, semantic research, memory work and hardware acceptance remain public because they are useful engineering evidence — they are simply no longer the first thing a new user should have to understand.
 
 ## Contributing
 
@@ -252,18 +209,16 @@ Keep changes narrow, testable and ownership-aware.
 
 - Preserve standalone operation.
 - Keep one owner per realtime responsibility.
-- Do not add a second transport, scheduler, MIDI dispatcher or active-note owner.
-- Keep SEQTRAK-specific behavior in routing/profile/capability layers.
-- Keep generated material editable rather than turning generation into opaque output.
+- Do not add duplicate transport, scheduling or active-note ownership.
+- Keep generated material editable.
 - Prefer bounded realtime structures and explicit failure behavior.
-- Separate research/design claims from release-accepted behavior.
+- Separate research claims from release-accepted behavior.
 
 ## Credits
 
-- Original inspiration: [urtubia/miniacid](https://github.com/urtubia/miniacid)
+- Original project lineage: [urtubia/miniacid](https://github.com/urtubia/miniacid)
 - Hardware: M5Stack Cardputer ADV
-- Reference hardware integration: Yamaha SEQTRAK
-- DAW workflow target: REAPER
+- Reference external integration: Yamaha SEQTRAK
 
 ## License
 

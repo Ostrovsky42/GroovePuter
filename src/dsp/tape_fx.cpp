@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_TAPE
 #include "tape_fx.h"
 
 #if !defined(ARDUINO_M5STACK_CARDPUTER)
@@ -245,5 +247,7 @@ float TapeFX::readDelayInterpolated(float delaySamples) {
     float frac = readPos - floorf(readPos);
     return buffer_[i0] + frac * (buffer_[i1] - buffer_[i0]);
 }
+
+#endif
 
 #endif

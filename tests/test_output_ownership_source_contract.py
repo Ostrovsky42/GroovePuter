@@ -51,7 +51,10 @@ def test_perform_drums_reuse_existing_local_owner() -> None:
     header = (ROOT / "src/input/internal_synth_output.h").read_text(encoding="utf-8")
 
     start = cpp.index("if (event.target == MusicalEventTarget::Drums)")
-    end = cpp.index("// <=0.9.5 PERFORM", start)
+    end = cpp.index(
+        "if (event.source == MusicalEventSource::PerformanceKeyboardPoly)",
+        start,
+    )
     block = cpp[start:end]
     require("allowsInternalNoteOn(event)" in block,
             "PERFORM Drums NoteOn must use canonical output ownership")
@@ -121,22 +124,28 @@ def test_scene_persistence_is_transactional_and_composed() -> None:
     failed_block = sampler[failed_start:failed_end]
     require("outputState_.commit()" in failed_block,
             "Cardputer OutputMode must commit only after SceneManager completed the filtered read")
+    require("bool validateRead()" in sampler and "outputState_.failed()" in sampler,
+            "Cardputer read filter must validate without publishing before external pointer commit")
     require("outputState_.commit()" not in sampler[:failed_start],
             "Cardputer output state must not mutate runtime during parsing")
 
-    require("manager.loadScene(serialized)" in sdl,
-            "SDL must validate Scene content before committing OutputMode")
-    main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager)")
+    require("manager.loadScene(serialized, true," in sdl,
+            "SDL must pass OutputMode commit as the validated prepublication acknowledgement")
+    main_load = sdl.index("bool SceneStorageSdl::readScene(SceneManager& manager,")
     main_end = sdl.index("bool SceneStorageSdl::writeScene(const std::string& data)", main_load)
     main_block = sdl[main_load:main_end]
-    require(main_block.index("manager.loadScene(serialized)") <
-            main_block.index("outputModes.commit()"),
+    require(main_block.index("manager.loadScene(serialized, true,") <
+            main_block.index("finishSceneRead(outputModes, publishSelection)"),
             "SDL main Scene must commit OutputMode only after successful manager load")
-    auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager)")
+    sdl_header = (ROOT / "platform_sdl/scene_storage_sdl.h").read_text(encoding="utf-8")
+    require(sdl_header.index("persistCurrentSceneName()") <
+            sdl_header.index("return readState.commit();"),
+            "SDL must publish boot pointer after validation and before runtime publication")
+    auto_load = sdl.index("bool SceneStorageSdl::readSceneAuto(SceneManager& manager,")
     auto_end = sdl.index("bool SceneStorageSdl::hasSceneAuto()", auto_load)
     auto_block = sdl[auto_load:auto_end]
-    require(auto_block.index("manager.loadScene(serialized)") <
-            auto_block.index("outputModes.commit()"),
+    require(auto_block.index("manager.loadScene(serialized, true,") <
+            auto_block.index("finishSceneRead(outputModes, publishSelection)"),
             "SDL autosave must commit OutputMode only after successful manager load")
 
     require("\"out\"" in persistence and "values[3]" in persistence,
@@ -181,9 +190,11 @@ def test_status_chrome_exposes_compact_track_output() -> None:
 
     require('"src/output/output_ownership.h"' in chrome,
             "status chrome must read the canonical OutputOwnership owner")
-    for token in ('"[I]"', '"[M]"', '"[L]"', '"[-]"'):
+    for token in ('"SND"', '"MIDI"', '"BOTH"'):
         require(token in chrome,
                 f"status chrome must expose compact output token {token}")
+    require('"[-]"' not in chrome and '"[I]"' not in chrome,
+            "status chrome speaks words, not bracket codes")
     require("UiStatusContext::SynthA" in chrome and
             "Track::SynthA" in chrome and
             "UiStatusContext::SynthB" in chrome and
@@ -192,7 +203,7 @@ def test_status_chrome_exposes_compact_track_output() -> None:
             "Track::Drums" in chrome,
             "status chrome must map Synth A/B and Drums to their canonical owners")
     require("hasExplicitMode(track)" in chrome and "UiStatusOutput::Legacy" in chrome,
-            "legacy Scenes must show a compact unset marker without a fourth mode")
+            "legacy Scenes keep their own state without a fourth mode")
     require("sceneRevisionSnapshot" in chrome and "UiStatusDirtyStamp" in chrome,
             "cached status chrome must refresh on every output Scene mutation")
     require("uiStatusCanonicalTrackOutput(status)" in chrome,

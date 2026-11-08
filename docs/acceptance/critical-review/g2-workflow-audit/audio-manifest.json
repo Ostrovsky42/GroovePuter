@@ -1,0 +1,193 @@
+{
+  "status": "PREVIEW / BLIND RATINGS NOT RUN",
+  "engine": "TB303 A+B, dry delay/distortion off; synthesized drums",
+  "limits": [
+    "Host six-engine build, not physical firmware",
+    "Nominal 16-bar duration; block trace captures end wrap to blank Song row0 for final <256 samples",
+    "No release-tail or hardware underrun qualification",
+    "Dub/Reggae previews absent: native cycle refused; no missing sections synthesized"
+  ],
+  "cases": [
+    {
+      "seed": 1369899009,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899009/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899010,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899010/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899011,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899011/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899012,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899012/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899013,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899013/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899014,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899014/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899015,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899015/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    },
+    {
+      "seed": 1369899016,
+      "genre": 10,
+      "frames": 682839,
+      "sample_rate": 22050,
+      "raw_peak": 3964,
+      "raw_rms_dbfs": -31.51742707156897,
+      "raw_clipped_samples": 0,
+      "matched_gain_db": 11.51742707156897,
+      "files": [
+        {
+          "kind": "raw",
+          "path": "build/g2-native-workflow/audio-20261026/g10-s1369899016/raw.wav",
+          "sha256": "acaf57c79217d2bf1bef69ca0e34c253c5d2f8c096ca0812515df5e5b2e090ee"
+        },
+        {
+          "kind": "matched",
+          "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+          "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043"
+        }
+      ]
+    }
+  ],
+  "representative_identical_artifact": {
+    "path": "docs/acceptance/critical-review/g2-workflow-audit/techno-identity-1369899009.wav",
+    "sha256": "54c1925564f87b3e130358e9f1e5f6a4e9148772b033b9c97fa3aba7175b3043",
+    "reason": "All eight Techno raw renders have identical SHA-256; retain one byte-identical representative in version control."
+  }
+}

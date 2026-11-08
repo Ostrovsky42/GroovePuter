@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sampler_voice.h"
 #include <algorithm>
 
@@ -87,3 +89,5 @@ void SamplerVoice::releaseHandle_(ISampleStore& store) {
   pcm_ = nullptr;
   active_ = false;
 }
+
+#endif

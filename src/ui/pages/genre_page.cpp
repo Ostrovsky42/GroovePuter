@@ -5,14 +5,22 @@
 #include <cstdio>
 
 #include "../axis_page_palette.h"
+#include "../genre_palette.h"
+#include "../project_key.h"
+#include "src/generation/migration/genre_harmony_selection.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
 #include "../ui_input.h"
+#include "../workflow_mode.h"
 #include "../../generation/composition/generation_profile.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../generation/migration/strong_rhythm_live_bridge.h"
 #include "../../state/generation_request_state.h"
+#include "../../state/generation_shape_state.h"
+#include "../../state/phrase_generation_request_state.h"
+#include "synth_sequencer_page.h"
 #include "../../state/scene_revision.h"
+#include "../../generation/harmony/phrase_graph_route_builder.h"
 
 namespace {
 int wrapIndex(int value, int count) {
@@ -60,6 +68,18 @@ const char* linkStateShort(MiniAcid& mini_acid) {
   return mapped == mini_acid.grooveboxMode() ? "GENRE" : "OVERRIDE";
 }
 
+GroovePuterHarmony::PhraseGraphRouteBuildStatus graphCapabilityFor(
+    const GenreSettings& source, uint8_t scaleId) {
+  GenreSettings graphSettings = source;
+  graphSettings.harmonicStrategy = static_cast<uint8_t>(
+      GroovePuterHarmony::HarmonicStrategy::Graph);
+  if (GroovePuterRhythm::selectStrongRhythmRoute(graphSettings) ==
+      GroovePuterRhythm::StrongRhythmRoute::Legacy) {
+    return GroovePuterHarmony::PhraseGraphRouteBuildStatus::UnsupportedGenre;
+  }
+  return GroovePuterHarmony::graphRouteCapability(graphSettings, scaleId);
+}
+
 void drawRecipeOverlay(IGfx& gfx, int recipeIndex) {
   (void)gfx;
   (void)recipeIndex;
@@ -75,6 +95,125 @@ GenrePage::GenrePage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard)
   updateFromEngine();
 }
 
+void GenrePage::openRecipePopup() {
+  const auto genre = static_cast<GenerativeMode>(
+      std::clamp(genre_index_, 0, kGenerativeModeCount - 1));
+  recipePopupCount_ = GroovePuterRhythm::availableRecipeCount(genre);
+  if (recipePopupCount_ == 0 || recipePopupCount_ > kMaxPopupItems) return;
+  for (uint8_t i = 0; i < recipePopupCount_; ++i) {
+    GenreRecipeId recipe = kBaseRecipeId;
+    if (!GroovePuterRhythm::availableRecipeAt(genre, i, recipe)) {
+      recipePopupCount_ = i;
+      break;
+    }
+    recipePopupRecipes_[i] = recipe;
+    recipePopupLabels_[i] = GenreCatalog::recipeName(recipe);
+  }
+  const GenreRecipeId current = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  const int selected = recipeChoiceIndex(genre, current);
+  if (selected < 0 || selected >= recipePopupCount_ ||
+      !selectionPopup_.open("RECIPE SELECT", recipePopupCount_,
+                            static_cast<uint8_t>(selected))) {
+    return;
+  }
+  popupKind_ = PopupKind::Recipe;
+}
+
+void GenrePage::openScalePopup() {
+  static constexpr const char* kScaleNames[] = {
+      "NATURAL MINOR", "MAJOR", "DORIAN", "PHRYGIAN", "LYDIAN",
+      "MIXOLYDIAN", "LOCRIAN", "PENTATONIC MAJOR",
+      "PENTATONIC MINOR", "CHROMATIC"};
+  static_assert(sizeof(kScaleNames) / sizeof(kScaleNames[0]) ==
+                GroovePuterRhythm::kScaleTypeCount);
+  for (uint8_t i = 0; i < GroovePuterRhythm::kScaleTypeCount; ++i) {
+    scalePopupLabels_[i] = kScaleNames[i];
+  }
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  const uint8_t selected = static_cast<uint8_t>(project.scale);
+  if (selectionPopup_.open("SCALE SELECT", GroovePuterRhythm::kScaleTypeCount,
+                           selected < GroovePuterRhythm::kScaleTypeCount ? selected : 0)) {
+    popupKind_ = PopupKind::Scale;
+  }
+}
+
+void GenrePage::openHarmonyPopup() {
+  harmonyPopupCount_ = 0;
+  const uint8_t choices[] = {0, 2, 1}; // GENRE, AUTO, explicit GRAPH
+  const char* labels[] = {"GENRE", "AUTO", "GRAPH"};
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  for (uint8_t i = 0; i < 3; ++i) {
+    if (choices[i] == 1 &&
+        graphCapabilityFor(pendingSettings(), static_cast<uint8_t>(project.scale)) !=
+            GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+      continue;
+    }
+    harmonyPopupValues_[harmonyPopupCount_] = choices[i];
+    harmonyPopupLabels_[harmonyPopupCount_] = labels[i];
+    ++harmonyPopupCount_;
+  }
+  uint8_t selected = 0;
+  for (uint8_t i = 0; i < harmonyPopupCount_; ++i) {
+    if (harmonyPopupValues_[i] == pendingHarmonyStrategy_) {
+      selected = i;
+      break;
+    }
+  }
+  if (harmonyPopupCount_ > 0 && selectionPopup_.open(
+          "HARMONY SELECT", harmonyPopupCount_, selected)) {
+    popupKind_ = PopupKind::Harmony;
+  }
+}
+
+bool GenrePage::handleSelectionPopup(UIEvent& event) {
+  if (!selectionPopup_.isOpen()) return false;
+  const UI::SelectionPopupResult result = selectionPopup_.handleEvent(event);
+  if (result == UI::SelectionPopupResult::Confirmed) {
+    const uint8_t selected = selectionPopup_.selectedIndex();
+    if (popupKind_ == PopupKind::Recipe && selected < recipePopupCount_) {
+      recipeIndex_ = static_cast<int>(recipePopupRecipes_[selected]);
+      normalizePendingRhythm(true);
+    } else if (popupKind_ == PopupKind::Scale &&
+               selected < GroovePuterRhythm::kScaleTypeCount) {
+      withAudioGuard([&]() {
+        mini_acid_.sceneManager().currentScene().generatorParams.scale =
+            static_cast<ScaleType>(selected);
+      });
+      GroovePuterState::markSceneMutated();
+      char changedKey[24];
+      const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+      ProjectKey::format(project.scaleRoot,
+          static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+          sizeof(changedKey));
+      UI::showToast(changedKey, 1000);
+    } else if (popupKind_ == PopupKind::Harmony && selected < harmonyPopupCount_) {
+      pendingHarmonyStrategy_ = harmonyPopupValues_[selected];
+      UI::showToast(pendingHarmonyStrategy_ == 2 ? "AUTO ON NEXT PHRASE"
+                    : pendingHarmonyStrategy_ == 1 ? "GRAPH ON NEXT PHRASE"
+                    : "GENRE ON NEXT PHRASE", 1100);
+    }
+    popupKind_ = PopupKind::None;
+  } else if (result == UI::SelectionPopupResult::Cancelled) {
+    popupKind_ = PopupKind::None;
+  }
+  return true;
+}
+
+bool GenrePage::cycleProjectKeyRoot(int direction) {
+  auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  const uint8_t next = ProjectKey::pitchClass(
+      static_cast<int>(project.scaleRoot) + direction);
+  withAudioGuard([&]() { project.scaleRoot = next; });
+  GroovePuterState::markSceneMutated();
+  char changedKey[24];
+  ProjectKey::format(project.scaleRoot,
+      static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+      sizeof(changedKey));
+  UI::showToast(changedKey, 1000);
+  return true;
+}
+
 GenrePage::ApplyMode GenrePage::currentApplyMode() const {
   const auto& settings = mini_acid_.sceneManager().currentScene().genre;
   if (!settings.regenerateOnApply) return ApplyMode::ProfileOnly;
@@ -84,15 +223,15 @@ GenrePage::ApplyMode GenrePage::currentApplyMode() const {
 
 const char* GenrePage::applyModeName() const {
   switch (currentApplyMode()) {
-    case ApplyMode::ProfileOnly: return "PROFILE ONLY";
-    case ApplyMode::Regenerate: return "MATERIALIZE";
-    case ApplyMode::RegenerateTempo: return "MATERIALIZE+BPM";
+    case ApplyMode::ProfileOnly: return "STYLE ONLY";
+    case ApplyMode::Regenerate: return "NEW TAKE";
+    case ApplyMode::RegenerateTempo: return "NEW TAKE + TEMPO";
   }
-  return "PROFILE ONLY";
+  return "STYLE ONLY";
 }
 
 void GenrePage::moveFocus(int delta) {
-  constexpr int kCount = 5;
+  constexpr int kCount = 6;
   focus_ = static_cast<FocusRow>(wrapIndex(static_cast<int>(focus_) + delta, kCount));
 }
 
@@ -131,6 +270,14 @@ GenreSettings GenrePage::pendingSettings() const {
   settings.morphAmount = 0;
   settings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   settings.rhythmArchetypeId = rhythmArchetypeId_;
+  settings.harmonicAuto = pendingHarmonyStrategy_ == 2;
+  settings.harmonicStrategy = pendingHarmonyStrategy_ == 1 ? 1 : 0;
+  const auto selection = GroovePuterRhythm::resolveGenreHarmony(settings,
+      static_cast<uint8_t>(mini_acid_.sceneManager().currentScene().generatorParams.scale));
+  settings = selection.settings;
+  if (!settings.harmonicAuto && settings.harmonicStrategy == 1 &&
+      selection.graphCapability != GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready)
+    settings.harmonicStrategy = 0; // preserve the existing pending fallback
   return settings;
 }
 
@@ -184,6 +331,15 @@ void GenrePage::cycleApplyMode(int delta) {
   GroovePuterState::markSceneMutated();
 }
 
+void GenrePage::applyPreset(int index) {
+  if (index < 0 || index >= kGenrePresetCount) return;
+  const GenrePreset& preset = kGenrePresets[index];
+  genre_index_ = static_cast<int>(preset.generative);
+  recipeIndex_ = static_cast<int>(preset.recipe);
+  UI::showToast(preset.name, 900);
+  applyCurrent();
+}
+
 void GenrePage::applyCurrent(bool forceRegenerate) {
   const ApplyMode applyMode = currentApplyMode();
   const bool doRegenerate = forceRegenerate || applyMode != ApplyMode::ProfileOnly;
@@ -204,6 +360,8 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   requestedSettings.morphAmount = 0;
   requestedSettings.rhythmSelectionMode = static_cast<uint8_t>(rhythmMode_);
   requestedSettings.rhythmArchetypeId = rhythmArchetypeId_;
+  requestedSettings.harmonicStrategy = pendingSettings().harmonicStrategy;
+  requestedSettings.harmonicAuto = pendingSettings().harmonicAuto;
 
   const bool changed = doRegenerate || mini_acid_.grooveboxMode() != nextMode ||
       activeSettings.generativeMode != requestedSettings.generativeMode ||
@@ -211,7 +369,9 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
       activeSettings.morphTarget != requestedSettings.morphTarget ||
       activeSettings.morphAmount != requestedSettings.morphAmount ||
       activeSettings.rhythmSelectionMode != requestedSettings.rhythmSelectionMode ||
-      activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId;
+      activeSettings.rhythmArchetypeId != requestedSettings.rhythmArchetypeId ||
+      activeSettings.harmonicStrategy != requestedSettings.harmonicStrategy ||
+      activeSettings.harmonicAuto != requestedSettings.harmonicAuto;
 
   float requestedBpm = mini_acid_.bpm();
   if (doApplyTempo) {
@@ -229,12 +389,14 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
     // AudioMutationGate. AudioTask keeps rendering the current bar while the
     // complete next-bar candidate is built and atomically published.
     generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
-        mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+        mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm,
+        GroovePuterState::generationKeepsDrums());
   } else {
     withAudioGuard([&]() {
       if (doRegenerate) {
         generationResult = GroovePuterRhythm::regenerateWithQuantizedCommit(
-            mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm);
+            mini_acid_, requestedSettings, nextMode, doApplyTempo, requestedBpm,
+            GroovePuterState::generationKeepsDrums());
         return;
       }
       activeSettings = requestedSettings;
@@ -248,19 +410,28 @@ void GenrePage::applyCurrent(bool forceRegenerate) {
   if (doRegenerate) {
     switch (generationResult) {
       case GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar:
-        resultLabel = "GEN -> NEXT BAR";
+        resultLabel = "TAKE -> NEXT BAR";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::CommittedNow:
-        resultLabel = "GENERATED";
+        resultLabel = "NEW TAKE";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::AttemptUnavailable:
-        resultLabel = "GEN ATTEMPT FULL";
+        resultLabel = "TAKE LIMIT";
+        break;
+      case GroovePuterRhythm::QuantizedGenerationResult::Busy:
+        resultLabel = "TAKE BUSY";
         break;
       case GroovePuterRhythm::QuantizedGenerationResult::Failed:
       default:
-        resultLabel = "GEN FAILED";
+        resultLabel = "TAKE FAILED";
         break;
     }
+  }
+
+  if (!doRegenerate ||
+      generationResult == GroovePuterRhythm::QuantizedGenerationResult::CommittedNow ||
+      generationResult == GroovePuterRhythm::QuantizedGenerationResult::PendingNextBar) {
+    pendingHarmonyStrategy_ = requestedSettings.harmonicAuto ? 2 : requestedSettings.harmonicStrategy;
   }
 
   char toast[96];
@@ -275,6 +446,7 @@ void GenrePage::updateFromEngine() {
   const GenerativeMode genre = sceneGenerativeMode(settings);
   genre_index_ = static_cast<int>(genre);
   recipeIndex_ = static_cast<int>(normalizeRecipeForGenre(genre, sceneRecipe(settings)));
+  pendingHarmonyStrategy_ = settings.harmonicAuto ? 2 : settings.harmonicStrategy;
   rhythmMode_ = settings.rhythmSelectionMode == static_cast<uint8_t>(
                     GroovePuterRhythm::RhythmSelectionMode::Manual)
                     ? GroovePuterRhythm::RhythmSelectionMode::Manual
@@ -283,18 +455,130 @@ void GenrePage::updateFromEngine() {
   rhythmFallbackPending_ = normalizePendingRhythm(false);
 }
 
+// The pending GENRE/RECIPE/RHYTHM choice, without a new TAKE: a Melody from G
+// must follow what the page shows.
+void GenrePage::applyPendingProfile() {
+  const auto genre = static_cast<GenerativeMode>(genre_index_);
+  const auto recipe = normalizeRecipeForGenre(
+      genre, static_cast<GenreRecipeId>(recipeIndex_));
+  recipeIndex_ = static_cast<int>(recipe);
+  normalizePendingRhythm(true);
+  const GenreSettings requested = pendingSettings();
+  const GrooveboxMode nextMode = GenreCatalog::grooveboxModeForRecipe(recipe, genre);
+  auto& active = mini_acid_.sceneManager().currentScene().genre;
+  if (active.generativeMode == requested.generativeMode &&
+      active.recipe == requested.recipe &&
+      active.rhythmSelectionMode == requested.rhythmSelectionMode &&
+      active.rhythmArchetypeId == requested.rhythmArchetypeId &&
+      active.harmonicStrategy == requested.harmonicStrategy &&
+      active.harmonicAuto == requested.harmonicAuto &&
+      mini_acid_.grooveboxMode() == nextMode) {
+    return;
+  }
+  withAudioGuard([&]() {
+    active = requested;
+    mini_acid_.setGrooveboxMode(nextMode);
+  });
+  GroovePuterState::markSceneMutated();
+}
+
+bool GenrePage::generateFromG() {
+  if (GroovePuterState::generationTarget() ==
+      GroovePuterState::GenerationTarget::Melody) {
+    applyPendingProfile();
+    return SynthSequencerPage::generateMelodyFor(
+        mini_acid_, audio_guard_, GroovePuterState::melodyTargetVoice());
+  }
+  applyCurrent(true);
+  return true;
+}
+
+bool GenrePage::handleGenPanelNav(int nav) {
+  if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+    gen_focus_ = static_cast<GenRow>(
+        wrapIndex(static_cast<int>(gen_focus_) + (nav == GROOVEPUTER_UP ? -1 : 1), 5));
+    return true;
+  }
+  if (nav != GROOVEPUTER_LEFT && nav != GROOVEPUTER_RIGHT) return false;
+  const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
+  switch (gen_focus_) {
+    case GenRow::Target: (void)GroovePuterState::cycleGenerationTarget(delta); break;
+    case GenRow::Drums:
+      if (GroovePuterState::generationTarget() ==
+          GroovePuterState::GenerationTarget::Melody) {
+        UI::showToast("MELODY KEEPS DRUMS", 900);
+      } else {
+        (void)GroovePuterState::toggleGenerationKeepsDrums();
+      }
+      break;
+    case GenRow::Length: (void)GroovePuterState::cycleRequestedPhraseBars(delta); break;
+    case GenRow::Lively: (void)GroovePuterState::cycleGenerationLiveliness(delta); break;
+    case GenRow::Notes: (void)GroovePuterState::cycleGenerationNoteLength(delta); break;
+  }
+  return true;
+}
+
+void GenrePage::drawGenPanel(IGfx& gfx) {
+  const AxisUI::Palette palette = AxisUI::paletteFor(style_);
+  const IGfxColor axisColor = palette.genre;
+  UI::drawStandardHeader(gfx, mini_acid_, "GENRE");
+  LayoutManager::clearContent(gfx);
+  const int x = Layout::COL_1;
+  const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GEN 2/3",
+                      "HOW G GENERATES", axisColor, palette);
+
+  const bool melody = GroovePuterState::generationTarget() ==
+                      GroovePuterState::GenerationTarget::Melody;
+  const char synth = static_cast<char>('A' + GroovePuterState::melodyTargetVoice());
+  const unsigned bars = GroovePuterState::requestedPhraseBars();
+  char value[48];
+  if (melody) std::snprintf(value, sizeof(value), "MELODY %c", synth);
+  else std::snprintf(value, sizeof(value), "STEPS");
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "TARGET", value,
+                       gen_focus_ == GenRow::Target, axisColor, palette);
+  const bool keepDrums = melody || GroovePuterState::generationKeepsDrums();
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "DRUMS",
+                       melody ? "KEEP (MELODY)" : keepDrums ? "KEEP" : "NEW",
+                       gen_focus_ == GenRow::Drums, axisColor, palette);
+  std::snprintf(value, sizeof(value), "%u BAR%s", bars, bars == 1 ? "" : "S");
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "LENGTH", value,
+                       gen_focus_ == GenRow::Length, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(4), width, "LIVELY",
+                       GroovePuterState::generationLivelinessName(
+                           GroovePuterState::generationLiveliness()),
+                       gen_focus_ == GenRow::Lively, axisColor, palette);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "NOTES",
+                       GroovePuterState::generationNoteLengthName(
+                           GroovePuterState::generationNoteLength()),
+                       gen_focus_ == GenRow::Notes, axisColor, palette);
+
+  gfx.setTextColor(palette.muted);
+  if (melody) {
+    std::snprintf(value, sizeof(value), "G: %uB PHRASE -> SYNTH %c MELODY", bars, synth);
+  } else {
+    std::snprintf(value, sizeof(value), "%s", keepDrums
+        ? "G: NEW SYNTHS ON THESE DRUMS"
+        : "G: NEW TAKE, DRUMS + SYNTHS");
+  }
+  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
+  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GENERATE");
+}
+
 void GenrePage::draw(IGfx& gfx) {
   if (rhythmFallbackPending_) {
     UI::showToast("RHYTHM RESET TO AUTO", 1200);
     rhythmFallbackPending_ = false;
+  }
+  if (panel_ == Panel::Gen) {
+    drawGenPanel(gfx);
+    return;
   }
   const AxisUI::Palette palette = AxisUI::paletteFor(style_);
   const IGfxColor axisColor = palette.genre;
   const int profileIndex = std::clamp(genre_index_, 0, kGenerativeModeCount - 1);
   const auto selectedGenre = static_cast<GenerativeMode>(profileIndex);
   const auto selectedRecipe = static_cast<GenreRecipeId>(recipeIndex_);
-  const GroovePuterRhythm::GenerationProfileView selectedProfile =
-      GroovePuterRhythm::generationProfileFor(pendingSettings());
   const GenreSettings& settings = mini_acid_.sceneManager().currentScene().genre;
   const auto activeGenre = sceneGenerativeMode(settings);
   const auto activeRecipe = sceneRecipe(settings);
@@ -303,8 +587,8 @@ void GenrePage::draw(IGfx& gfx) {
   LayoutManager::clearContent(gfx);
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
-  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/2",
-                      "CORRIDOR / VOCABULARY", axisColor, palette);
+  AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0), "GENRE 1/3",
+                      "WHAT G GENERATES", axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "GENRE",
@@ -325,22 +609,23 @@ void GenrePage::draw(IGfx& gfx) {
                        focus_ == FocusRow::Rhythm, axisColor, palette);
 
   AxisUI::drawValueRow(
-      gfx, x, LayoutManager::lineY(4), width, "DEPTH",
-      GroovePuterState::generationLevelShortName(
+      gfx, x, LayoutManager::lineY(4), width, "STYLE",
+      GroovePuterState::generationStyleName(
           GroovePuterState::currentGenerationLevel()),
       focus_ == FocusRow::Depth, axisColor, palette);
 
-  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "APPLY",
-                       applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
+  const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+  const GenreSettings effective = pendingSettings();
+  char keyValue[32];
+  std::snprintf(keyValue, sizeof(keyValue), "%s %s  H:%s",
+      ProjectKey::rootName(project.scaleRoot),
+      ProjectKey::scaleShortName(static_cast<ProjectKey::ScaleTypeValue>(project.scale)),
+      effective.harmonicAuto ? "AUTO" : effective.harmonicStrategy == 1 ? "GRAPH" : "GENRE");
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "KEY",
+      keyValue, focus_ == FocusRow::Key, axisColor, palette);
 
-  std::snprintf(value, sizeof(value), "BPM %u (%u-%u) D%u..%u",
-      static_cast<unsigned>(selectedProfile.corridor.suggestedBpm),
-      static_cast<unsigned>(selectedProfile.corridor.bpmMin),
-      static_cast<unsigned>(selectedProfile.corridor.bpmMax),
-      static_cast<unsigned>(selectedProfile.corridor.densityMin),
-      static_cast<unsigned>(selectedProfile.corridor.densityMax));
-  gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
+  AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width, "APPLY",
+                       applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
 
   const char* pendingSuffix =
       GroovePuterRhythm::hasPendingQuantizedGeneration(mini_acid_)
@@ -350,14 +635,36 @@ void GenrePage::draw(IGfx& gfx) {
       GenreCatalog::generativeModeName(activeGenre),
       GenreCatalog::recipeName(activeRecipe),
       linkStateShort(mini_acid_),
-      GroovePuterState::generationLevelShortName(
+      GroovePuterState::generationStyleName(
           GroovePuterState::currentGenerationLevel()),
       pendingSuffix);
   gfx.setTextColor(activeGenre == selectedGenre && activeRecipe == selectedRecipe
                        ? axisColor : palette.warning);
-  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, value);
-
-  UI::drawStandardFooter(gfx, "TAB/U/D:FIELD L/R:CHANGE", "G:GEN P:DEPTH M:APPLY");
+  // The status line carries the key hint while the selection is already the
+  // active one and nothing is queued; otherwise the status (warning colour
+  // elsewhere) is the more urgent text.
+  const bool statusIsNews = pendingSuffix[0] != '\0' ||
+                            activeGenre != selectedGenre ||
+                            activeRecipe != selectedRecipe;
+  UI::publishShellInfo(
+      statusIsNews ? value
+      : focus_ == FocusRow::Key ? "L/R ROOT  ENT SCALE  H HARM  N PRESET"
+                                : "N PRESET  G TAKE  ENT APPLY  P STYLE",
+      statusIsNews ? UI::genreProfile(selectedGenre).tag : nullptr);
+  char keyHint[40];
+  std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");
+  UI::drawStandardFooter(gfx, "[TAB]GEN U/D:FIELD L/R:CHANGE",
+      focus_ == FocusRow::Key ? keyHint
+      : focus_ == FocusRow::Variant ? "ENTER:LIST L/R:STEP"
+      : focus_ == FocusRow::Depth ? "L/R:STYLE P:STYLE"
+                                    : "ENTER:APPLY G:TAKE");
+  if (popupKind_ == PopupKind::Recipe) {
+    selectionPopup_.draw(gfx, recipePopupLabels_);
+  } else if (popupKind_ == PopupKind::Scale) {
+    selectionPopup_.draw(gfx, scalePopupLabels_);
+  } else if (popupKind_ == PopupKind::Harmony) {
+    selectionPopup_.draw(gfx, harmonyPopupLabels_);
+  }
 }
 
 bool GenrePage::handleEvent(UIEvent& event) {
@@ -375,7 +682,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
     });
     if (result == GroovePuterUndo::UndoResult::Restored) {
       updateFromEngine();
-      UI::showToast(redo ? "REDO: GEN" : "UNDO: GEN", 1000);
+      UI::showToast(redo ? "REDO: TAKE" : "UNDO: TAKE", 1000);
       return true;
     }
     if (result == GroovePuterUndo::UndoResult::ContextUnavailable) {
@@ -389,12 +696,28 @@ bool GenrePage::handleEvent(UIEvent& event) {
     return false;
   }
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (handleSelectionPopup(event)) return true;
 
-  if (UIInput::isTab(event)) {
-    moveFocus(1);
-    return true;
+  if (!event.ctrl && !event.alt && !event.meta) {
+    if (UIInput::isTab(event)) {
+      if (panel_ == Panel::Genre) {
+        panel_ = Panel::Gen;
+      } else {
+        panel_ = Panel::Genre;
+        requestPageTransition(WorkflowPages::kFeel);
+      }
+      return true;
+    }
+    if (panel_ == Panel::Gen &&
+        (event.key == 0x1B || event.scancode == GROOVEPUTER_ESCAPE)) {
+      panel_ = Panel::Genre;
+      return true;
+    }
+    if (event.key == '[' || event.key == ']') return true;
   }
+
   const int nav = UIInput::navCode(event);
+  if (panel_ == Panel::Gen && handleGenPanelNav(nav)) return true;
   if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
     moveFocus(nav == GROOVEPUTER_UP ? -1 : 1);
     return true;
@@ -408,6 +731,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       case FocusRow::Depth:
         (void)GroovePuterState::cycleGenerationLevel(delta);
         return true;
+      case FocusRow::Key: (void)cycleProjectKeyRoot(delta); return true;
       case FocusRow::Apply: cycleApplyMode(delta); return true;
     }
   }
@@ -415,22 +739,59 @@ bool GenrePage::handleEvent(UIEvent& event) {
   const char key = static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)));
   const bool keyG = key == 'g' || event.scancode == GROOVEPUTER_G;
   const bool keyP = key == 'p' || event.scancode == GROOVEPUTER_P;
+  if (panel_ == Panel::Genre && focus_ == FocusRow::Key &&
+      !event.ctrl && !event.alt && !event.meta &&
+      (key == 'h' || event.scancode == GROOVEPUTER_H)) {
+    openHarmonyPopup();
+    return true;
+  }
+  if (panel_ == Panel::Genre && focus_ == FocusRow::Key &&
+      !event.ctrl && !event.alt &&
+      !event.meta && key == 'm') {
+    withAudioGuard([&]() {
+      auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+      project.scale = static_cast<ScaleType>(ProjectKey::nextScale(
+          static_cast<ProjectKey::ScaleTypeValue>(project.scale)));
+    });
+    GroovePuterState::markSceneMutated();
+    const auto& project = mini_acid_.sceneManager().currentScene().generatorParams;
+    char changedKey[24];
+    ProjectKey::format(project.scaleRoot,
+        static_cast<ProjectKey::ScaleTypeValue>(project.scale), changedKey,
+        sizeof(changedKey));
+    UI::showToast(changedKey, 1000);
+    return true;
+  }
 
   // ENTER follows the APPLY selector. Plain G is always the explicit full
   // Stage 15 materialization command. Repeated accepted G requests advance the
   // bounded session reroll ordinal for this mode/recipe/P-level/address tuple.
   if (event.key == '\n' || event.key == '\r') {
+    if (panel_ == Panel::Genre && focus_ == FocusRow::Variant) {
+      openRecipePopup();
+      return true;
+    }
+    if (panel_ == Panel::Genre && focus_ == FocusRow::Key) {
+      openScalePopup();
+      return true;
+    }
     applyCurrent();
     return true;
   }
   if (keyG && !event.ctrl && !event.alt && !event.meta) {
-    applyCurrent(true);
-    return true;
+    return generateFromG();
   }
 
   if (keyP && !event.ctrl && !event.alt && !event.meta) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
+    return true;
+  }
+
+  if (panel_ == Panel::Genre && !event.ctrl && !event.alt && !event.meta &&
+      key == 'n') {
+    presetCursor_ = (presetCursor_ + 1) % kGenrePresetCount;
+    applyPreset(presetCursor_);
     return true;
   }
 

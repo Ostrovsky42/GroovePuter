@@ -40,7 +40,9 @@ inline bool applyModeWithLocalCleanup(MiniAcid& engine,
                 // Drum synths are one-shot. Stop only active sampler voices so
                 // loops cannot survive an INTERNAL/LAYER -> MIDI transition.
                 // Assignments, preload state and samplerEnabled are preserved.
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if (engine.samplerTrack) engine.samplerTrack->stopAll();
+#endif
                 break;
             case Track::Count:
                 break;

@@ -29,6 +29,7 @@ SOURCES=(
   "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp"
   "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp"
+  "${ROOT_DIR}/src/generation/harmony/harmonic_source.cpp"
   "${ROOT_DIR}/src/generation/migration/tonal_pattern_adapter.cpp"
   "${ROOT_DIR}/src/generation/migration/strong_rhythm_migration.cpp"
 )
@@ -56,6 +57,11 @@ run_suite() {
   build_and_run "${compiler}" \
     "${ROOT_DIR}/tests/test_rhythm_stage5_strong_migration.cpp" \
     "${BUILD_DIR}/test_rhythm_stage5_${suffix}" \
+    "$@"
+
+  build_and_run "${compiler}" \
+    "${ROOT_DIR}/tests/test_hgs_generation_transaction.cpp" \
+    "${BUILD_DIR}/test_graph_transaction_${suffix}" \
     "$@"
 
   build_and_run "${compiler}" \

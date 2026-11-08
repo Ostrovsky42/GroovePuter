@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 
 #include "scheduled_midi_transport_event_queue.h"
 
@@ -43,7 +44,14 @@ public:
         if (!transportPlaying || blockFrames == 0 ||
             !std::isfinite(bpm) || bpm <= 0.0f ||
             !std::isfinite(sampleRate) || sampleRate <= 0.0f) {
+            deferredClock_ = false;
             return;
+        }
+
+        const bool emittedDeferredClock = deferredClock_;
+        deferredClock_ = false;
+        if (emittedDeferredClock) {
+            queue.tryPushClock(blockSequence, 0);
         }
 
         const double phase = normalizePhase(startPhaseSteps);
@@ -57,7 +65,10 @@ public:
         // A phase that is already on a clock boundary owns frame 0 of this
         // block. The previous block excludes frame == blockFrames, so the same
         // pulse cannot be emitted twice at a block boundary.
-        constexpr double kBoundaryEpsilon = 1.0e-7;
+        // startPhaseSteps is a float across a 16-step bar. Allow its rounding
+        // error in pulse units when recognizing an exact clock boundary.
+        constexpr double kBoundaryEpsilon =
+            std::numeric_limits<float>::epsilon() * 16.0 * kMidiClocksPerStep;
         int64_t pulseIndex = static_cast<int64_t>(
             std::ceil(startPulsePosition - kBoundaryEpsilon));
 
@@ -70,9 +81,18 @@ public:
             const double frameExact = deltaSteps * samplesPerStep;
             if (frameExact >= static_cast<double>(blockFrames)) break;
 
+            // A pulse rounded onto this block's frame zero was already emitted
+            // above. A float phase anchor may still place that pulse near zero.
+            if (emittedDeferredClock && frameExact < 1.0) continue;
+
             long frame = static_cast<long>(std::lround(frameExact));
             if (frame < 0) frame = 0;
-            if (frame >= static_cast<long>(blockFrames)) break;
+            // Preserve nearest-sample timing when an in-block pulse rounds
+            // onto the next block. Re-anchoring phase alone would lose it.
+            if (frame >= static_cast<long>(blockFrames)) {
+                deferredClock_ = true;
+                break;
+            }
 
             queue.tryPushClock(blockSequence,
                                static_cast<uint16_t>(frame));
@@ -81,6 +101,7 @@ public:
 
     void reset() {
         previousTransportPlaying_ = false;
+        deferredClock_ = false;
     }
 
     bool previousTransportPlaying() const {
@@ -96,6 +117,7 @@ private:
     }
 
     bool previousTransportPlaying_{false};
+    bool deferredClock_{false};
 };
 
 #endif  // GROOVEPUTER_MIDI_TRANSPORT_CLOCK_PUBLISHER_H

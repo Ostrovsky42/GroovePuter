@@ -153,7 +153,7 @@ def main() -> None:
         "constexpr uint8_t kVisibleMidiRows = 7u;" in hub_cpp
         and "kSmfStructuralFormSegments" in hub_cpp
         and "drawArrangementRow(" in hub_cpp
-        and "layer.form[segment]" in hub_cpp
+        and "layers.layerHasNotesInBar(index, bar)" in hub_cpp
         and "arrangementPlayheadX(" in hub_cpp
         and "drawOverlayBands(" in hub_cpp,
         "HUB MIDI must render a full-bleed sixteen-segment arrangement overview",
@@ -176,8 +176,8 @@ def main() -> None:
         "smfTrackMuteState().selectTrack(" in hub_cpp
         and "formatTrackChannel(" in hub_cpp
         and "formatPitchRange(" in hub_cpp
-        and '"RAW %s V%u N%u %s"' in hub_cpp
-        and '"%s>%s V%u N%u %s"' in hub_cpp,
+        and '"RAW %s V%u"' in hub_cpp
+        and '"%s>%s V%u"' in hub_cpp,
         "HUB MIDI selection and readable level/route footer must remain projected from existing state",
     )
     require(

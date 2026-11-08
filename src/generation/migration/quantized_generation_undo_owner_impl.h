@@ -67,6 +67,10 @@ inline void applyPreparedGenerationPersistent(
     // old audible truth until ACTIVATE when transport is playing.
     scenes.setMode(pending.mode);
     scenes.setBpm(pending.bpm);
+    // Swing is projection input for every resident Synth Pattern, therefore a
+    // FULL generation commit must settle the complete derived bank, not only
+    // the two target slots. Old audible target events remain in PendingGeneration.
+    (void)engine.rebuildPatternRuntimeEventBank();
     return;
   }
 
@@ -75,6 +79,8 @@ inline void applyPreparedGenerationPersistent(
       ? scene.synthABanks[pending.target.synthBank[0]]
       : scene.synthBBanks[pending.target.synthBank[1]];
   bank.patterns[pending.target.synthSlot[voice]] = pending.synth[voice];
+  (void)engine.refreshPatternRuntimeEvents(
+      voice, pending.target.synthBank[voice], pending.target.synthSlot[voice]);
 }
 
 inline void activatePreparedGenerationRuntime(
@@ -95,12 +101,15 @@ inline bool commitPreparedGeneration(
     return false;
   }
 
-  return GroovePuterUndo::undoOwner().commitPrepared(
+  const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
       GroovePuterUndo::UndoKind::Generation,
       before,
       [&engine, &pending]() {
         applyPreparedGenerationPersistent(engine, pending);
       });
+  if (committed && pending.scope != QuantizedGenerationScope::SynthB)
+    engine.publishGeneratedPatternHarmony(pending.patternHarmony);
+  return committed;
 }
 
 inline bool commitPreparedGeneration(
@@ -130,6 +139,10 @@ inline void fillAudibleActivationSnapshot(
   activation.swingPct = before.swingPct;
   activation.synth[0] = before.synth[0];
   activation.synth[1] = before.synth[1];
+  // Capture the exact currently audible prepared events before persistent
+  // COMMIT changes resident Scene truth. This extends the existing owner.
+  activation.synthRuntime[0] = engine.activePatternRuntimeEvents(0);
+  activation.synthRuntime[1] = engine.activePatternRuntimeEvents(1);
   activation.drums = before.drums;
   // These two values are the NEW committed runtime controls to publish only
   // when the old audible overlay is released at BAR_START.
@@ -196,6 +209,18 @@ inline const SynthPattern* pendingAudibleSynthPattern(
   return &pending->synth[voice];
 }
 
+inline const PhraseRuntime::RuntimePatternEventBuffer*
+pendingAudibleSynthRuntime(const MiniAcid& engine, int voice) {
+  const PendingGeneration* pending = pendingAudibleActivation(engine);
+  if (pending == nullptr || voice < 0 || voice > 1) return nullptr;
+  const bool included = pending->scope == QuantizedGenerationScope::Full ||
+      (voice == 0 && pending->scope == QuantizedGenerationScope::SynthA) ||
+      (voice == 1 && pending->scope == QuantizedGenerationScope::SynthB);
+  if (!included ||
+      !targetStillActive(engine.sceneManager(), pending->target)) return nullptr;
+  return &pending->synthRuntime[voice];
+}
+
 inline const DrumPatternSet* pendingAudibleDrumPatternSet(
     const MiniAcid& engine) {
   const PendingGeneration* pending = pendingAudibleActivation(engine);
@@ -253,6 +278,7 @@ inline bool cancelPendingGenerationActivationForRevision(
           std::memory_order_acquire)) {
     return false;
   }
+  engine.barrierPatternRuntimeSourceTransition();
   int8_t expectedSlot = static_cast<int8_t>(slot);
   g_publishedSlot.compare_exchange_strong(
       expectedSlot, -1, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -280,6 +306,7 @@ inline bool cancelPendingGenerationActivation(MiniAcid& engine) {
           std::memory_order_acquire)) {
     return false;
   }
+  engine.barrierPatternRuntimeSourceTransition();
   int8_t expectedSlot = static_cast<int8_t>(slot);
   g_publishedSlot.compare_exchange_strong(
       expectedSlot, -1, std::memory_order_acq_rel, std::memory_order_acquire);
@@ -311,6 +338,7 @@ inline int armCompactSynthActivation(
       ? QuantizedGenerationScope::SynthA
       : QuantizedGenerationScope::SynthB;
   activation.synth[voice] = audibleBefore;
+  activation.synthRuntime[voice] = engine.activePatternRuntimeEvents(voice);
   activation.genre = engine.sceneManager().currentScene().genre;
   activation.swingPct = engine.sceneManager().currentScene().feel.swingPct;
   activation.mode = engine.grooveboxMode();
@@ -334,6 +362,8 @@ inline bool validateGenerationUndo(
 inline void restoreGenerationUndo(
     MiniAcid& engine,
     const GenerationUndoPayload& before) {
+  if (before.scope != QuantizedGenerationScope::SynthB)
+    engine.clearGeneratedPatternHarmony();
   Scene& scene = engine.sceneManager().currentScene();
   if (before.scope == QuantizedGenerationScope::Full) {
     scene.synthABanks[before.target.synthBank[0]]
@@ -359,6 +389,8 @@ inline void restoreGenerationUndo(
 
 inline void exchangeGenerationUndo(MiniAcid& engine,
                                    GenerationUndoPayload& retained) {
+  if (retained.scope != QuantizedGenerationScope::SynthB)
+    engine.clearGeneratedPatternHarmony();
   SceneManager& scenes = engine.sceneManager();
   Scene& scene = scenes.currentScene();
   if (retained.scope == QuantizedGenerationScope::Full) {
@@ -400,6 +432,8 @@ inline void exchangeGenerationUndo(MiniAcid& engine,
       : scene.synthBBanks[retained.target.synthBank[1]];
   GroovePuterUndo::exchangeFixedValue(
       bank.patterns[retained.target.synthSlot[voice]], retained.synth[voice]);
+  (void)engine.refreshPatternRuntimeEvents(
+      voice, retained.target.synthBank[voice], retained.target.synthSlot[voice]);
 }
 
 }  // namespace QuantizedGenerationDetail
@@ -468,6 +502,7 @@ inline bool commitQuantizedGenerationAtBarStart(SceneManager& scenes) {
   // ACTIVATE is runtime-only: release the old audible overlay and synchronize
   // deferred mode/BPM. No Scene write, revision, Undo publication, allocation,
   // filesystem access or generation occurs at BAR_START.
+  owner->barrierPatternRuntimeSourceTransition();
   activatePreparedGenerationRuntime(*owner, pending);
   g_slotState[slot].store(
       static_cast<uint8_t>(SlotState::Empty), std::memory_order_release);
@@ -482,7 +517,8 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     const GenreSettings& requestedGenre,
     GrooveboxMode requestedMode,
     bool applyTempo,
-    float requestedBpm) {
+    float requestedBpm,
+    bool keepDrums = false) {
   using namespace QuantizedGenerationDetail;
 
   SceneManager& scenes = engine.sceneManager();
@@ -495,7 +531,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -518,7 +554,8 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
           requestLevel,
           attemptOrdinal,
           lease.hasPreviousPending,
-          candidate)) {
+          candidate,
+          keepDrums)) {
     releaseWriteSlot(lease.slot);
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledTargetChanged),
@@ -537,7 +574,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
       g_status.store(
           static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
           std::memory_order_release);
-      return QuantizedGenerationResult::Failed;
+      return QuantizedGenerationResult::Busy;
     }
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
@@ -552,7 +589,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
   fillAudibleActivationSnapshot(
       g_slots[activationSlot], engine, candidate.target, candidate.scope,
@@ -563,7 +600,7 @@ inline QuantizedGenerationResult regenerateWithQuantizedCommit(
   releaseWriteSlot(lease.slot);
   if (!committed) {
     abortArmedActivation(activationSlot, QuantizedGenerationStatus::Busy);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   const uint32_t committedRevision =
@@ -593,7 +630,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   uint32_t attemptOrdinal = 0;
@@ -631,7 +668,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
       g_status.store(
           static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
           std::memory_order_release);
-      return QuantizedGenerationResult::Failed;
+      return QuantizedGenerationResult::Busy;
     }
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Committed),
@@ -646,7 +683,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
     g_status.store(
         static_cast<uint8_t>(QuantizedGenerationStatus::Busy),
         std::memory_order_release);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
   fillAudibleActivationSnapshot(
       g_slots[activationSlot], engine, candidate.target, candidate.scope,
@@ -657,7 +694,7 @@ inline QuantizedGenerationResult regenerateSynthWithQuantizedCommit(
   releaseWriteSlot(lease.slot);
   if (!committed) {
     abortArmedActivation(activationSlot, QuantizedGenerationStatus::Busy);
-    return QuantizedGenerationResult::Failed;
+    return QuantizedGenerationResult::Busy;
   }
 
   const uint32_t committedRevision =

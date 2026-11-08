@@ -25,6 +25,11 @@ struct ExternalClockBlockResult {
     bool sourceChanged{false};
     bool followChanged{false};
     bool queueFailure{false};
+    // With command == Start: where the master will be (in steps from its
+    // downbeat) when this block's first events leave the device. Starting the
+    // local sequencer there puts the whole first bar on the master's grid
+    // instead of catching up through the bounded trim.
+    double startPhaseSteps{0.0};
 };
 
 class ExternalMidiClockFollower {
@@ -36,13 +41,20 @@ public:
     static constexpr double kSourceBpmQuantum = 0.1;
     static constexpr double kSourceBpmHysteresis = 0.15;
     static constexpr uint32_t kClockCoalesceWindowUs = 1000;
+    // Block wait plus output latency is ~50 ms at most: under one step even at
+    // 300 BPM. A larger lead means a broken estimate, not a late start.
+    static constexpr double kMaximumStartLeadSteps = 2.0;
 
+    // outputLatencyMicros: how long after a block starts rendering its first
+    // MIDI events leave the device. Phase is locked so that those events, not
+    // the render, coincide with the master's position.
     ExternalClockBlockResult processBlock(
             ExternalMidiTransportEventQueue& queue,
             TransportClockSource source,
             uint32_t nowMicros,
             bool followEnabled =
-                transportClockRuntime().externalFollowEnabled()) {
+                transportClockRuntime().externalFollowEnabled(),
+            uint32_t outputLatencyMicros = 0) {
         ExternalClockBlockResult result{};
         if (!haveSource_ || source != source_) {
             source_ = source;
@@ -50,6 +62,7 @@ public:
             tracker_.reset();
             driveBaseBpmQ16_ = 0;
             phaseTrimDirection_ = 0;
+            startPending_ = false;
             queue.clearFailure();
             result.sourceChanged = true;
             result.command = ExternalTransportCommand::Stop;
@@ -66,6 +79,7 @@ public:
             phaseTrimDirection_ = 0;
             if (wasEnabled && !followEnabled_) {
                 tracker_.onStop(nowMicros);
+                startPending_ = false;
                 result.command = ExternalTransportCommand::Stop;
             }
         }
@@ -83,6 +97,7 @@ public:
             tracker_.onFailure(nowMicros);
             driveBaseBpmQ16_ = 0;
             phaseTrimDirection_ = 0;
+            startPending_ = false;
             ++failureCount_;
             result.command = ExternalTransportCommand::Stop;
             result.queueFailure = true;
@@ -122,9 +137,11 @@ public:
                 case ExternalMidiTransportEventType::Clock:
                     break;
                 case ExternalMidiTransportEventType::Start:
+                    // The downbeat is the first F8 after FA, which SEQTRAK
+                    // sends 12-27 ms later. Start is issued once it arrives.
                     if (followEnabled_) {
                         tracker_.onStart(event.timestampMicros);
-                        result.command = ExternalTransportCommand::Start;
+                        startPending_ = true;
                     }
                     break;
                 case ExternalMidiTransportEventType::Continue:
@@ -135,6 +152,7 @@ public:
                     break;
                 case ExternalMidiTransportEventType::Stop:
                     tracker_.onStop(event.timestampMicros);
+                    startPending_ = false;
                     if (followEnabled_) {
                         result.command = ExternalTransportCommand::Stop;
                     }
@@ -149,8 +167,20 @@ public:
             tracker_.state() == ExternalClockLockState::Lost) {
             result.command = ExternalTransportCommand::Stop;
         }
+        if (!tracker_.transportRunning()) startPending_ = false;
+        if (startPending_ && !tracker_.downbeatPending()) {
+            startPending_ = false;
+            result.command = ExternalTransportCommand::Start;
+            const double lead = tracker_.predictedAbsoluteProjectSteps(
+                nowMicros + outputLatencyMicros);
+            result.startPhaseSteps =
+                std::max(0.0, std::min(kMaximumStartLeadSteps, lead));
+        }
         result.estimate = tracker_.estimate(nowMicros);
-        applyBoundedPhaseLock(result, result.sourceChanged || result.followChanged);
+        applyBoundedPhaseLock(result,
+                              result.sourceChanged || result.followChanged,
+                              tracker_.predictedAbsoluteProjectSteps(
+                                  nowMicros + outputLatencyMicros));
         return result;
     }
 
@@ -201,27 +231,36 @@ private:
             else if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
             return;
         }
+        // Release only after the error crosses zero by the exit margin. Releasing
+        // short of zero left a steady clock-rate difference sawtoothing on one
+        // side, a constant early or late offset of several milliseconds.
         if (phaseTrimDirection_ > 0) {
             if (errorSteps < -kPhaseTrimEnterSteps) phaseTrimDirection_ = -1;
-            else if (errorSteps < kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+            else if (errorSteps < -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
             return;
         }
         if (errorSteps > kPhaseTrimEnterSteps) phaseTrimDirection_ = 1;
-        else if (errorSteps > -kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
+        else if (errorSteps > kPhaseTrimExitSteps) phaseTrimDirection_ = 0;
     }
 
+    // masterStepsAtEmission: the master's position when this block's first
+    // events leave the device (now + output latency).
     void applyBoundedPhaseLock(ExternalClockBlockResult& result,
-                               bool controlChanged) {
+                               bool controlChanged,
+                               double masterStepsAtEmission) {
         ExternalClockEstimate& estimate = result.estimate;
         estimate.phaseErrorSteps = 0.0;
         estimate.phaseCorrectionSteps = 0.0;
 
-        const bool driveBaseChanged = updateDriveBase(
+        // A new drive base restarts the trim decision (updateDriveBase clears
+        // the direction) but must not skip this block's phase measurement:
+        // while the base tracks a jittery source, skipping let phase drift.
+        updateDriveBase(
             estimate.sourceBpmQ16,
             controlChanged || result.command == ExternalTransportCommand::Start);
         if (driveBaseBpmQ16_ != 0) estimate.bpmQ16 = driveBaseBpmQ16_;
 
-        if (controlChanged || driveBaseChanged || !followEnabled_ ||
+        if (controlChanged || !followEnabled_ ||
             result.command == ExternalTransportCommand::Start ||
             result.command == ExternalTransportCommand::Stop ||
             !estimate.transportRunning || !estimate.validTempo ||
@@ -241,7 +280,7 @@ private:
             kProjectStepsPerQuarter /
             (60.0 * static_cast<double>(local.sampleRate));
         const double error = wrapProjectPhaseError(
-            estimate.absoluteProjectSteps -
+            masterStepsAtEmission -
             (local.absoluteSteps() + renderedSteps));
         estimate.phaseErrorSteps = error;
         updateTrimDirection(error);
@@ -268,6 +307,7 @@ private:
     uint32_t driveBaseBpmQ16_{0};
     uint32_t failureCount_{0};
     int8_t phaseTrimDirection_{0};
+    bool startPending_{false};
     bool haveSource_{false};
     bool followEnabled_{true};
     bool haveFollowState_{false};

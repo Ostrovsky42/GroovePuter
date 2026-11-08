@@ -1,5 +1,6 @@
 #include "phrase_execution.h"
 
+#include "../composition/phrase_evolution_admission.h"
 #include "../rhythm/bar_evolution.h"
 #include "../rhythm/reference_phrase_vocabulary.h"
 
@@ -58,7 +59,8 @@ void resetSemanticProbeScratch(PhraseExecutionScratch& scratch) {
 // GF2-I3: a declared law only takes effect where the archetype is admitted to
 // phrase evolution and the trajectory it maps to is eligible at this level.
 // Anything else leaves the phrase on its established per-bar realization.
-TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
+TrajectoryId admittedPhraseTrajectory(const GenreSettings& genre,
+                                      RhythmArchetypeId archetypeId,
                                       PhraseEvolutionLawId law,
                                       RealizationLevel level,
                                       uint8_t phraseBars) {
@@ -69,7 +71,7 @@ TrajectoryId admittedPhraseTrajectory(RhythmArchetypeId archetypeId,
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(archetypeId);
   if (definition == nullptr ||
-      !ReferenceVocabulary::phraseEvolutionEnabled(definition->key)) {
+      !phraseEvolutionAdmitted(genre, definition->key)) {
     return kNoTrajectoryId;
   }
 
@@ -104,11 +106,21 @@ PhraseExecutionStatus preparePhraseExecution(
     uint16_t phraseGenerationIdentity,
     uint8_t requestedPhraseBars,
     PhraseExecutionScratch& scratch,
-    PreparedPhraseExecution& destination) {
+    PreparedPhraseExecution& destination,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource) {
   destination = PreparedPhraseExecution{};
   destination.settings = settings;
   destination.materialization = materialization;
   destination.phraseGenerationIdentity = phraseGenerationIdentity;
+
+  if (settings.harmonicStrategy > 1 ||
+      (settings.harmonicStrategy == 1 && graphSource == nullptr) ||
+      (settings.harmonicStrategy == 0 && graphSource != nullptr)) {
+    destination.status = settings.harmonicStrategy == 1
+        ? PhraseExecutionStatus::GraphSourceFailure
+        : PhraseExecutionStatus::InvalidContext;
+    return destination.status;
+  }
 
   StrongRhythmMigrationContext selectionContext{};
   selectionContext.patternAddress = 0;
@@ -145,11 +157,22 @@ PhraseExecutionStatus preparePhraseExecution(
     return destination.status;
   }
 
-  // GF2-I3: realize the declared bar-function programme once for the phrase.
+  // G4-I3: Phrase is the first causal owner of multi-bar development. A
+  // selected non-Loop label is truthful only when this exact archetype, level
+  // and length admit the trajectory it names. Otherwise retain the selected
+  // Phrase length but normalize the semantic law to the neutral Loop instead
+  // of advertising development that cannot causally reach production.
+  const PhraseEvolutionLawId selectedPhraseLaw =
+      destination.selection.composition.phraseLaw;
   destination.phraseTrajectory = admittedPhraseTrajectory(
-      destination.selection.composition.rhythmArchetypeId,
-      destination.selection.composition.phraseLaw, materialization.level,
+      settings, destination.selection.composition.rhythmArchetypeId,
+      selectedPhraseLaw, materialization.level,
       destination.length.effectivePhraseBars);
+  if (selectedPhraseLaw != PhraseEvolutionLawId::Loop &&
+      destination.phraseTrajectory == kNoTrajectoryId) {
+    destination.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
+  }
+
   if (destination.phraseTrajectory != kNoTrajectoryId) {
     BarEvolutionRequest evolution{};
     evolution.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
@@ -159,13 +182,19 @@ PhraseExecutionStatus preparePhraseExecution(
         : destination.length.effectivePhraseBars;
     evolution.level = materialization.level;
     evolution.generation = destination.selection.realizationGeneration;
+    // GF2-I4: this value was projected exactly once when the frozen selection
+    // was prepared. Phrase-law changes bar function only; it never re-arbitrates
+    // the profile activity intent per bar.
+    evolution.structuralDensityTarget =
+        destination.selection.structuralDensityTarget;
     evolution.requestedTrajectoryId = destination.phraseTrajectory;
 
     const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
     if (evolved.status != BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
-      // A law that cannot be realized must not fail the phrase; the established
-      // per-bar realization stays in force.
+      // A programme that still cannot be realized must not leave a false
+      // non-Loop semantic label behind. Preserve Phrase and fall back to Loop.
       destination.phraseTrajectory = kNoTrajectoryId;
+      destination.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
     } else {
       destination.phrasePlan = evolved.plan;
     }
@@ -208,7 +237,15 @@ PhraseExecutionStatus preparePhraseExecution(
     StrongRhythmPhraseExecutionOverride execution{};
     execution.harmonicRhythm =
         &destination.harmonicClock.bars[bar].harmonicRhythm;
-    execution.progressionSource = &destination.progressionSource;
+    const GroovePuterHarmony::HarmonicSourceView harmonicSource =
+        settings.harmonicStrategy == 1
+            ? GroovePuterHarmony::HarmonicSourceView{
+                  GroovePuterHarmony::HarmonicStrategy::Graph, nullptr,
+                  graphSource}
+            : GroovePuterHarmony::HarmonicSourceView{
+                  GroovePuterHarmony::HarmonicStrategy::Legacy,
+                  &destination.progressionSource, nullptr};
+    execution.harmonicSourceView = &harmonicSource;
     execution.firstGlobalHarmonicOrdinal =
         destination.harmonicClock.bars[bar].eventRange.firstOrdinal;
     if (destination.phraseTrajectory != kNoTrajectoryId) {
@@ -245,19 +282,62 @@ PhraseExecutionStatus preparePhraseExecution(
   return destination.status;
 }
 
+PhraseLawApplyStatus applyPhraseLawToExecution(PreparedPhraseExecution& execution,
+                                               PhraseEvolutionLawId law) {
+  if (execution.status != PhraseExecutionStatus::Ready) {
+    return PhraseLawApplyStatus::InvalidContext;
+  }
+  const ReferenceVocabulary::Definition* definition =
+      ReferenceVocabulary::definitionForId(
+          execution.selection.composition.rhythmArchetypeId);
+  if (definition == nullptr) return PhraseLawApplyStatus::InvalidContext;
+
+  execution.phraseTrajectory = kNoTrajectoryId;
+  execution.phrasePlan = RhythmPhrasePlan{};
+  execution.selection.composition.phraseLaw = PhraseEvolutionLawId::Loop;
+  if (law == PhraseEvolutionLawId::Loop) return PhraseLawApplyStatus::Applied;
+
+  const uint8_t bars = execution.length.effectivePhraseBars;
+  const TrajectoryId requested = admittedPhraseTrajectory(
+      execution.settings, execution.selection.composition.rhythmArchetypeId,
+      law, execution.materialization.level, bars);
+  if (requested == kNoTrajectoryId) return PhraseLawApplyStatus::NotAdmitted;
+
+  BarEvolutionRequest evolution{};
+  evolution.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();
+  evolution.archetypeId = definition->archetypeId;
+  evolution.phraseBars = bars > kMaxPhraseBars ? kMaxPhraseBars : bars;
+  evolution.level = execution.materialization.level;
+  evolution.generation = execution.selection.realizationGeneration;
+  evolution.structuralDensityTarget = execution.selection.structuralDensityTarget;
+  evolution.requestedTrajectoryId = requested;
+  const BarEvolutionResult evolved = evolveRhythmPhrase(evolution);
+  if (evolved.status != BarEvolutionStatus::Ok || evolved.plan.barCount == 0) {
+    return PhraseLawApplyStatus::NoEligibleTrajectory;
+  }
+  execution.phraseTrajectory = requested;
+  execution.phrasePlan = evolved.plan;
+  execution.selection.composition.phraseLaw = law;
+  return PhraseLawApplyStatus::Applied;
+}
+
 StrongRhythmMigrationResult materializePreparedPhraseBar(
     const PreparedPhraseExecution& prepared,
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
     DrumPatternSet& drums,
     SynthPattern& synthA,
-    SynthPattern& synthB) {
+    SynthPattern& synthB,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource) {
   if (prepared.status != PhraseExecutionStatus::Ready ||
       prepared.semantic.status != PhraseSemanticContractStatus::Ready ||
       !prepared.selection.resolved ||
       phraseBarOrdinal >= prepared.length.effectivePhraseBars ||
       physicalPatternAddress < 0 ||
-      physicalPatternAddress >= kMaxGlobalPatterns) {
+      physicalPatternAddress >= kMaxGlobalPatterns ||
+      (prepared.settings.harmonicStrategy == 1 && graphSource == nullptr) ||
+      (prepared.settings.harmonicStrategy == 0 && graphSource != nullptr) ||
+      prepared.settings.harmonicStrategy > 1) {
     return invalidMaterializationResult();
   }
 
@@ -266,7 +346,15 @@ StrongRhythmMigrationResult materializePreparedPhraseBar(
   StrongRhythmPhraseExecutionOverride execution{};
   execution.harmonicRhythm =
       &prepared.harmonicClock.bars[phraseBarOrdinal].harmonicRhythm;
-  execution.progressionSource = &prepared.progressionSource;
+  const GroovePuterHarmony::HarmonicSourceView harmonicSource =
+      prepared.settings.harmonicStrategy == 1
+          ? GroovePuterHarmony::HarmonicSourceView{
+                GroovePuterHarmony::HarmonicStrategy::Graph, nullptr,
+                graphSource}
+          : GroovePuterHarmony::HarmonicSourceView{
+                GroovePuterHarmony::HarmonicStrategy::Legacy,
+                &prepared.progressionSource, nullptr};
+  execution.harmonicSourceView = &harmonicSource;
   execution.firstGlobalHarmonicOrdinal =
       prepared.harmonicClock.bars[phraseBarOrdinal].eventRange.firstOrdinal;
   if (prepared.phraseTrajectory != kNoTrajectoryId) {

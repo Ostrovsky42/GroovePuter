@@ -102,14 +102,34 @@ def test_performance_all_notes_off_is_target_scoped() -> None:
     sink = (ROOT / "src/input/internal_synth_output.cpp").read_text(
         encoding="utf-8"
     )
-    start = sink.index("case MusicalEventType::AllNotesOff")
-    block = sink[start:]
+    header = (ROOT / "src/input/internal_synth_output.h").read_text(
+        encoding="utf-8"
+    )
 
-    require("engine_.liveNote(voice)" in block,
-            "AllNotesOff must inspect only the event target voice")
-    require("engine_.liveNoteOff(voice" in block,
-            "AllNotesOff must release only the live-owned target voice")
-    require("engine_.allLiveNotesOff()" not in block,
+    handle_start = sink.index("void InternalSynthOutput::handleMusicalEvent")
+    handle_block = sink[handle_start:]
+    require("const int voice = synthIndex(event.target);" in handle_block and
+            "MonoArbitrationState& state = monoState_[voice];" in handle_block,
+            "AllNotesOff must select only the event target arbitration state")
+    require("state.applyLiveEvent(event);" in handle_block and
+            "reconcileLiveProjectionLocked(voice);" in handle_block,
+            "target cleanup must clear authoritative state before reconciling its projection")
+
+    reconcile_start = sink.index(
+        "void InternalSynthOutput::reconcileLiveProjectionLocked")
+    reconcile_end = sink.index(
+        "void InternalSynthOutput::applyPatternOwnershipLocked", reconcile_start)
+    reconcile_block = sink[reconcile_start:reconcile_end]
+    require("engine_.liveNoteOff(voice" in reconcile_block,
+            "target cleanup must physically release the projected target voice")
+
+    require("if (event.type == MusicalEventType::AllNotesOff)" in header and
+            "panic();" in header and
+            "generatedCandidate = Candidate{};" in header and
+            "directCandidate = Candidate{};" in header and
+            "otherLiveCandidate = Candidate{};" in header,
+            "AllNotesOff must kill authoritative live candidates, including suppressed ones")
+    require("engine_.allLiveNotesOff()" not in sink,
             "performance AllNotesOff must not become a global voice release")
 
 
@@ -309,9 +329,9 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
             "EventResult::FileActivated" in midi_manager and
             "midiFileManager().draw" in player_page,
             "MIDI Player page must expose the shared selectable SD library and path")
-    require("seekBars(event.shift ? -4 : -1)" in player_page and
-            "seekBars(event.shift ? 4 : 1)" in player_page,
-            "player seek must preserve +/-1 and Shift +/-4 bar UX")
+    require("seekBars(event.ctrl ? -4 : -1)" in player_page and
+            "seekBars(event.ctrl ? 4 : 1)" in player_page,
+            "player seek must preserve +/-1 and Ctrl +/-4 bar UX for Cardputer")
     require("MIDI PANIC / PAUSE" in player_page,
             "player page must expose scoped panic")
     require("event.key == 'r' || event.key == 'R'" in player_page and
@@ -382,10 +402,10 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
 
     require("registerCardputerSmfMidiQueue" in player_registry,
             "Cardputer SMF service must publish only through the scheduled queue")
-    require("beginCardputerSmfPlayerService" in player_registry and
-            "beginCardputerSmfPlayerService" in
-                (ROOT / "GroovePuter.ino").read_text(encoding="utf-8"),
-            "SMF runtime must be reserved explicitly during setup")
+    sketch = (ROOT / "GroovePuter.ino").read_text(encoding="utf-8")
+    require("ensureStarted()" in player_registry and
+            "beginCardputerSmfPlayerService()" not in sketch,
+            "SMF runtime must remain lazy until the first player command")
     require("kMaxTimingEvents = 32" in
                 (ROOT / "src/platform/cardputer_smf_player.h").read_text(encoding="utf-8") and
             "timingDocument_ = SmfDocument{}" not in player_service,

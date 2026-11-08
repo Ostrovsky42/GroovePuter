@@ -52,6 +52,11 @@ public:
     const IMonoSynthVoice* activeVoice() const {
         return voice_ ? voice_->activeVoice() : nullptr;
     }
+    bool switchPending() const { return voice_ && voice_->switchPending(); }
+    bool switchSettled() const { return voice_ && voice_->switchSettled(); }
+    void commitSwitch() {
+        if (voice_) voice_->commitSwitch();
+    }
     SynthVoiceState getState() const {
         return voice_ ? voice_->getState() : SynthVoiceState{};
     }

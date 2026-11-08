@@ -16,9 +16,9 @@
 #include <vector>
 
 class MiniAcid;
+namespace UI { struct UiViewContinuityState; }
 #include "display.h"
 #include "key_normalize.h"
-#include "ui_active_page_title.h"
 
 enum EventType {
   GROOVEPUTER_NO_TYPE = 0,
@@ -50,6 +50,22 @@ enum ApplicationEventType {
   GROOVEPUTER_APP_EVENT_TOGGLE_MODE,
   GROOVEPUTER_APP_EVENT_OPEN_GENRE,
   GROOVEPUTER_APP_EVENT_SET_VISUAL_STYLE,
+
+  // External keyboard note offered to the active page first (step entry): x = MIDI note,
+  // y = velocity, 0 = note off. A page that does not consume it lets PERFORM play the note.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_NOTE,
+  // External keyboard pitch button: x = -1 / +1. The active page may use it (cursor) before PERFORM.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_NUDGE,
+  // External keyboard Mod button press: the active page may use it (notes tab: delete).
+  GROOVEPUTER_APP_EVENT_EXTERNAL_MOD,
+  // External keyboard gesture Sustain held + Mod: clear the whole melody on the notes tab.
+  GROOVEPUTER_APP_EVENT_EXTERNAL_CLEAR,
+  // Cardputer Opt key (one key for Alt+R): a synth page switches its source
+  // STEPS <-> MELODY, from any tab.
+  GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE,
+  // Cardputer Aa (Shift) tapped alone: the Melody editor steps its grid
+  // (G there generates, as everywhere; Ctrl+G is the same grid step for SDL).
+  GROOVEPUTER_APP_EVENT_CYCLE_GRID,
 };
 
 enum class GrooveboxStyle { MINIMAL, MINIMAL_DARK, RETRO_CLASSIC, AMBER };
@@ -318,11 +334,6 @@ class IPage : public Container {
 
   virtual ~IPage() = default;
 
-  void setBoundaries(const Rect& rect) override {
-      Frame::setBoundaries(rect);
-      UI::publishActivePageTitle(getTitle().c_str());
-  }
-
   virtual bool handleEvent(UIEvent& ui_event) = 0;
   void draw(IGfx& gfx) override {
       drawHeader(gfx);
@@ -342,7 +353,18 @@ class IPage : public Container {
   virtual void onEnter(int context) { (void)context; }
   virtual void onExit() {}
   virtual void tick() {}
+  // Modified keys never auto-repeat (a held Alt+Enter or Ctrl+Z must not fire
+  // twice). A page whose Alt+Up/Down only scrolls its view opts in here.
+  virtual bool repeatsAltVertical() const { return false; }
+  // Prefix of the help line to open Alt+H at; nullptr opens at the top.
+  virtual const char* helpAnchor() const { return nullptr; }
   virtual void setContext(int context) { onEnter(context); }
+  virtual void captureViewContinuity(UI::UiViewContinuityState& state) const {
+    (void)state;
+  }
+  virtual void restoreViewContinuity(const UI::UiViewContinuityState& state) {
+    (void)state;
+  }
 
  protected:
   void requestPageTransition(int pageIndex, int context = 0) {

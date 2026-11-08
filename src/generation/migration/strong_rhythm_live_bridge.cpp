@@ -2,6 +2,7 @@
 
 #include "../../dsp/miniacid_engine.h"
 #include "../../state/generation_request_state.h"
+#include "../composition/phrase_evolution_admission.h"
 #include "../feel/feel_pattern_adapter.h"
 #include "../materialization/pattern_materializer.h"
 #include "../phrase/phrase_evolution.h"
@@ -421,7 +422,7 @@ PhraseAuditionResult regeneratePhraseAuditionWithProbe(
   lockedSettings.rhythmArchetypeId = result.archetypeId;
 
   const bool canEvolve = result.requestedBars > 1 &&
-      ReferenceVocabulary::phraseEvolutionEnabled(selection.archetype);
+      phraseEvolutionAdmitted(auditionSettings, selection.archetype);
   if (canEvolve) {
     PhraseEvolutionRequest request{};
     request.catalog = &ReferenceVocabulary::phraseEvolutionCatalog();

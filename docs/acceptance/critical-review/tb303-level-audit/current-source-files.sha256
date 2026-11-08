@@ -1,0 +1,12 @@
+c4ac4d6fe47874005072e6ffd90ff3cef0aa4935819c23487722b0b9f4a4594d  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/swappable_synth_voice.cpp
+fcab741f1394941c803b0aa3d751af55caf387c496993d51dbbac40c55a8692a  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/mini_tb303.cpp
+cb6dc3f84156bf3bc2a7a862fbe5d48f22bc72510f78f9dbdb72ff1d8b2449d0  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/filter.cpp
+173521942c22da5c5e0fc65425ec4b6d25c27dd1cf3090432caf08b2ec1096d8  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/audio_wavetables.cpp
+08353f755e782fb5667932894d4a27c562332f9d139dc8a16b096781896bf428  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sh101_synth_voice.cpp
+7008283990249e579213ea945517ace6b2cf977a9ba26b6356726306d724ee67  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/wave_morph_synth_voice.cpp
+6e02dfc98ff1584e77c2f460eee520bc6b71f1bc2ac3797f3bdd6ea61150af0a  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/ay_synth_voice.cpp
+d8976ae2762f7e22f181082ea6a99f592baf7dfbfd65ae6e355641c6b1628179  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sid_synth.cpp
+19285e9a68141de28e34286bcc0a9a29ee458f592e197a62e0a92b5c8c2c3d53  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sid_synth_voice.cpp
+da4141ddca62ebc659060f97484fbb1319c3f270bb4f3c85bdea9b13417f88af  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sn76489_synth_voice.cpp
+3740180ff8bbcd504d74f39218c99a392d2d7890c7d0443f6808e2de5af942be  /home/gg/.codex/worktrees/b156/miniacid/src/dsp/sound_quality_presets.cpp
+cb142cf1e069f3b0a9d42831c5ecfbc1e4ffee411cebb80f686c8791a0d8ab98  /home/gg/.codex/worktrees/b156/miniacid/tools/dsp_a/render.cpp

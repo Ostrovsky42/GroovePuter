@@ -89,7 +89,7 @@ def main() -> None:
 
     require('"Alt+K       Sampler"' not in help_source,
             "global help must stop advertising standalone Alt+K sampler")
-    require('"Tab         Grid/feel/auto/samples"' in help_source and
+    require('"Tab         GRID/SOUND/AUTO/SAMPLES"' in help_source and
             '"SAMPLES M   Layer ON/OFF"' in help_source and
             '"SAMPLES Bksp Clear pad sample"' in help_source and
             '"SAMPLES Enter Preview pad"' in help_source,

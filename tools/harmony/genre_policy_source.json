@@ -1,0 +1,41 @@
+{
+  "schema_version": 1,
+  "style_order": [
+    "Acid", "Detroit Techno", "Electro", "EBM", "UK Garage", "Dub Techno",
+    "Ambient", "Lo-Fi", "Chillout", "Deep House", "Jungle", "Trap",
+    "Hip-Hop", "Footwork", "DnB", "Salsa", "Synthwave"
+  ],
+  "quality_tier_runtime_ids": {
+    "0": [0, 1, 5, 6],
+    "1": [0, 1, 2, 3, 5, 6, 7],
+    "2": [0, 1, 2, 3, 5, 6, 7, 8, 9],
+    "3": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+  },
+  "scale_tier_runtime_ids": {
+    "0": [0, 1],
+    "1": [0, 1, 2, 3, 5],
+    "2": [0, 1, 2, 3, 4, 5, 6],
+    "3": [0, 1, 2, 3, 4, 5, 6]
+  },
+  "quality_grouping_capability_clipped": true,
+  "scale_grouping_capability_clipped": true,
+  "profiles": [
+    {"id": 0, "name": "Acid", "host_profile_only": false, "weights": [2, 1, 0, 2, 2, 0, 0, 1, 4], "quality_tier": 0, "scale_tier": 1, "outside_take_keep": 1, "outside_develop": 1, "outside_break": 2, "modulations_develop": 0, "modulations_break": 0, "allow_portals": false, "color_budget": 0, "changes_per_section": 1, "functional_preparation": false},
+    {"id": 1, "name": "Detroit Techno", "host_profile_only": true, "weights": [2, 3, 1, 2, 2, 1, 1, 3, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 3, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 1, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 2, "name": "Electro", "host_profile_only": false, "weights": [2, 2, 1, 2, 3, 1, 1, 3, 2], "quality_tier": 1, "scale_tier": 1, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 3, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 1, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 3, "name": "EBM", "host_profile_only": true, "weights": [1, 1, 0, 3, 4, 1, 0, 2, 3], "quality_tier": 1, "scale_tier": 1, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 3, "modulations_develop": 0, "modulations_break": 1, "allow_portals": true, "color_budget": 0, "changes_per_section": 2, "functional_preparation": true},
+    {"id": 4, "name": "UK Garage", "host_profile_only": false, "weights": [3, 3, 3, 2, 1, 1, 3, 4, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 4, "functional_preparation": true},
+    {"id": 5, "name": "Dub Techno", "host_profile_only": false, "weights": [2, 2, 1, 2, 1, 0, 2, 1, 4], "quality_tier": 2, "scale_tier": 1, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 1, "modulations_develop": 0, "modulations_break": 0, "allow_portals": false, "color_budget": 2, "changes_per_section": 1, "functional_preparation": true},
+    {"id": 6, "name": "Ambient", "host_profile_only": true, "weights": [2, 4, 1, 3, 2, 3, 4, 4, 1], "quality_tier": 3, "scale_tier": 3, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 4, "modulations_develop": 1, "modulations_break": 2, "allow_portals": true, "color_budget": 3, "changes_per_section": 4, "functional_preparation": true},
+    {"id": 7, "name": "Lo-Fi", "host_profile_only": false, "weights": [3, 3, 3, 3, 1, 1, 3, 3, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 8, "name": "Chillout", "host_profile_only": true, "weights": [3, 3, 2, 2, 1, 1, 3, 3, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 9, "name": "Deep House", "host_profile_only": true, "weights": [3, 3, 2, 2, 1, 1, 3, 3, 3], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 10, "name": "Jungle", "host_profile_only": true, "weights": [2, 1, 1, 2, 2, 0, 0, 1, 4], "quality_tier": 0, "scale_tier": 1, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 0, "modulations_break": 0, "allow_portals": false, "color_budget": 0, "changes_per_section": 1, "functional_preparation": true},
+    {"id": 11, "name": "Trap", "host_profile_only": true, "weights": [2, 2, 1, 3, 3, 1, 1, 2, 3], "quality_tier": 1, "scale_tier": 1, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 3, "modulations_develop": 0, "modulations_break": 1, "allow_portals": true, "color_budget": 1, "changes_per_section": 2, "functional_preparation": true},
+    {"id": 12, "name": "Hip-Hop", "host_profile_only": false, "weights": [3, 3, 2, 3, 2, 1, 3, 3, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 3, "functional_preparation": true},
+    {"id": 13, "name": "Footwork", "host_profile_only": false, "weights": [1, 1, 0, 2, 3, 0, 0, 1, 4], "quality_tier": 0, "scale_tier": 1, "outside_take_keep": 1, "outside_develop": 2, "outside_break": 3, "modulations_develop": 0, "modulations_break": 0, "allow_portals": false, "color_budget": 0, "changes_per_section": 1, "functional_preparation": true},
+    {"id": 14, "name": "DnB", "host_profile_only": false, "weights": [2, 1, 1, 2, 2, 0, 1, 1, 4], "quality_tier": 1, "scale_tier": 1, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 0, "modulations_break": 0, "allow_portals": false, "color_budget": 1, "changes_per_section": 1, "functional_preparation": true},
+    {"id": 15, "name": "Salsa", "host_profile_only": true, "weights": [4, 0, 4, 1, 1, 0, 1, 4, 3], "quality_tier": 2, "scale_tier": 1, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 1, "modulations_develop": 1, "modulations_break": 1, "allow_portals": false, "color_budget": 1, "changes_per_section": 4, "functional_preparation": true},
+    {"id": 16, "name": "Synthwave", "host_profile_only": false, "weights": [4, 3, 2, 2, 1, 2, 2, 3, 2], "quality_tier": 2, "scale_tier": 2, "outside_take_keep": 0, "outside_develop": 1, "outside_break": 2, "modulations_develop": 1, "modulations_break": 1, "allow_portals": true, "color_budget": 2, "changes_per_section": 3, "functional_preparation": true}
+  ]
+}

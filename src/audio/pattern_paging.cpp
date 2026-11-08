@@ -8,20 +8,30 @@
 #endif
 
 #include <cctype>
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+
+#include "../platform/cardputer_material_publication_session.h"
+#include "../platform/log.h"
 
 namespace {
 
 constexpr char kPatternRootDirectory[] = "/patterns";
 constexpr char kDefaultProjectName[] = "grooveputer_scene";
 constexpr char kMagic[4] = {'G', 'P', 'P', 'G'};
+constexpr char kMaterialIdentityMagic[4] = {'G', 'P', 'M', 'I'};
+constexpr uint16_t kMaterialIdentityMetaVersion = 1;
 constexpr uint32_t kCrcInitial = 0xFFFFFFFFu;
 constexpr uint32_t kCrcPolynomial = 0xEDB88320u;
 
-struct PageFileHeader {
+// Version 3 is the shared prefix. Version 4 appended materialKindBytes,
+// version 5 appended materialIdBytes, and version 6 appends storageGeneration.
+// Existing fields are never reordered so a reader can inspect the version
+// before consuming the rest of the header.
+struct PageFileHeaderV3 {
     char magic[4];
     uint16_t version;
     uint16_t headerSize;
@@ -33,8 +43,35 @@ struct PageFileHeader {
     uint32_t drumBytes;
 };
 
+struct PageFileHeaderV4 : PageFileHeaderV3 {
+    uint32_t materialKindBytes;
+};
+
+struct PageFileHeaderV5 : PageFileHeaderV4 {
+    uint32_t materialIdBytes;
+};
+
+struct PageFileHeaderV6 : PageFileHeaderV5 {
+    uint32_t storageGeneration;
+};
+
+using PageFileHeader = PageFileHeaderV6;
+
+struct MaterialIdentityMeta {
+    char magic[4];
+    uint16_t version;
+    uint16_t size;
+    uint32_t highWater;
+    uint32_t crc32;
+};
+
 constexpr size_t kSynthBanksSize = sizeof(Bank<SynthPattern>) * kBankCount;
 constexpr size_t kDrumBanksSize = sizeof(Bank<DrumPatternSet>) * kBankCount;
+constexpr size_t kMaterialSlotCount =
+    Scene::kMaterialVoices * Scene::kMaterialSlotsPerVoice;
+constexpr size_t kMaterialKindsSize = sizeof(uint8_t) * kMaterialSlotCount;
+constexpr size_t kMaterialIdsSize =
+    sizeof(GroovePuterMaterial::MaterialId) * kMaterialSlotCount;
 
 std::string& activeProjectNameStorage() {
     static std::string projectName = kDefaultProjectName;
@@ -78,6 +115,166 @@ std::string pagePathFor(const std::string& projectName, int pageIndex) {
     char fileName[32];
     std::snprintf(fileName, sizeof(fileName), "/page_%02d.gpp", pageIndex);
     return projectDirectoryFor(projectName) + fileName;
+}
+
+std::string slotPathFor(const std::string& projectName, int pageIndex,
+                        GroovePuterMaterial::PublicationSlot slot) {
+    char fileName[32];
+    std::snprintf(fileName, sizeof(fileName), "/page_%02d_%c.gpp", pageIndex,
+                  GroovePuterMaterial::publicationSlotSuffix(slot));
+    return projectDirectoryFor(projectName) + fileName;
+}
+
+std::string identityMetaPathFor(const std::string& projectName) {
+    return projectDirectoryFor(projectName) + "/material_id.meta";
+}
+
+bool removeIfExists(const std::string& path);
+bool copyFile(const std::string& sourcePath, const std::string& targetPath);
+
+std::string songHarmonicPathFor(
+    const std::string& projectName, uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    char fileName[64];
+    std::snprintf(fileName, sizeof(fileName),
+                  "/hgs_s%02u_p%03u_m%08lx_v%08lx%08lx.bin",
+                  static_cast<unsigned>(songSlot),
+                  static_cast<unsigned>(startPosition),
+                  static_cast<unsigned long>(anchorMaterialId.value),
+                  static_cast<unsigned long>(anchorVersion.high),
+                  static_cast<unsigned long>(anchorVersion.low));
+    return projectDirectoryFor(projectName) + fileName;
+}
+
+bool validSongHarmonicStorageKey(
+    uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    return songSlot < 2 && startPosition < 128 && anchorMaterialId.valid() &&
+           anchorVersion.valid();
+}
+
+bool stateHasSongHarmonicStorageKey(
+    const GroovePuterHarmony::SongHarmonicState& state,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    if (state.participantCount < 2) return false;
+    for (uint8_t i = 0; i < state.participantCount; ++i) {
+        const auto& participant = state.participants[i];
+        if (participant.track == 0 &&
+            participant.songPosition == state.startPosition) {
+            return participant.materialId == anchorMaterialId &&
+                   participant.version == anchorVersion;
+        }
+    }
+    return false;
+}
+
+const GroovePuterHarmony::SongHarmonicParticipant* songHarmonicAnchor(
+    const GroovePuterHarmony::SongHarmonicState& state) {
+    for (uint8_t i = 0; i < state.participantCount; ++i) {
+        const auto& participant = state.participants[i];
+        if (participant.track == 0 &&
+            participant.songPosition == state.startPosition) {
+            return &participant;
+        }
+    }
+    return nullptr;
+}
+
+SongHarmonicStorageStatus codecStorageStatus(
+    GroovePuterHarmony::SongHarmonicCodecStatus status) {
+    using GroovePuterHarmony::SongHarmonicCodecStatus;
+    switch (status) {
+        case SongHarmonicCodecStatus::Ok: return SongHarmonicStorageStatus::Ok;
+        case SongHarmonicCodecStatus::InvalidInput:
+            return SongHarmonicStorageStatus::InvalidInput;
+        case SongHarmonicCodecStatus::InvalidData:
+            return SongHarmonicStorageStatus::InvalidData;
+        case SongHarmonicCodecStatus::Corrupt:
+            return SongHarmonicStorageStatus::Corrupt;
+        case SongHarmonicCodecStatus::UnsupportedVersion:
+            return SongHarmonicStorageStatus::UnsupportedVersion;
+        case SongHarmonicCodecStatus::BufferTooSmall:
+            return SongHarmonicStorageStatus::InvalidData;
+    }
+    return SongHarmonicStorageStatus::InvalidData;
+}
+
+bool readSongHarmonicFile(const std::string& path, uint8_t* bytes,
+                          size_t& size) {
+    File file = SD.open(path.c_str(), FILE_READ);
+    if (!file) return false;
+    size = file.size();
+    if (size == 0 || size > GroovePuterHarmony::kMaxSongHarmonicStateBytes) {
+        file.close();
+        return false;
+    }
+    size_t offset = 0;
+    while (offset < size) {
+        const size_t count = file.read(bytes + offset, size - offset);
+        if (count == 0) {
+            file.close();
+            return false;
+        }
+        offset += count;
+    }
+    file.close();
+    return true;
+}
+
+bool copySongHarmonicFiles(const std::string& sourceProject,
+                           const std::string& targetProject) {
+    File directory = SD.open(projectDirectoryFor(sourceProject).c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) {
+        directory.close();
+        return true;
+    }
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const char* rawName = entry.name();
+        const char* baseName = rawName;
+        for (const char* p = rawName; *p; ++p) {
+            if (*p == '/') baseName = p + 1;
+        }
+        const std::string name(baseName);
+        const bool isHarmonic = name.compare(0, 4, "hgs_") == 0;
+        entry.close();
+        if (!isHarmonic) continue;
+        if (!copyFile(projectDirectoryFor(sourceProject) + "/" + name,
+                      projectDirectoryFor(targetProject) + "/" + name)) {
+            ok = false;
+            break;
+        }
+    }
+    directory.close();
+    return ok;
+}
+
+bool clearSongHarmonicFilesFor(const std::string& projectName) {
+    File directory = SD.open(projectDirectoryFor(projectName).c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) {
+        directory.close();
+        return true;
+    }
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const char* rawName = entry.name();
+        const char* baseName = rawName;
+        for (const char* p = rawName; *p; ++p) {
+            if (*p == '/') baseName = p + 1;
+        }
+        const std::string name(baseName);
+        const bool isHarmonic = name.compare(0, 4, "hgs_") == 0;
+        const std::string path = projectDirectoryFor(projectName) + "/" + name;
+        entry.close();
+        if (isHarmonic && !removeIfExists(path)) ok = false;
+    }
+    directory.close();
+    return ok;
 }
 
 std::string legacyPagePath(int pageIndex) {
@@ -136,6 +333,59 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
     return ok;
 }
 
+// Melody payloads live beside, rather than inside, the resident Pattern pages.
+std::string melodyDirectoryFor(const std::string& projectName) {
+    return "/projects/" + projectName + "/melody";
+}
+
+bool clearProjectMelodiesFor(const std::string& projectName) {
+    const std::string path = melodyDirectoryFor(projectName);
+    if (!SD.exists(path.c_str())) return true;
+    File directory = SD.open(path.c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const bool nested = entry.isDirectory();
+        std::string leaf = entry.name();
+        leaf = leaf.substr(leaf.find_last_of('/') + 1);
+        entry.close();
+        if (nested || !removeIfExists(path + "/" + leaf)) ok = false;
+    }
+    directory.close();
+    return ok;
+}
+
+bool copyProjectMelodies(const std::string& sourceProject,
+                         const std::string& targetProject) {
+    const std::string source = melodyDirectoryFor(sourceProject);
+    if (!SD.exists(source.c_str())) return true;
+    const std::string targetProjectPath = "/projects/" + targetProject;
+    const std::string target = melodyDirectoryFor(targetProject);
+    for (const auto& directory : {std::string("/projects"), targetProjectPath, target}) {
+        if (!SD.exists(directory.c_str()) && !SD.mkdir(directory.c_str())) return false;
+    }
+    File directory = SD.open(source.c_str(), FILE_READ);
+    if (!directory || !directory.isDirectory()) return false;
+    bool ok = true;
+    for (File entry = directory.openNextFile(); entry;
+         entry = directory.openNextFile()) {
+        const bool nested = entry.isDirectory();
+        std::string leaf = entry.name();
+        leaf = leaf.substr(leaf.find_last_of('/') + 1);
+        entry.close();
+        // Copy both committed generations and legacy payloads, never scratch.
+        if (nested || leaf.size() < 5 ||
+            leaf.compare(leaf.size() - 5, 5, ".gpml") != 0) continue;
+        if (!copyFile(source + "/" + leaf, target + "/" + leaf)) {
+            ok = false;
+            break;
+        }
+    }
+    directory.close();
+    return ok;
+}
+
 bool clearProjectPagesFor(const std::string& projectName) {
     bool ok = true;
     for (int page = 0; page < kMaxPages; ++page) {
@@ -143,7 +393,14 @@ bool clearProjectPagesFor(const std::string& projectName) {
         ok = removeIfExists(mainPath) && ok;
         ok = removeIfExists(mainPath + ".tmp") && ok;
         ok = removeIfExists(mainPath + ".bak") && ok;
+        ok = removeIfExists(slotPathFor(projectName, page, GroovePuterMaterial::PublicationSlot::SlotA)) && ok;
+        ok = removeIfExists(slotPathFor(projectName, page, GroovePuterMaterial::PublicationSlot::SlotB)) && ok;
+        GroovePuterPlatform::clearMaterialPublication(projectName, page);
     }
+    ok = PatternPagingService::clearSongHarmonicStorage(projectName) && ok;
+    ok = clearProjectMelodiesFor(projectName) && ok;
+    // Material identity high-water is intentionally not removed here. Address
+    // reuse after Clear must still receive a fresh identity in the same project.
     return ok;
 }
 
@@ -151,7 +408,9 @@ bool projectHasAnyPage(const std::string& projectName) {
     for (int page = 0; page < kMaxPages; ++page) {
         const std::string mainPath = pagePathFor(projectName, page);
         if (SD.exists(mainPath.c_str()) ||
-            SD.exists((mainPath + ".bak").c_str())) {
+            SD.exists((mainPath + ".bak").c_str()) ||
+            SD.exists(slotPathFor(projectName, page, GroovePuterMaterial::PublicationSlot::SlotA).c_str()) ||
+            SD.exists(slotPathFor(projectName, page, GroovePuterMaterial::PublicationSlot::SlotB).c_str())) {
             return true;
         }
     }
@@ -214,8 +473,157 @@ uint32_t finalizeCrc(uint32_t crc) {
     return crc ^ 0xFFFFFFFFu;
 }
 
-uint32_t payloadSize() {
+bool writeAll(File& file, const void* data, size_t length) {
+    return file.write(reinterpret_cast<const uint8_t*>(data), length) == length;
+}
+
+bool readAll(File& file, void* data, size_t length) {
+    return file.read(reinterpret_cast<uint8_t*>(data), length) == length;
+}
+
+MaterialIdentityMeta makeIdentityMeta(uint32_t highWater) {
+    MaterialIdentityMeta meta{};
+    std::memcpy(meta.magic, kMaterialIdentityMagic, sizeof(meta.magic));
+    meta.version = kMaterialIdentityMetaVersion;
+    meta.size = static_cast<uint16_t>(sizeof(MaterialIdentityMeta));
+    meta.highWater = highWater;
+    uint32_t crc = kCrcInitial;
+    crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&meta),
+                      offsetof(MaterialIdentityMeta, crc32));
+    meta.crc32 = finalizeCrc(crc);
+    return meta;
+}
+
+bool readIdentityMeta(const std::string& path, uint32_t& highWater) {
+    File file = SD.open(path.c_str(), FILE_READ);
+    if (!file) return false;
+    if (file.size() != sizeof(MaterialIdentityMeta)) {
+        file.close();
+        return false;
+    }
+    MaterialIdentityMeta meta{};
+    const bool read = readAll(file, &meta, sizeof(meta));
+    file.close();
+    if (!read ||
+        std::memcmp(meta.magic, kMaterialIdentityMagic, sizeof(meta.magic)) != 0 ||
+        meta.version != kMaterialIdentityMetaVersion ||
+        meta.size != sizeof(MaterialIdentityMeta)) {
+        return false;
+    }
+    uint32_t crc = kCrcInitial;
+    crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&meta),
+                      offsetof(MaterialIdentityMeta, crc32));
+    if (finalizeCrc(crc) != meta.crc32) return false;
+    highWater = meta.highWater;
+    return true;
+}
+
+bool loadIdentityHighWater(const std::string& projectName, uint32_t& highWater) {
+    const std::string mainPath = identityMetaPathFor(projectName);
+    const std::string backupPath = mainPath + ".bak";
+    const std::string temporaryPath = mainPath + ".tmp";
+    const std::string paths[] = {mainPath, backupPath, temporaryPath};
+
+    bool sawAny = false;
+    bool sawValid = false;
+    uint32_t highest = 0;
+    for (const std::string& path : paths) {
+        if (!SD.exists(path.c_str())) continue;
+        sawAny = true;
+        uint32_t candidate = 0;
+        if (!readIdentityMeta(path, candidate)) continue;
+        sawValid = true;
+        if (candidate > highest) highest = candidate;
+    }
+    if (sawAny && !sawValid) return false;
+    highWater = highest;
+    return true;
+}
+
+bool writeIdentityHighWater(const std::string& projectName, uint32_t highWater) {
+    if (!ensureProjectDirectory(projectName)) return false;
+    const std::string mainPath = identityMetaPathFor(projectName);
+    const std::string temporaryPath = mainPath + ".tmp";
+    const std::string backupPath = mainPath + ".bak";
+
+    if (!removeIfExists(temporaryPath)) return false;
+    const MaterialIdentityMeta meta = makeIdentityMeta(highWater);
+    File file = SD.open(temporaryPath.c_str(), FILE_WRITE);
+    if (!file) return false;
+    const bool wrote = writeAll(file, &meta, sizeof(meta));
+    file.flush();
+    file.close();
+
+    uint32_t verified = 0;
+    if (!wrote || !readIdentityMeta(temporaryPath, verified) ||
+        verified != highWater) {
+        removeIfExists(temporaryPath);
+        return false;
+    }
+
+    removeIfExists(backupPath);
+    const bool hadMain = SD.exists(mainPath.c_str());
+    if (hadMain && !SD.rename(mainPath.c_str(), backupPath.c_str())) {
+        removeIfExists(temporaryPath);
+        return false;
+    }
+    if (!SD.rename(temporaryPath.c_str(), mainPath.c_str())) {
+        if (hadMain) SD.rename(backupPath.c_str(), mainPath.c_str());
+        removeIfExists(temporaryPath);
+        return false;
+    }
+    // main now holds the committed high-water. Mirror it into ".bak" so that
+    // losing main later cannot resurrect an older value (which would reissue
+    // published MaterialIds). On failure the advanced main is NOT rolled
+    // back: the caller fails closed and the skipped ids are a benign gap.
+    uint32_t mirrored = 0;
+    if (!copyFile(mainPath, backupPath) ||
+        !readIdentityMeta(backupPath, mirrored) || mirrored != highWater) {
+        removeIfExists(backupPath);
+        return false;
+    }
+    return true;
+}
+
+void collectMaterialKinds(const Scene& scene, uint8_t* kinds) {
+    size_t index = 0;
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+        for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+            kinds[index++] = static_cast<uint8_t>(
+                scene.materialSlots[voice][slot].kind);
+        }
+    }
+}
+
+void collectMaterialIds(
+    const Scene& scene, GroovePuterMaterial::MaterialId* ids) {
+    size_t index = 0;
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+        for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+            ids[index++] = scene.materialSlots[voice][slot].id;
+        }
+    }
+}
+
+void resetMaterialMetadata(Scene& scene) {
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+        for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+            scene.materialSlots[voice][slot] =
+                GroovePuterMaterial::MaterialSlotDescriptor{};
+        }
+    }
+}
+
+uint32_t legacyPayloadSize() {
     return static_cast<uint32_t>(kSynthBanksSize * 2u + kDrumBanksSize);
+}
+
+uint32_t kindOnlyPayloadSize() {
+    return legacyPayloadSize() + static_cast<uint32_t>(kMaterialKindsSize);
+}
+
+uint32_t payloadSize() {
+    return kindOnlyPayloadSize() + static_cast<uint32_t>(kMaterialIdsSize);
 }
 
 uint32_t layoutFingerprint() {
@@ -243,7 +651,12 @@ uint32_t layoutFingerprint() {
     return hash;
 }
 
-PageFileHeader makeHeader(const Scene& scene) {
+PageFileHeader makeHeader(const Scene& scene, uint32_t storageGeneration = 0) {
+    uint8_t kinds[kMaterialSlotCount]{};
+    GroovePuterMaterial::MaterialId ids[kMaterialSlotCount]{};
+    collectMaterialKinds(scene, kinds);
+    collectMaterialIds(scene, ids);
+
     uint32_t crc = kCrcInitial;
     crc = crc32Update(crc,
         reinterpret_cast<const uint8_t*>(scene.synthABanks),
@@ -254,71 +667,247 @@ PageFileHeader makeHeader(const Scene& scene) {
     crc = crc32Update(crc,
         reinterpret_cast<const uint8_t*>(scene.drumBanks),
         sizeof(scene.drumBanks));
+    crc = crc32Update(crc, kinds, sizeof(kinds));
+    crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(ids), sizeof(ids));
 
     PageFileHeader header{};
     std::memcpy(header.magic, kMagic, sizeof(kMagic));
-    header.version = PatternPagingService::kFormatVersion;
-    header.headerSize = static_cast<uint16_t>(sizeof(PageFileHeader));
+    header.version = PatternPagingService::kDualGenFormatVersion;
+    header.headerSize = static_cast<uint16_t>(sizeof(PageFileHeaderV6));
     header.payloadSize = payloadSize();
     header.payloadCrc32 = finalizeCrc(crc);
     header.layoutFingerprint = layoutFingerprint();
     header.synthABytes = sizeof(scene.synthABanks);
     header.synthBBytes = sizeof(scene.synthBBanks);
     header.drumBytes = sizeof(scene.drumBanks);
+    header.materialKindBytes = static_cast<uint32_t>(kMaterialKindsSize);
+    header.materialIdBytes = static_cast<uint32_t>(kMaterialIdsSize);
+    header.storageGeneration = storageGeneration;
     return header;
 }
 
-bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
+bool headerCommonIsValid(const PageFileHeaderV3& header) {
     return std::memcmp(header.magic, kMagic, sizeof(kMagic)) == 0 &&
-           header.version == PatternPagingService::kFormatVersion &&
-           header.headerSize == sizeof(PageFileHeader) &&
-           header.payloadSize == payloadSize() &&
            header.layoutFingerprint == layoutFingerprint() &&
            header.synthABytes == kSynthBanksSize &&
            header.synthBBytes == kSynthBanksSize &&
-           header.drumBytes == kDrumBanksSize &&
-           fileSize == sizeof(PageFileHeader) + header.payloadSize;
+           header.drumBytes == kDrumBanksSize;
 }
 
-bool writeAll(File& file, const void* data, size_t length) {
-    return file.write(reinterpret_cast<const uint8_t*>(data), length) == length;
+bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
+    if (!headerCommonIsValid(header)) return false;
+    if (header.version == PatternPagingService::kDualGenFormatVersion) {
+        return header.headerSize == sizeof(PageFileHeaderV6) &&
+               header.payloadSize == payloadSize() &&
+               header.materialKindBytes == kMaterialKindsSize &&
+               header.materialIdBytes == kMaterialIdsSize &&
+               fileSize == sizeof(PageFileHeaderV6) + header.payloadSize;
+    }
+    if (header.version == PatternPagingService::kLegacyV5FormatVersion) {
+        return header.headerSize == sizeof(PageFileHeaderV5) &&
+               header.payloadSize == payloadSize() &&
+               header.materialKindBytes == kMaterialKindsSize &&
+               header.materialIdBytes == kMaterialIdsSize &&
+               fileSize == sizeof(PageFileHeaderV5) + header.payloadSize;
+    }
+    if (header.version == PatternPagingService::kKindOnlyFormatVersion) {
+        return header.headerSize == sizeof(PageFileHeaderV4) &&
+               header.payloadSize == kindOnlyPayloadSize() &&
+               header.materialKindBytes == kMaterialKindsSize &&
+               fileSize == sizeof(PageFileHeaderV4) + header.payloadSize;
+    }
+    if (header.version == PatternPagingService::kLegacyFormatVersion) {
+        return header.headerSize == sizeof(PageFileHeaderV3) &&
+               header.payloadSize == legacyPayloadSize() &&
+               fileSize == sizeof(PageFileHeaderV3) + header.payloadSize;
+    }
+    return false;
 }
 
-bool readAll(File& file, void* data, size_t length) {
-    return file.read(reinterpret_cast<uint8_t*>(data), length) == length;
-}
-
-bool readAndValidatePage(const std::string& path, Scene& staging) {
+bool readAndValidatePageData(const std::string& path, Scene* staging,
+    PatternPagingService::PageMaterialDescriptors* descriptors,
+    uint32_t* outGeneration) {
     File file = SD.open(path.c_str(), FILE_READ);
     if (!file) return false;
 
     PageFileHeader header{};
-    if (!readAll(file, &header, sizeof(header)) ||
-        !headerIsValid(header, file.size())) {
+    if (!readAll(file, static_cast<PageFileHeaderV3*>(&header),
+                 sizeof(PageFileHeaderV3))) {
         file.close();
         return false;
     }
 
-    if (!readAll(file, staging.synthABanks, sizeof(staging.synthABanks)) ||
-        !readAll(file, staging.synthBBanks, sizeof(staging.synthBBanks)) ||
-        !readAll(file, staging.drumBanks, sizeof(staging.drumBanks))) {
+    const bool hasMaterialKinds =
+        header.version == PatternPagingService::kKindOnlyFormatVersion ||
+        header.version == PatternPagingService::kLegacyV5FormatVersion ||
+        header.version == PatternPagingService::kDualGenFormatVersion;
+    const bool hasMaterialIds =
+        header.version == PatternPagingService::kLegacyV5FormatVersion ||
+        header.version == PatternPagingService::kDualGenFormatVersion;
+    const bool hasStorageGeneration =
+        header.version == PatternPagingService::kDualGenFormatVersion;
+
+    if (hasMaterialKinds &&
+        !readAll(file, &header.materialKindBytes,
+                 sizeof(header.materialKindBytes))) {
         file.close();
         return false;
+    }
+    if (hasMaterialIds &&
+        !readAll(file, &header.materialIdBytes,
+                 sizeof(header.materialIdBytes))) {
+        file.close();
+        return false;
+    }
+    if (hasStorageGeneration &&
+        !readAll(file, &header.storageGeneration,
+                 sizeof(header.storageGeneration))) {
+        file.close();
+        return false;
+    }
+    if (!headerIsValid(header, file.size())) {
+        file.close();
+        return false;
+    }
+    if (outGeneration) {
+        *outGeneration = hasStorageGeneration ? header.storageGeneration : 0;
+    }
+
+    uint32_t crc = kCrcInitial;
+    if (staging) {
+        if (!readAll(file, staging->synthABanks, sizeof(staging->synthABanks)) ||
+            !readAll(file, staging->synthBBanks, sizeof(staging->synthBBanks)) ||
+            !readAll(file, staging->drumBanks, sizeof(staging->drumBanks))) return false;
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->synthABanks), sizeof(staging->synthABanks));
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->synthBBanks), sizeof(staging->synthBBanks));
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(staging->drumBanks), sizeof(staging->drumBanks));
+    } else {
+        // Validate banks without retaining them: the parsed resident candidate
+        // must stay intact while another page's material is inspected.
+        uint8_t chunk[64];
+        size_t remaining = kSynthBanksSize * 2 + kDrumBanksSize;
+        while (remaining) {
+            const size_t count = std::min(remaining, sizeof(chunk));
+            if (!readAll(file, chunk, count)) return false;
+            crc = crc32Update(crc, chunk, count);
+            remaining -= count;
+        }
+    }
+
+    uint8_t kinds[kMaterialSlotCount]{};
+    GroovePuterMaterial::MaterialId ids[kMaterialSlotCount]{};
+    if (hasMaterialKinds) {
+        if (!readAll(file, kinds, sizeof(kinds))) {
+            file.close();
+            return false;
+        }
+        for (size_t index = 0; index < kMaterialSlotCount; ++index) {
+            if (!GroovePuterMaterial::validKindValue(kinds[index])) {
+                file.close();
+                return false;
+            }
+        }
+    }
+    if (hasMaterialIds) {
+        if (!readAll(file, ids, sizeof(ids))) {
+            file.close();
+            return false;
+        }
     }
     file.close();
 
-    uint32_t crc = kCrcInitial;
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthABanks),
-        sizeof(staging.synthABanks));
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.synthBBanks),
-        sizeof(staging.synthBBanks));
-    crc = crc32Update(crc,
-        reinterpret_cast<const uint8_t*>(staging.drumBanks),
-        sizeof(staging.drumBanks));
-    return finalizeCrc(crc) == header.payloadCrc32;
+    if (hasMaterialKinds) crc = crc32Update(crc, kinds, sizeof(kinds));
+    if (hasMaterialIds) {
+        crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(ids), sizeof(ids));
+    }
+    if (finalizeCrc(crc) != header.payloadCrc32) return false;
+    if (staging) resetMaterialMetadata(*staging);
+    for (size_t index = 0; index < kMaterialSlotCount; ++index) {
+        GroovePuterMaterial::MaterialSlotDescriptor value{};
+        if (hasMaterialKinds) value.kind = static_cast<GroovePuterMaterial::MaterialKind>(kinds[index]);
+        if (hasMaterialIds) value.id = ids[index];
+        if (staging) staging->materialSlots[index / Scene::kMaterialSlotsPerVoice]
+                                            [index % Scene::kMaterialSlotsPerVoice] = value;
+        if (descriptors) (*descriptors)[index] = value;
+    }
+    return true;
 }
+
+bool readAndValidatePage(const std::string& path, Scene& staging, uint32_t* generation = nullptr) {
+    return readAndValidatePageData(path, &staging, nullptr, generation);
+}
+
+template <typename Read>
+bool readPageCandidate(int pageIndex, Read&& read) {
+    const std::string& proj = activeProjectNameStorage();
+    bool loaded = false;
+
+    // 1. Try NVS publication record
+    GroovePuterMaterial::MaterialPublicationRecord pub{};
+    if (GroovePuterPlatform::loadMaterialPublication(proj, pageIndex, pub)) {
+        auto primarySlot = static_cast<GroovePuterMaterial::PublicationSlot>(pub.slot);
+        auto altSlot = GroovePuterMaterial::alternateSlot(primarySlot);
+        const std::string primaryPath = slotPathFor(proj, pageIndex, primarySlot);
+        const std::string altPath = slotPathFor(proj, pageIndex, altSlot);
+
+        if (read(primaryPath, nullptr)) {
+            loaded = true;
+        } else if (read(altPath, nullptr)) {
+            loaded = true;
+        }
+    }
+
+    // 2. If NVS not available or both failed, probe slot A and slot B
+    if (!loaded) {
+        const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
+        const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
+        uint32_t genA = 0;
+        bool validA = read(pathA, &genA);
+        if (validA) {
+            uint32_t genB = 0;
+            File fb = SD.open(pathB.c_str(), FILE_READ);
+            bool bMightBeNewer = false;
+            if (fb) {
+                PageFileHeader h{};
+                if (readAll(fb, static_cast<PageFileHeaderV3*>(&h), sizeof(PageFileHeaderV3)) &&
+                    h.version == PatternPagingService::kDualGenFormatVersion) {
+                    if (readAll(fb, &h.materialKindBytes, sizeof(h.materialKindBytes)) &&
+                        readAll(fb, &h.materialIdBytes, sizeof(h.materialIdBytes)) &&
+                        readAll(fb, &h.storageGeneration, sizeof(h.storageGeneration))) {
+                        if (h.storageGeneration > genA) bMightBeNewer = true;
+                    }
+                }
+                fb.close();
+            }
+            if (bMightBeNewer) {
+                if (read(pathB, &genB)) {
+                    loaded = true;
+                } else {
+                    loaded = read(pathA, &genA);
+                }
+            } else {
+                loaded = true;
+            }
+        } else {
+            uint32_t genB = 0;
+            if (read(pathB, &genB)) {
+                loaded = true;
+            }
+        }
+    }
+
+    // 3. Fallback to legacy single file and backup
+    if (!loaded) {
+        const std::string mainPath = pagePathFor(proj, pageIndex);
+        const std::string oldBackupPath = pagePathFor(proj, pageIndex) + ".bak";
+        loaded = read(mainPath, nullptr);
+        if (!loaded) loaded = read(oldBackupPath, nullptr);
+    }
+
+    return loaded;
+
+}
+
 
 bool commitTemporaryPage(const std::string& mainPath,
                          const std::string& temporaryPath,
@@ -362,12 +951,46 @@ const std::string& PatternPagingService::currentProjectName() {
     return activeProjectNameStorage();
 }
 
+void PatternPagingService::restoreProjectNameInMemory(const std::string& projectName) {
+    activeProjectNameStorage() = normalizeProjectName(projectName);
+}
+
+void PatternPagingService::resetLoadedPageIndex() {
+    activePageIndexStorage() = 0;
+}
+
 int PatternPagingService::activePageIndex() {
     return activePageIndexStorage();
 }
 
+GroovePuterMaterial::MaterialIdReservation
+PatternPagingService::reserveMaterialIds(uint8_t count) {
+    if (count == 0 || count > 8) return {};
+    if (!ensureDirectory()) return {};
+    uint32_t highWater = 0;
+    if (!loadIdentityHighWater(activeProjectNameStorage(), highWater)) return {};
+    if (highWater > 0xFFFFFFFFu - count) return {};
+    const uint32_t first = highWater + 1u;
+    if (first == 0) return {};
+    const uint32_t next = highWater + static_cast<uint32_t>(count);
+    if (!writeIdentityHighWater(activeProjectNameStorage(), next)) {
+        return {};
+    }
+    return GroovePuterMaterial::MaterialIdReservation{
+        GroovePuterMaterial::MaterialId{first}, count};
+}
+
+GroovePuterMaterial::MaterialId PatternPagingService::allocateMaterialId() {
+    return reserveMaterialIds(1).first;
+}
+
 bool PatternPagingService::ensureDirectory() {
     return ensureProjectDirectory(activeProjectNameStorage());
+}
+
+bool PatternPagingService::clearSongHarmonicStorage(
+    const std::string& projectName) {
+    return clearSongHarmonicFilesFor(projectName);
 }
 
 std::string PatternPagingService::projectDirectory(
@@ -392,15 +1015,84 @@ std::string PatternPagingService::backupPath(int pageIndex) {
     return pagePath(pageIndex) + ".bak";
 }
 
+std::string PatternPagingService::slotPath(int pageIndex,
+                                          GroovePuterMaterial::PublicationSlot slot) {
+    return slotPathFor(activeProjectNameStorage(), pageIndex, slot);
+}
+
+std::string PatternPagingService::slotPathForProject(
+    const std::string& projectName, int pageIndex,
+    GroovePuterMaterial::PublicationSlot slot) {
+    return slotPathFor(projectName, pageIndex, slot);
+}
+
+uint32_t PatternPagingService::activeStorageGeneration(int pageIndex) {
+    if (!validPageIndex(pageIndex)) return 0;
+    const std::string& proj = activeProjectNameStorage();
+    GroovePuterMaterial::MaterialPublicationRecord pub{};
+    if (GroovePuterPlatform::loadMaterialPublication(proj, pageIndex, pub)) {
+        return pub.storageGeneration;
+    }
+    const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
+    const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
+    uint32_t genA = 0, genB = 0;
+    bool hasA = SD.exists(pathA.c_str());
+    bool hasB = SD.exists(pathB.c_str());
+    if (hasA || hasB) {
+        Scene& staging = sceneTransactionScratch();
+        bool validA = hasA && readAndValidatePage(pathA, staging, &genA);
+        bool validB = hasB && readAndValidatePage(pathB, staging, &genB);
+        if (validA && validB) return genA >= genB ? genA : genB;
+        if (validA) return genA;
+        if (validB) return genB;
+    }
+    return 0;
+}
+
+GroovePuterMaterial::PublicationSlot PatternPagingService::activePublicationSlot(int pageIndex) {
+    if (!validPageIndex(pageIndex)) return GroovePuterMaterial::PublicationSlot::None;
+    const std::string& proj = activeProjectNameStorage();
+    GroovePuterMaterial::MaterialPublicationRecord pub{};
+    if (GroovePuterPlatform::loadMaterialPublication(proj, pageIndex, pub)) {
+        return static_cast<GroovePuterMaterial::PublicationSlot>(pub.slot);
+    }
+    const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
+    const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
+    uint32_t genA = 0, genB = 0;
+    bool hasA = SD.exists(pathA.c_str());
+    bool hasB = SD.exists(pathB.c_str());
+    if (hasA || hasB) {
+        Scene& staging = sceneTransactionScratch();
+        bool validA = hasA && readAndValidatePage(pathA, staging, &genA);
+        bool validB = hasB && readAndValidatePage(pathB, staging, &genB);
+        if (validA && validB) {
+            return (genA >= genB) ? GroovePuterMaterial::PublicationSlot::SlotA
+                                  : GroovePuterMaterial::PublicationSlot::SlotB;
+        }
+        if (validA) return GroovePuterMaterial::PublicationSlot::SlotA;
+        if (validB) return GroovePuterMaterial::PublicationSlot::SlotB;
+    }
+    return GroovePuterMaterial::PublicationSlot::None;
+}
+
 bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     if (!validPageIndex(pageIndex) || !ensureDirectory()) return false;
 
+    const std::string& proj = activeProjectNameStorage();
     const std::string mainPath = pagePath(pageIndex);
     const std::string temporaryPath = tempPath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);
     SD.remove(temporaryPath.c_str());
 
-    const PageFileHeader header = makeHeader(scene);
+    uint8_t kinds[kMaterialSlotCount]{};
+    GroovePuterMaterial::MaterialId ids[kMaterialSlotCount]{};
+    collectMaterialKinds(scene, kinds);
+    collectMaterialIds(scene, ids);
+
+    uint32_t curGen = activeStorageGeneration(pageIndex);
+    uint32_t nextGen = curGen + 1;
+
+    const PageFileHeader header = makeHeader(scene, nextGen);
     File file = SD.open(temporaryPath.c_str(), FILE_WRITE);
     if (!file) return false;
 
@@ -408,7 +1100,9 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
         writeAll(file, &header, sizeof(header)) &&
         writeAll(file, scene.synthABanks, sizeof(scene.synthABanks)) &&
         writeAll(file, scene.synthBBanks, sizeof(scene.synthBBanks)) &&
-        writeAll(file, scene.drumBanks, sizeof(scene.drumBanks));
+        writeAll(file, scene.drumBanks, sizeof(scene.drumBanks)) &&
+        writeAll(file, kinds, sizeof(kinds)) &&
+        writeAll(file, ids, sizeof(ids));
     file.flush();
     file.close();
 
@@ -421,30 +1115,423 @@ bool PatternPagingService::savePage(int pageIndex, const Scene& scene) {
     if (!commitTemporaryPage(mainPath, temporaryPath, oldBackupPath)) {
         return false;
     }
+
+    // A whole-page save establishes mainPath as authoritative; clear dual-generation
+    // publication so legacy page files are loaded.
+    removeIfExists(slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA));
+    removeIfExists(slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB));
+    GroovePuterPlatform::clearMaterialPublication(proj, pageIndex);
+
     activePageIndexStorage() = pageIndex;
     return true;
 }
 
-bool PatternPagingService::loadPage(int pageIndex, Scene& scene) {
+bool PatternPagingService::readPageMaterialDescriptors(int pageIndex, PageMaterialDescriptors& out) {
+    if (!validPageIndex(pageIndex)) return false;
+    PageMaterialDescriptors candidate{};
+    if (!readPageCandidate(pageIndex, [&](const std::string& path, uint32_t* generation) {
+            return readAndValidatePageData(path, nullptr, &candidate, generation);
+        })) return false;
+    out = candidate;
+    return true;
+}
+
+bool PatternPagingService::loadPage(int pageIndex, Scene& scene, bool publishPageIndex) {
     if (!validPageIndex(pageIndex)) return false;
 
-    const std::string mainPath = pagePath(pageIndex);
-    const std::string oldBackupPath = backupPath(pageIndex);
-
     Scene& staging = sceneTransactionScratch();
-    bool loaded = readAndValidatePage(mainPath, staging);
-    if (!loaded) loaded = readAndValidatePage(oldBackupPath, staging);
-    if (!loaded) return false;
+    if (!readPageCandidate(pageIndex, [&](const std::string& path, uint32_t* generation) {
+            return readAndValidatePage(path, staging, generation);
+        })) return false;
 
-    std::memcpy(scene.synthABanks, staging.synthABanks,
-                sizeof(scene.synthABanks));
-    std::memcpy(scene.synthBBanks, staging.synthBBanks,
-                sizeof(scene.synthBBanks));
-    std::memcpy(scene.drumBanks, staging.drumBanks,
-                sizeof(scene.drumBanks));
-    activePageIndexStorage() = pageIndex;
+    if (&scene != &staging) {
+      std::memcpy(scene.synthABanks, staging.synthABanks,
+                  sizeof(scene.synthABanks));
+      std::memcpy(scene.synthBBanks, staging.synthBBanks,
+                  sizeof(scene.synthBBanks));
+      std::memcpy(scene.drumBanks, staging.drumBanks,
+                  sizeof(scene.drumBanks));
+      for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+          for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+              scene.materialSlots[voice][slot] = staging.materialSlots[voice][slot];
+          }
+      }
+    }
+    if (publishPageIndex) activePageIndexStorage() = pageIndex;
     return true;
 }
+
+bool PatternPagingService::commitPageCandidate(
+    int pageIndex,
+    Scene& scene,
+    int voice,
+    int bank,
+    int pattern,
+    const SynthPattern* candidatePattern,
+    GroovePuterMaterial::MaterialKind candidateKind,
+    GroovePuterMaterial::MaterialId candidateId,
+    bool publishResident) {
+    if (!validPageIndex(pageIndex) || !ensureDirectory()) return false;
+    if (voice < 0 || voice >= Scene::kMaterialVoices) return false;
+    if (bank < 0 || bank >= kBankCount) return false;
+    if (pattern < 0 || pattern >= Bank<SynthPattern>::kPatterns) return false;
+
+    const std::string& proj = activeProjectNameStorage();
+    const uint32_t currentGen = activeStorageGeneration(pageIndex);
+    const auto activeSlot = activePublicationSlot(pageIndex);
+    const auto targetSlot = (activeSlot == GroovePuterMaterial::PublicationSlot::SlotA)
+        ? GroovePuterMaterial::PublicationSlot::SlotB
+        : GroovePuterMaterial::PublicationSlot::SlotA;
+    const uint32_t nextGen = currentGen + 1;
+
+    // Prepare candidate descriptors
+    const size_t slotOffset = static_cast<size_t>(bank * Bank<SynthPattern>::kPatterns + pattern);
+    const size_t flatIndex = static_cast<size_t>(voice) * Scene::kMaterialSlotsPerVoice + slotOffset;
+
+    uint8_t kinds[kMaterialSlotCount]{};
+    GroovePuterMaterial::MaterialId ids[kMaterialSlotCount]{};
+    collectMaterialKinds(scene, kinds);
+    collectMaterialIds(scene, ids);
+
+    if (!candidateId.valid()) {
+        candidateId = allocateMaterialId();
+        if (!candidateId.valid()) return false;
+    }
+    kinds[flatIndex] = static_cast<uint8_t>(candidateKind);
+    ids[flatIndex] = candidateId;
+
+    // Stream CRC32
+    uint32_t crc = kCrcInitial;
+    for (int b = 0; b < kBankCount; ++b) {
+        for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
+            const SynthPattern& pat = (voice == 0 && b == bank && p == pattern && candidatePattern)
+                ? *candidatePattern
+                : scene.synthABanks[b].patterns[p];
+            crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&pat), sizeof(SynthPattern));
+        }
+    }
+    for (int b = 0; b < kBankCount; ++b) {
+        for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
+            const SynthPattern& pat = (voice == 1 && b == bank && p == pattern && candidatePattern)
+                ? *candidatePattern
+                : scene.synthBBanks[b].patterns[p];
+            crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(&pat), sizeof(SynthPattern));
+        }
+    }
+    crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(scene.drumBanks), sizeof(scene.drumBanks));
+    crc = crc32Update(crc, kinds, sizeof(kinds));
+    crc = crc32Update(crc, reinterpret_cast<const uint8_t*>(ids), sizeof(ids));
+
+    PageFileHeader header{};
+    std::memcpy(header.magic, kMagic, sizeof(kMagic));
+    header.version = kDualGenFormatVersion;
+    header.headerSize = static_cast<uint16_t>(sizeof(PageFileHeaderV6));
+    header.payloadSize = payloadSize();
+    header.payloadCrc32 = finalizeCrc(crc);
+    header.layoutFingerprint = layoutFingerprint();
+    header.synthABytes = sizeof(scene.synthABanks);
+    header.synthBBytes = sizeof(scene.synthBBanks);
+    header.drumBytes = sizeof(scene.drumBanks);
+    header.materialKindBytes = static_cast<uint32_t>(kMaterialKindsSize);
+    header.materialIdBytes = static_cast<uint32_t>(kMaterialIdsSize);
+    header.storageGeneration = nextGen;
+
+    if (!ensureProjectDirectory(proj)) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] ensureProjectDirectory(%s) FAILED\n", proj.c_str());
+        return false;
+    }
+
+    const std::string targetPath = slotPathFor(proj, pageIndex, targetSlot);
+    removeIfExists(targetPath);
+    File file = SD.open(targetPath.c_str(), FILE_WRITE);
+    if (!file) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] SD.open(%s, FILE_WRITE) FAILED\n", targetPath.c_str());
+        return false;
+    }
+
+    bool wrote = writeAll(file, &header, sizeof(header));
+    for (int b = 0; b < kBankCount; ++b) {
+        for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
+            const SynthPattern& pat = (voice == 0 && b == bank && p == pattern && candidatePattern)
+                ? *candidatePattern
+                : scene.synthABanks[b].patterns[p];
+            wrote = wrote && writeAll(file, &pat, sizeof(SynthPattern));
+        }
+    }
+    for (int b = 0; b < kBankCount; ++b) {
+        for (int p = 0; p < Bank<SynthPattern>::kPatterns; ++p) {
+            const SynthPattern& pat = (voice == 1 && b == bank && p == pattern && candidatePattern)
+                ? *candidatePattern
+                : scene.synthBBanks[b].patterns[p];
+            wrote = wrote && writeAll(file, &pat, sizeof(SynthPattern));
+        }
+    }
+    wrote = wrote && writeAll(file, scene.drumBanks, sizeof(scene.drumBanks));
+    wrote = wrote && writeAll(file, kinds, sizeof(kinds));
+    wrote = wrote && writeAll(file, ids, sizeof(ids));
+
+    file.flush();
+    file.close();
+    if (!wrote) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] writeAll FAILED path=%s\n", targetPath.c_str());
+        removeIfExists(targetPath);
+        return false;
+    }
+
+    // Readback verification
+    Scene& staging = sceneTransactionScratch();
+    uint32_t verifiedGen = 0;
+    if (!readAndValidatePage(targetPath, staging, &verifiedGen) ||
+        verifiedGen != nextGen) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] readAndValidatePage FAILED path=%s verifiedGen=%u expectedGen=%u\n",
+                  targetPath.c_str(), verifiedGen, nextGen);
+        removeIfExists(targetPath);
+        return false;
+    }
+    if (candidatePattern) {
+        const SynthPattern& stagedPat = (voice == 0)
+            ? staging.synthABanks[bank].patterns[pattern]
+            : staging.synthBBanks[bank].patterns[pattern];
+        if (std::memcmp(&stagedPat, candidatePattern, sizeof(SynthPattern)) != 0) {
+            LOG_PLATFORM_DEBUG("[commitPageCandidate] candidatePattern compare FAILED path=%s\n", targetPath.c_str());
+            removeIfExists(targetPath);
+            return false;
+        }
+    }
+    if (staging.materialSlots[voice][slotOffset].kind != candidateKind ||
+        staging.materialSlots[voice][slotOffset].id != candidateId) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] descriptor compare FAILED path=%s\n", targetPath.c_str());
+        removeIfExists(targetPath);
+        return false;
+    }
+
+    // Atomic NVS publication record commit
+    GroovePuterMaterial::MaterialPublicationRecord pubRecord{};
+    pubRecord.magic = GroovePuterMaterial::kPublicationMagic;
+    pubRecord.schema = GroovePuterMaterial::kPublicationSchema;
+    pubRecord.slot = static_cast<uint8_t>(targetSlot);
+    pubRecord.pageIndex = static_cast<uint8_t>(pageIndex);
+    pubRecord.storageGeneration = nextGen;
+    pubRecord.checksum = GroovePuterMaterial::checksumPublicationRecord(pubRecord);
+
+    if (!GroovePuterPlatform::saveMaterialPublication(proj, pageIndex, pubRecord)) {
+        LOG_PLATFORM_DEBUG("[commitPageCandidate] saveMaterialPublication FAILED proj=%s page=%d slot=%d gen=%u\n",
+                  proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
+        removeIfExists(targetPath);
+        return false;
+    }
+    LOG_PLATFORM_DEBUG("[commitPageCandidate] OK proj=%s page=%d slot=%d gen=%u\n",
+              proj.c_str(), pageIndex, static_cast<int>(targetSlot), nextGen);
+
+    if (publishResident) {
+        publishPageCandidateRam(pageIndex, scene, voice, bank, pattern,
+                                candidatePattern, candidateKind, candidateId);
+    }
+    return true;
+}
+
+void PatternPagingService::publishPageCandidateRam(
+    int pageIndex, Scene& scene, int voice, int bank, int pattern,
+    const SynthPattern* candidatePattern,
+    GroovePuterMaterial::MaterialKind candidateKind,
+    GroovePuterMaterial::MaterialId candidateId) {
+    const size_t slotOffset = static_cast<size_t>(
+        bank * Bank<SynthPattern>::kPatterns + pattern);
+    if (candidatePattern) {
+        if (voice == 0) {
+            scene.synthABanks[bank].patterns[pattern] = *candidatePattern;
+        } else {
+            scene.synthBBanks[bank].patterns[pattern] = *candidatePattern;
+        }
+    }
+    scene.materialSlots[voice][slotOffset].kind = candidateKind;
+    scene.materialSlots[voice][slotOffset].id = candidateId;
+    activePageIndexStorage() = pageIndex;
+}
+
+bool PatternPagingService::commitPatternCandidate(
+    int pageIndex,
+    Scene& scene,
+    int voice,
+    int bank,
+    int pattern,
+    const SynthPattern& candidatePattern) {
+    const size_t slotOffset = static_cast<size_t>(bank * Bank<SynthPattern>::kPatterns + pattern);
+    GroovePuterMaterial::MaterialId candidateId = scene.materialSlots[voice][slotOffset].id;
+    if (!candidateId.valid()) {
+        candidateId = allocateMaterialId();
+        if (!candidateId.valid()) return false;
+    }
+    return commitPageCandidate(pageIndex, scene, voice, bank, pattern,
+                               &candidatePattern,
+                               GroovePuterMaterial::MaterialKind::Pattern,
+                               candidateId);
+}
+
+bool PatternPagingService::commitMelodyDescriptor(
+    int pageIndex,
+    Scene& scene,
+    int voice,
+    int bank,
+    int pattern,
+    GroovePuterMaterial::MaterialId candidateId) {
+    return commitPageCandidate(pageIndex, scene, voice, bank, pattern,
+                               nullptr,
+                               GroovePuterMaterial::MaterialKind::Melody,
+                               candidateId);
+}
+
+SongHarmonicStorageStatus PatternPagingService::saveSongHarmonicState(
+    const GroovePuterHarmony::SongHarmonicState& state) {
+    using namespace GroovePuterHarmony;
+    if (!validSongHarmonicState(state)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    const auto* anchor = songHarmonicAnchor(state);
+    if (anchor == nullptr) return SongHarmonicStorageStatus::InvalidData;
+    const auto keyStatus = validSongHarmonicStorageKey(
+        state.songSlot, state.startPosition, anchor->materialId,
+        anchor->version);
+    if (!keyStatus || !stateHasSongHarmonicStorageKey(
+                          state, anchor->materialId, anchor->version)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+
+    uint8_t encoded[kMaxSongHarmonicStateBytes]{};
+    uint8_t scratch[kMaxSongHarmonicStateBytes]{};
+    size_t encodedSize = 0;
+    const auto encodedStatus = encodeSongHarmonicState(
+        state, encoded, sizeof(encoded), encodedSize);
+    if (encodedStatus != SongHarmonicCodecStatus::Ok) {
+        return codecStorageStatus(encodedStatus);
+    }
+
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), state.songSlot, state.startPosition,
+        anchor->materialId, anchor->version);
+    const std::string temporaryPath = path + ".tmp";
+    if (SD.exists(path.c_str())) {
+        size_t existingSize = 0;
+        if (!readSongHarmonicFile(path, scratch, existingSize)) {
+            return SongHarmonicStorageStatus::Corrupt;
+        }
+        return existingSize == encodedSize &&
+                       std::memcmp(scratch, encoded, encodedSize) == 0
+                   ? SongHarmonicStorageStatus::Ok
+                   : SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!removeIfExists(temporaryPath)) return SongHarmonicStorageStatus::IoError;
+
+    File file = SD.open(temporaryPath.c_str(), FILE_WRITE);
+    if (!file) return SongHarmonicStorageStatus::IoError;
+    const bool wrote = file.write(encoded, encodedSize) == encodedSize;
+    file.flush();
+    file.close();
+    if (!wrote) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::IoError;
+    }
+
+    size_t readbackSize = 0;
+    SongHarmonicState verified{};
+    if (!readSongHarmonicFile(temporaryPath, scratch, readbackSize) ||
+        readbackSize != encodedSize ||
+        std::memcmp(scratch, encoded, encodedSize) != 0) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::Corrupt;
+    }
+    const auto decodeStatus = decodeSongHarmonicState(
+        scratch, readbackSize, verified);
+    if (decodeStatus != SongHarmonicCodecStatus::Ok ||
+        !validSongHarmonicState(verified) ||
+        !stateHasSongHarmonicStorageKey(verified, anchor->materialId,
+                                        anchor->version)) {
+        removeIfExists(temporaryPath);
+        return decodeStatus == SongHarmonicCodecStatus::Ok
+                   ? SongHarmonicStorageStatus::InvalidData
+                   : codecStorageStatus(decodeStatus);
+    }
+    if (!SD.rename(temporaryPath.c_str(), path.c_str())) {
+        removeIfExists(temporaryPath);
+        return SongHarmonicStorageStatus::IoError;
+    }
+    return SongHarmonicStorageStatus::Ok;
+}
+
+SongHarmonicStorageStatus PatternPagingService::loadSongHarmonicState(
+    uint8_t songSlot, uint8_t startPosition,
+    const GroovePuterHarmony::SongHarmonicParticipant* currentParticipants,
+    uint8_t currentParticipantCount,
+    GroovePuterHarmony::SongHarmonicState& out) {
+    using namespace GroovePuterHarmony;
+    if (songSlot >= 2 || startPosition >= 128 || currentParticipants == nullptr ||
+        currentParticipantCount == 0 ||
+        currentParticipantCount > kMaxSongHarmonyParticipants) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    const SongHarmonicParticipant* anchor = nullptr;
+    for (uint8_t i = 0; i < currentParticipantCount; ++i) {
+        if (currentParticipants[i].track == 0 &&
+            currentParticipants[i].songPosition == startPosition) {
+            anchor = &currentParticipants[i];
+            break;
+        }
+    }
+    if (anchor == nullptr ||
+        !validSongHarmonicStorageKey(songSlot, startPosition,
+                                     anchor->materialId, anchor->version)) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), songSlot, startPosition,
+        anchor->materialId, anchor->version);
+    if (!SD.exists(path.c_str())) return SongHarmonicStorageStatus::NotFound;
+
+    uint8_t bytes[kMaxSongHarmonicStateBytes]{};
+    size_t size = 0;
+    if (!readSongHarmonicFile(path, bytes, size)) {
+        return SongHarmonicStorageStatus::Corrupt;
+    }
+    SongHarmonicState decoded{};
+    const auto decodeStatus = decodeSongHarmonicState(bytes, size, decoded);
+    if (decodeStatus != SongHarmonicCodecStatus::Ok) {
+        return codecStorageStatus(decodeStatus);
+    }
+    if (!validSongHarmonicState(decoded) || decoded.songSlot != songSlot ||
+        decoded.startPosition != startPosition ||
+        !stateHasSongHarmonicStorageKey(decoded, anchor->materialId,
+                                        anchor->version) ||
+        !songHarmonicParticipantsMatch(decoded, currentParticipants,
+                                       currentParticipantCount)) {
+        return SongHarmonicStorageStatus::InvalidData;
+    }
+    out = decoded;
+    return SongHarmonicStorageStatus::Ok;
+}
+
+SongHarmonicStorageStatus PatternPagingService::removeSongHarmonicState(
+    uint8_t songSlot, uint8_t startPosition,
+    GroovePuterMaterial::MaterialId anchorMaterialId,
+    GroovePuterMaterial::MaterialVersionToken anchorVersion) {
+    if (!validSongHarmonicStorageKey(songSlot, startPosition,
+                                     anchorMaterialId, anchorVersion)) {
+        return SongHarmonicStorageStatus::InvalidInput;
+    }
+    if (!ensureDirectory()) return SongHarmonicStorageStatus::IoError;
+    const std::string path = songHarmonicPathFor(
+        activeProjectNameStorage(), songSlot, startPosition,
+        anchorMaterialId, anchorVersion);
+    const std::string temporaryPath = path + ".tmp";
+    const bool existed = SD.exists(path.c_str());
+    if (!removeIfExists(path) || !removeIfExists(temporaryPath)) {
+        return SongHarmonicStorageStatus::IoError;
+    }
+    return existed ? SongHarmonicStorageStatus::Ok
+                   : SongHarmonicStorageStatus::NotFound;
+}
+
 
 bool PatternPagingService::restoreBackup(int pageIndex) {
     if (!validPageIndex(pageIndex)) return false;
@@ -462,12 +1549,15 @@ void PatternPagingService::initializeEmptyPage(Scene& scene) {
         scene.synthBBanks[bank] = Bank<SynthPattern>{};
         scene.drumBanks[bank] = Bank<DrumPatternSet>{};
     }
+    resetMaterialMetadata(scene);
 }
 
 bool PatternPagingService::pageExists(int pageIndex) {
     if (!validPageIndex(pageIndex)) return false;
     return SD.exists(pagePath(pageIndex).c_str()) ||
-           SD.exists(backupPath(pageIndex).c_str());
+           SD.exists(backupPath(pageIndex).c_str()) ||
+           SD.exists(slotPath(pageIndex, GroovePuterMaterial::PublicationSlot::SlotA).c_str()) ||
+           SD.exists(slotPath(pageIndex, GroovePuterMaterial::PublicationSlot::SlotB).c_str());
 }
 
 bool PatternPagingService::removePage(int pageIndex) {
@@ -475,6 +1565,8 @@ bool PatternPagingService::removePage(int pageIndex) {
     const std::string mainPath = pagePath(pageIndex);
     const std::string temporaryPath = tempPath(pageIndex);
     const std::string oldBackupPath = backupPath(pageIndex);
+    const std::string pathA = slotPath(pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
+    const std::string pathB = slotPath(pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
 
     bool removedAny = false;
     if (SD.exists(mainPath.c_str())) {
@@ -486,6 +1578,13 @@ bool PatternPagingService::removePage(int pageIndex) {
     if (SD.exists(oldBackupPath.c_str())) {
         removedAny = SD.remove(oldBackupPath.c_str()) || removedAny;
     }
+    if (SD.exists(pathA.c_str())) {
+        removedAny = SD.remove(pathA.c_str()) || removedAny;
+    }
+    if (SD.exists(pathB.c_str())) {
+        removedAny = SD.remove(pathB.c_str()) || removedAny;
+    }
+    GroovePuterPlatform::clearMaterialPublication(activeProjectNameStorage(), pageIndex);
     return removedAny;
 }
 
@@ -496,6 +1595,13 @@ bool PatternPagingService::copyProjectPages(
     const std::string target = normalizeProjectName(targetProject);
     if (source == target) return true;
     if (!ensureProjectDirectory(source) || !ensureProjectDirectory(target)) {
+        return false;
+    }
+
+    uint32_t sourceHighWater = 0;
+    uint32_t targetHighWater = 0;
+    if (!loadIdentityHighWater(source, sourceHighWater) ||
+        !loadIdentityHighWater(target, targetHighWater)) {
         return false;
     }
     if (!clearProjectPagesFor(target)) return false;
@@ -513,6 +1619,42 @@ bool PatternPagingService::copyProjectPages(
             clearProjectPagesFor(target);
             return false;
         }
+        const std::string sourceA = slotPathFor(source, page, GroovePuterMaterial::PublicationSlot::SlotA);
+        const std::string targetA = slotPathFor(target, page, GroovePuterMaterial::PublicationSlot::SlotA);
+        if (SD.exists(sourceA.c_str()) && !copyFile(sourceA, targetA)) {
+            clearProjectPagesFor(target);
+            return false;
+        }
+        const std::string sourceB = slotPathFor(source, page, GroovePuterMaterial::PublicationSlot::SlotB);
+        const std::string targetB = slotPathFor(target, page, GroovePuterMaterial::PublicationSlot::SlotB);
+        if (SD.exists(sourceB.c_str()) && !copyFile(sourceB, targetB)) {
+            clearProjectPagesFor(target);
+            return false;
+        }
+        GroovePuterMaterial::MaterialPublicationRecord pub{};
+        if (GroovePuterPlatform::loadMaterialPublication(source, page, pub)) {
+            if (!GroovePuterPlatform::saveMaterialPublication(target, page, pub)) {
+                clearProjectPagesFor(target);
+                return false;
+            }
+        }
+    }
+    if (!copySongHarmonicFiles(source, target)) {
+        clearProjectPagesFor(target);
+        return false;
+    }
+
+    if (!copyProjectMelodies(source, target)) {
+        clearProjectPagesFor(target);
+        return false;
+    }
+
+    const uint32_t copiedHighWater =
+        sourceHighWater > targetHighWater ? sourceHighWater : targetHighWater;
+    if (copiedHighWater != 0 &&
+        !writeIdentityHighWater(target, copiedHighWater)) {
+        clearProjectPagesFor(target);
+        return false;
     }
     return true;
 }
@@ -521,5 +1663,13 @@ bool PatternPagingService::clearProjectPages() {
     if (!ensureDirectory()) return false;
     const bool cleared = clearProjectPagesFor(activeProjectNameStorage());
     if (cleared) activePageIndexStorage() = 0;
+    return cleared;
+}
+
+bool PatternPagingService::clearProjectPages(const std::string& projectName) {
+    const std::string project = normalizeProjectName(projectName);
+    if (!ensureProjectDirectory(project)) return false;
+    const bool cleared = clearProjectPagesFor(project);
+    if (cleared && project == activeProjectNameStorage()) activePageIndexStorage() = 0;
     return cleared;
 }

@@ -1,6 +1,12 @@
 #pragma once
 
+#include <cstddef>
+
 #include <cstdint>
+
+#include "src/midi/external_note_queue.h"
+#include "src/midi/latency_histogram.h"
+#include "src/midi/midi_input_dispatcher.h"
 
 class MusicalEventRouter;
 class MusicalEventQueue;
@@ -36,11 +42,36 @@ bool registerCardputerUsbMidiSink(
 // not write USB itself; MidiDispatchTask remains the only consumer/USB owner.
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue);
 
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig();
+// External keyboard notes for the PERFORM target. Producer: MidiDispatchTask. Consumer: the loop
+// task, which owns the PERFORM keyboard.
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue();
+bool cardputerMidiInputIdentityCurrent(const PerformanceInputIdentity& input);
+
+// Acceptance diagnostics: USB-callback -> dispatch-task latency (needs GROOVEPUTER_USB_ACCEPT_DIAG)
+// and the dispatch task's minimum free stack since start.
+const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency();
+uint32_t cardputerUsbDispatchStackFreeBytes();
+// Last non-note Host packets as "CTL n=<count> <status.d1.d2> ..." (needs GROOVEPUTER_USB_ACCEPT_DIAG).
+void cardputerUsbLastRawText(char* out, size_t size);
+// Inbound clock path counters as "RX pk=<usb packets> f8=<queued clocks> ign=<realtime
+// dropped because CLOCK is INTERNAL> fa=<starts> fc=<stops>" (needs GROOVEPUTER_USB_ACCEPT_DIAG).
+void cardputerUsbClockRxText(char* out, size_t size);
+// Shape of the last controller / pitch-bend burst: count, min..max, last value.
+void cardputerUsbRampText(char* ccOut, size_t ccSize, char* pbOut, size_t pbSize);
+
+bool applyCardputerMidiInputRuntimeRoutingConfig(
+    const GroovePuterMidi::MidiInputRoutingConfig& config);
+
 // Publishes the predicted playback start for one generated audio block. The
 // dispatcher combines this anchor with scheduled frame offsets for Pattern,
 // transport and SMF events.
 void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
                                         uint32_t playbackStartMicros);
+
+// How long after a block's anchor its frame-0 events leave the device. Clock
+// follow locks phase to this emission time rather than to the render.
+uint32_t cardputerUsbMidiOutputLatencyUs();
 
 // Safe snapshot used by the SMF producer to schedule events several audio
 // blocks ahead. This is an anchor, not an independent wall-clock scheduler.

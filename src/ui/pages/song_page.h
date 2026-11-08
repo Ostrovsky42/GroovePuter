@@ -11,6 +11,7 @@
 #include "../../dsp/song_pattern_materializer.h"
 #include "src/state/scene_revision.h"
 #include "src/state/song_edit.h"
+#include "src/state/energy_curve.h"
 #include "src/state/undo_owner.h"
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/quantized_generation_commit.h"
@@ -29,7 +30,11 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
 
   SongPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard);
   void draw(IGfx& gfx) override;
+  void tick() override;
+  void onExit() override;
   bool handleEvent(UIEvent& ui_event) override;
+  // Context row+1 from MATERIAL (Tab on a live bar): the cursor lands on that row.
+  void onEnter(int context) override;
   const std::string & getTitle() const override;
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
@@ -43,13 +48,17 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool handleEventLegacyUnowned(UIEvent& ui_event);
   bool undoPreparedSongState();
 
+  // slot < 0 edits the active Song slot; a playing slot can be named explicitly.
   template <typename PrepareFn>
-  bool commitSongMutation(PrepareFn&& prepare) {
+  bool commitSongMutation(PrepareFn&& prepare, int slot = -1) {
     using GroovePuterUndo::SongUndoPayload;
     using GroovePuterUndo::UndoKind;
     SceneManager& manager = mini_acid_.sceneManager();
     SongUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSongUndo(manager, before)) return false;
+    const bool captured = slot < 0
+        ? GroovePuterUndo::captureCurrentSongUndo(manager, before)
+        : GroovePuterUndo::captureSongUndoForSlot(manager, slot, before);
+    if (!captured) return false;
     Song after = before.before;
     std::forward<PrepareFn>(prepare)(after);
     if (GroovePuterUndo::sameSong(before.before, after)) return false;
@@ -92,6 +101,9 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
       GroovePuterRhythm::LiveSongArrangementDetail::
           completeSongMutationActivation(
               lease.slot, GroovePuterUndo::undoOwner().committedRevision());
+    } else {
+      GroovePuterRhythm::LiveSongArrangementDetail::acknowledgeNonAudibleSongCommit(
+          mini_acid_, before.songSlot, GroovePuterUndo::undoOwner().committedRevision());
     }
     return true;
   }
@@ -157,10 +169,37 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool insertRowAtCursor();
   bool deleteRowAtCursor();
 
+  // F: FORM view, an energy curve that inserts ordinary rows after the source
+  // block (src/state/energy_curve.h). GRID stays the authority on the sound.
+  bool form_view_ = false;
+  EnergyCurve::Curve form_curve_ = EnergyCurve::presetCurve(EnergyCurve::Preset::Wave);
+  uint8_t form_section_ = 0;
+  bool handleFormEvent(UIEvent& ui_event);
+  void drawForm(IGfx& gfx);
+  void formSourceBlock(int& first, int& count) const;
+  bool applyForm();
+  bool takeMaterialAtCursor();
+
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   AudioGuard audio_guard_;
   int cursor_row_;
+  // Enter on a cell of another page: the page loads asynchronously, then the bank and
+  // pattern are applied and the synth page opens (see applyPendingOpen).
+  struct PendingOpen {
+    bool active = false;
+    int page = -1;
+    int bank = 0;
+    int pattern = 0;
+    int voice = 0;
+    int targetPage = 0;
+    int row = -1;
+    SongTrack track = SongTrack::SynthA;
+    int globalPattern = -1;  // the cell's index when Enter was pressed
+    char label[16] = {};
+  };
+  PendingOpen pending_open_;
+  void applyPendingOpen();
   int cursor_track_;
   int scroll_row_;
   bool has_selection_;
@@ -191,7 +230,6 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   LaneFocusMode lane_focus_mode_ = LaneFocusMode::AllTracks;
   int assignment_bank_index_ = 0;
   bool split_compare_ = true;
-  int row_markers_[4] = {-1, -1, -1, -1};
 
   SongPatternMaterializer::Result materializeSongTracks(int row, uint8_t trackMask);
   bool generateCurrentCellPattern(bool rememberForDoubleTap = false);

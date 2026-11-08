@@ -41,6 +41,7 @@ COMMON_SOURCES=(
   "${ROOT}/src/generation/roles/melodic_pitch_intent.cpp"
   "${ROOT}/src/generation/tonal/tonal_projector.cpp"
   "${ROOT}/src/generation/tonal/tonal_materializer.cpp"
+  "${ROOT}/src/generation/harmony/harmonic_source.cpp"
   "${ROOT}/src/generation/migration/tonal_pattern_adapter.cpp"
   "${ROOT}/src/generation/migration/strong_rhythm_migration.cpp"
 )

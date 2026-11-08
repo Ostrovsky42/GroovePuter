@@ -12,6 +12,7 @@ python3 "${ROOT_DIR}/tests/test_preflash_build_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_generation_rng_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_song_generation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_axis_hardware_feedback_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_smf_player_registry_forwarding_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_global_help_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_synth_a_bass_profile_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
@@ -58,6 +59,8 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_global_help_content"
 
+python3 "${ROOT_DIR}/tests/test_melody_navigation_source_regressions.py"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -69,6 +72,10 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_atlas_runtime"
 
+bash "${ROOT_DIR}/tests/run_rhythm_browser_catalog_tests.sh"
+bash "${ROOT_DIR}/tests/run_rhythm_browser_engine_tests.sh"
+bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -79,7 +86,90 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
   -o "${BUILD_DIR}/test_performance_keyboard"
 
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_keyboard_external.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_keyboard_external"
+
+"${BUILD_DIR}/test_performance_keyboard_external"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_note_queue.cpp" \
+  -o "${BUILD_DIR}/test_external_note_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_latency_histogram.cpp" \
+  -o "${BUILD_DIR}/test_latency_histogram"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_mod_hold_tracker.cpp" \
+  -o "${BUILD_DIR}/test_mod_hold_tracker"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_nudge_repeater.cpp" \
+  -o "${BUILD_DIR}/test_nudge_repeater"
+
+"${BUILD_DIR}/test_nudge_repeater"
+
+"${BUILD_DIR}/test_mod_hold_tracker"
+
+"${BUILD_DIR}/test_latency_histogram"
+
+"${BUILD_DIR}/test_external_note_queue"
+
 "${BUILD_DIR}/test_performance_keyboard"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_play.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_play"
+"${BUILD_DIR}/test_performance_smart_play"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_smart_arp.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_smart_arp"
+"${BUILD_DIR}/test_performance_smart_arp"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_chord_quality.cpp" \
+  -o "${BUILD_DIR}/test_performance_chord_quality"
+"${BUILD_DIR}/test_performance_chord_quality"
+
+"${CXX}" \
+  -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_harmony_context.cpp" \
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
+  -o "${BUILD_DIR}/test_performance_harmony_context"
+"${BUILD_DIR}/test_performance_harmony_context"
 
 "${CXX}" \
   -std=c++17 \
@@ -125,6 +215,17 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_scheduled_musical_event_queue"
 
 "${BUILD_DIR}/test_scheduled_musical_event_queue"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_musical_event_queue.cpp" \
+  -o "${BUILD_DIR}/test_musical_event_queue"
+
+"${BUILD_DIR}/test_musical_event_queue"
 
 "${CXX}" \
   -std=c++17 \
@@ -276,6 +377,26 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_smf_routing"
 
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_effective_route.cpp" \
+  -o "${BUILD_DIR}/test_smf_effective_route"
+"${BUILD_DIR}/test_smf_effective_route"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_loop.cpp" \
+  -o "${BUILD_DIR}/test_smf_loop"
+"${BUILD_DIR}/test_smf_loop"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_import_projection.cpp" \
+  -o "${BUILD_DIR}/test_midi_import_projection"
+"${BUILD_DIR}/test_midi_import_projection"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_energy_curve.cpp" \
+  -o "${BUILD_DIR}/test_energy_curve"
+"${BUILD_DIR}/test_energy_curve"
+
 "${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
 
 "${BUILD_DIR}/test_smf_track_route_profile"
@@ -330,6 +451,19 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_usb_midi_output"
 
 "${BUILD_DIR}/test_usb_midi_output"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_pattern_midi_articulation.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  "${ROOT_DIR}/src/midi/midi_companion_settings.cpp" \
+  -o "${BUILD_DIR}/test_pattern_midi_articulation"
+
+"${BUILD_DIR}/test_pattern_midi_articulation"
 
 # Dual-endpoint foundation: sparse note ownership and the DIN/UART transport.
 "${CXX}" \
@@ -437,6 +571,17 @@ echo "Tee MIDI transport: OK"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_external_midi_clock_follow_loop.cpp" \
+  -o "${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${BUILD_DIR}/test_external_midi_clock_follow_loop"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_usb_endpoint_health.cpp" \
   -o "${BUILD_DIR}/test_usb_endpoint_health"
 
@@ -486,6 +631,17 @@ echo "Tee MIDI transport: OK"
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_ui_session_state.cpp" \
   -o "${BUILD_DIR}/test_ui_session_state"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_theme_cyber_palette.cpp" \
+  -o "${BUILD_DIR}/test_theme_cyber_palette"
+
+"${BUILD_DIR}/test_theme_cyber_palette"
 
 "${BUILD_DIR}/test_ui_session_state"
 
@@ -541,6 +697,20 @@ echo "Tee MIDI transport: OK"
 
 "${BUILD_DIR}/test_tr606_drum_voice"
 
+"${CXX}" \
+  -std=c++17 \
+  -O1 \
+  -fsanitize=undefined,float-cast-overflow \
+  -fno-sanitize-recover=all \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_drum_phase_wrap.cpp" \
+  "${ROOT_DIR}/src/dsp/mini_drumvoices.cpp" \
+  "${ROOT_DIR}/src/dsp/audio_wavetables.cpp" \
+  "${ROOT_DIR}/src/dsp/tube_distortion.cpp" \
+  -o "${BUILD_DIR}/test_drum_phase_wrap"
+"${BUILD_DIR}/test_drum_phase_wrap" 808
+"${BUILD_DIR}/test_drum_phase_wrap" 909
+
 
 "${CXX}" \
   -std=c++17 \
@@ -568,6 +738,9 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_chord_stage10_tests.sh"
 
+bash "${ROOT_DIR}/tests/run_0918_lead_tests.sh"
+bash "${ROOT_DIR}/tests/run_0918_generated_melody_tests.sh"
+
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_melodic_stage11_tests.sh"
 
@@ -576,3 +749,18 @@ ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
 
 ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
   bash "${ROOT_DIR}/tests/run_generation_stage13_tests.sh"
+
+# Unified Song slots: ownership, exact Pattern/Melody playback and display source contract.
+ASAN_OPTIONS="${ASAN_OPTIONS:-detect_leaks=0}" \
+  bash "${ROOT_DIR}/tests/run_unified_song_slots_tests.sh"
+
+# Melody slot navigation (Q..I / B) and the UI navigation tests: TEMPO + MIDI
+# IN Space mute, Alt+N new empty Melody. Both were written but never run.
+bash "${ROOT_DIR}/tests/run_melody_slot_navigation_tests.sh"
+bash "${ROOT_DIR}/tests/run_ui_navigation_tests.sh"
+
+# 0.9.19 S1: synth engine switches never free or swap an engine in the AudioTask.
+bash "${ROOT_DIR}/tests/run_s1_synth_engine_switch_tests.sh"
+
+# 0.9.19 S1: Synth page restores the MORE tab before its components exist.
+bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"

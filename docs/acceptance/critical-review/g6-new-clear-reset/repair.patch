@@ -1,0 +1,121 @@
+diff --git a/scenes.cpp b/scenes.cpp
+index 77b922b9..1938a842 100644
+--- a/scenes.cpp
++++ b/scenes.cpp
+@@ -1830,6 +1830,13 @@ void SceneManager::loadDefaultScene() {
+ }
+ 
+ void SceneManager::wipeToZero() {
++  // New/Clear removes the project's Melody payloads. Clear their descriptors
++  // and identities as well, so the saved blank page has no dangling material.
++  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
++    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
++      scene_->materialSlots[voice][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
++    }
++  }
+   drumPatternIndex_ = 0;
+   drumBankIndex_ = 0;
+   synthPatternIndex_[0] = 0;
+diff --git a/tests/run_g6_failed_load_tests.sh b/tests/run_g6_failed_load_tests.sh
+index c4c05079..e3ff9ed7 100755
+--- a/tests/run_g6_failed_load_tests.sh
++++ b/tests/run_g6_failed_load_tests.sh
+@@ -39,3 +39,8 @@ for damage in header crc missing oversized page-crc page-missing drums-page-miss
+  ../build/cardputer-prune-host/g6-nonresident-load "$damage"
+ done
+ printf '%s\n' 'G6 nonresident material, page faults and legacy JSON: PASS'
++
++"${CXX:-g++}" "${COMMON[@]}" $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 ../tests/test_g6_new_project_melody_reset.cpp ../build/cardputer-prune-host/libgrooveputer_p3.a $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o ../build/cardputer-prune-host/g6-new-project-melody-reset
++../build/cardputer-prune-host/g6-new-project-melody-reset
++../build/cardputer-prune-host/g6-new-project-melody-reset clear
++printf '%s\n' 'G6 New/Clear resets Melody descriptors and reloads blank project: PASS'
+diff --git a/tests/test_g6_new_project_melody_reset.cpp b/tests/test_g6_new_project_melody_reset.cpp
+new file mode 100644
+index 00000000..26650a27
+--- /dev/null
++++ b/tests/test_g6_new_project_melody_reset.cpp
+@@ -0,0 +1,84 @@
++#include <bits/stdc++.h>
++#define private public
++#include "src/dsp/miniacid_engine.h"
++#undef private
++#include "platform_sdl/scene_storage_sdl.h"
++#include "src/audio/pattern_paging.h"
++
++SerialMock Serial;
++SDMock SD;
++
++static std::map<std::string, std::string> projectFiles(
++    const std::filesystem::path& directory) {
++  std::map<std::string, std::string> files;
++  for (const auto& entry : std::filesystem::recursive_directory_iterator(directory)) {
++    if (!entry.is_regular_file()) continue;
++    std::ifstream input(entry.path(), std::ios::binary);
++    files[entry.path().lexically_relative(directory).string()] =
++        std::string(std::istreambuf_iterator<char>(input), {});
++  }
++  return files;
++}
++
++int main(int argc, char** argv) {
++  namespace fs = std::filesystem;
++  const bool clearSameProject = argc > 1 && std::string(argv[1]) == "clear";
++  const auto root = fs::temp_directory_path() /
++      ("gp-g6-new-reset-" + std::to_string(
++          std::chrono::steady_clock::now().time_since_epoch().count()));
++  fs::create_directories(root);
++  fs::current_path(root);
++  SD.setRoot(root);
++
++  SceneStorageSdl storage;
++  assert(storage.setCurrentSceneName("source"));
++  MiniAcid engine(kSampleRate, &storage);
++  engine.init();
++  engine.setSongMode(false);
++  // Include selected and nonselected material, in both voices.
++  for (int slot : {0, 3}) {
++    for (int voice = 0; voice < 2; ++voice) {
++      engine.set303PatternIndex(voice, slot);
++      PhraseRuntime::RuntimeSynthEventBuffer melody{};
++      melody.lengthTicks = 8 * PhraseRuntime::kTicksPerBar;
++      melody.count = 8;
++      for (int bar = 0; bar < 8; ++bar) {
++        auto& event = melody.events[bar];
++        event.startTick = bar * PhraseRuntime::kTicksPerBar;
++        event.durationSubticks = 48 * PhraseRuntime::kSubticksPerTick;
++        event.note = 40 + voice * 12 + slot + bar;
++        event.velocity = 100;
++        event.probability = 100;
++      }
++      engine.workingMaterial_[voice].storeMelody(melody);
++      assert(engine.acceptMaterialWorking(voice) == MiniAcid::AcceptResult::Accepted);
++    }
++  }
++  assert(engine.saveSceneToStorage());
++  assert(engine.loadSceneByName("source"));
++  const auto sourceFiles = projectFiles(root / "projects" / "source");
++
++  const std::string target = clearSameProject ? "source" : "new-blank";
++  const bool created = engine.createNewSceneWithName(target);
++  unsigned stale = 0;
++  for (const auto& voice : engine.sceneManager().currentScene().materialSlots) {
++    for (const auto& descriptor : voice) {
++      if (!descriptor.isFree()) ++stale;
++    }
++  }
++  const bool loaded = engine.loadSceneByName(target);
++  std::printf("G6_NEW_RESET action=%s created=%d stale=%u reload=%d\n",
++              clearSameProject ? "clear" : "new", created, stale, loaded);
++  if (!created || stale != 0 || !loaded) return 1;
++  for (const auto& voice : engine.sceneManager().currentScene().materialSlots) {
++    for (const auto& descriptor : voice) assert(descriptor.isFree());
++  }
++  for (int voice = 0; voice < 2; ++voice) {
++    assert(!engine.workingMaterial_[voice].holdsMelody());
++  }
++  if (!clearSameProject) {
++    assert(projectFiles(root / "projects" / "source") == sourceFiles);
++    assert(engine.loadSceneByName("source"));
++  }
++  fs::remove_all(root);
++}

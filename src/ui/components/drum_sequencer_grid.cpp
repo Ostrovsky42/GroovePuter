@@ -3,6 +3,24 @@
 #include "../amber_widgets.h"
 #include "../retro_ui_theme.h"
 #include "../amber_ui_theme.h"
+#include "drum_grid_geometry.h"
+#include "step_timing_mark.h"
+
+namespace {
+// One "has settings" dot on a hit cell when PROB, VEL or FLAM/ROLL differ from
+// a plain step (TIMING has its own corner mark). It sits in the top row at the
+// cell middle, between the two timing corners, so the two never overlap.
+void drawStepSettingsDot(IGfx& gfx, int cellX, int cellY, int cellW, int inset,
+                         const DrumStep& step, IGfxColor color) {
+  namespace Marks = GroovePuterUndo::StepSettingMarks;
+  if (!(Marks::drumFieldCustom(step, 0) || Marks::drumFieldCustom(step, 2) ||
+        Marks::drumFieldCustom(step, 3))) return;
+  constexpr int kDot = StepTimingMark::kSize;
+  // Needs a free column between both timing corners.
+  if (cellW < 2 * (inset + kDot) + kDot + 2) return;
+  gfx.fillRect(cellX + (cellW - kDot) / 2, cellY + inset, kDot, kDot, color);
+}
+}  // namespace
 #include <algorithm>
 #include <cstdint>
 #include <cstdio>
@@ -11,7 +29,7 @@ namespace retro = RetroWidgets;
 namespace amber = AmberWidgets;
 
 namespace {
-constexpr int kLaneLabelWidth = 20;
+constexpr int kLaneLabelWidth = 24;
 constexpr int kStepHeaderHeight = 8;
 
 uint8_t effectiveVelocity(const DrumStep& step) {
@@ -27,7 +45,6 @@ uint8_t velocityToBrightness(uint8_t velocity) {
 }
 
 IGfxColor scaleColor(IGfxColor base, uint8_t brightness) {
-  if (brightness > 255) brightness = 255;
   const uint32_t rgb = base.color24();
   const uint8_t r = static_cast<uint8_t>((((rgb >> 16) & 0xFF) * brightness) / 255);
   const uint8_t g = static_cast<uint8_t>((((rgb >> 8) & 0xFF) * brightness) / 255);
@@ -37,23 +54,22 @@ IGfxColor scaleColor(IGfxColor base, uint8_t brightness) {
                    static_cast<uint32_t>(b));
 }
 
-bool stepHasAccent(const DrumPatternSet& patternSet, int step) {
-  if (step < 0 || step >= SEQ_STEPS) return false;
-  for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-    if (patternSet.voices[v].steps[step].accent) return true;
-  }
-  return false;
-}
-
-const char* drumVoiceLabel(const MiniAcid& miniAcid, int voice) {
+const char* drumVoiceLabel(const std::string& engine, int voice) {
   // Keep the established eight-voice data order. These are semantic display
   // names only; no drum routing, pattern storage, or keyboard mapping changes.
   static const char* const kDefault[NUM_DRUM_VOICES] =
-      {"KIK", "SNR", "HH1", "HH2", "PR1", "PR2", "RIM", "CLP"};
-  if (voice < 0 || voice >= NUM_DRUM_VOICES) return "---";
-  if (miniAcid.currentDrumEngineName() == "606") {
-    if (voice == 6) return "CYM";
-    if (voice == 7) return "---";
+      {"3KIK", "4SNR", "5HH1", "6HH2", "7PR1", "8PR2", "9RIM", "0CLP"};
+  if (voice < 0 || voice >= NUM_DRUM_VOICES) return "----";
+  if (engine == "606") {
+    if (voice == 6) return "9CYM";
+    if (voice == 7) return "0---";
+  }
+  // The global Cardputer mute map deliberately swaps the last two digits for
+  // SP12: 9 owns Clap and 0 owns Rim. The grid label must describe the actual
+  // key binding, not the default logical voice order.
+  if (engine == "SP12") {
+    if (voice == 6) return "0RIM";
+    if (voice == 7) return "9CLP";
   }
   return kDefault[voice];
 }
@@ -73,14 +89,16 @@ void drawStepNumbers(IGfx& gfx,
   }
 }
 
-void drawAccentLabel(IGfx& gfx,
-                     int x,
-                     int accentY,
-                     int accentHeight,
-                     IGfxColor color) {
-  gfx.setTextColor(color);
-  const int y = accentY + std::max(0, (accentHeight - gfx.fontHeight()) / 2);
-  gfx.drawText(x, y, "ACC");
+// Accent belongs to one hit. Draw it as a 1px frame inset inside the filled
+// cell: cursor, playhead and the Retro/Amber grid border all use the cell edge
+// or the area outside it, so an inset frame stays visible in every state while
+// the voice color and velocity brightness remain readable in the centre.
+void drawAccentFrame(IGfx& gfx, int x, int y, int w, int h, IGfxColor color) {
+  if (w >= 4 && h >= 4) {
+    gfx.drawRect(x + 1, y + 1, w - 2, h - 2, color);
+  } else if (w > 0 && h > 0) {
+    gfx.fillRect(x, y, w, h, color);
+  }
 }
 }  // namespace
 
@@ -100,13 +118,6 @@ bool DrumSequencerGridComponent::handleEvent(UIEvent& ui_event) {
     return false;
   }
 
-  if (ui_event.y >= layout.accent_y && ui_event.y < layout.accent_bottom) {
-    if (callbacks_.onToggleAccent) {
-      callbacks_.onToggleAccent(step);
-    }
-    return true;
-  }
-
   if (ui_event.y < layout.grid_y || ui_event.y >= layout.grid_bottom) return false;
   int voice = (ui_event.y - layout.grid_y) / layout.stripe_h;
   if (voice < 0 || voice >= NUM_DRUM_VOICES) return false;
@@ -119,28 +130,27 @@ void DrumSequencerGridComponent::draw(IGfx& gfx) {
   if (!computeLayout(layout)) return;
 
   switch (style_) {
-    case GrooveboxStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx, layout);
-      break;
     case GrooveboxStyle::AMBER:
       drawAmberStyle(gfx, layout);
       break;
+    case GrooveboxStyle::RETRO_CLASSIC:
+    case GrooveboxStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx, layout);
+      drawRetroClassicStyle(gfx, layout);
       break;
   }
 }
 
 void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& layout) {
   const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  const std::string engine = mini_acid_.currentDrumEngineName();
   drawStepNumbers(gfx, layout.grid_x, layout.cell_w, layout.bounds_y, COLOR_LABEL);
-  drawAccentLabel(gfx, layout.bounds_x, layout.accent_y, layout.accent_h, COLOR_LABEL);
   for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
     int labelStripeH = layout.stripe_h;
     if (labelStripeH < 3) labelStripeH = 3;
     int ly = layout.grid_y + v * labelStripeH + (labelStripeH - gfx.fontHeight()) / 2;
     gfx.setTextColor(COLOR_LABEL);
-    gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+    gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
   }
   gfx.setTextColor(COLOR_WHITE);
 
@@ -156,18 +166,6 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
   const IGfxColor colors[NUM_DRUM_VOICES] = {COLOR_DRUM_KICK, COLOR_DRUM_SNARE, COLOR_DRUM_HAT,
                                              COLOR_DRUM_OPEN_HAT, COLOR_DRUM_MID_TOM,
                                              COLOR_DRUM_HIGH_TOM, COLOR_DRUM_RIM, COLOR_DRUM_CLAP};
-
-  // Accent row
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    int cw = layout.cell_w;
-    int cx = layout.grid_x + i * cw;
-    IGfxColor fill = stepHasAccent(patternSet, i) ? COLOR_ACCENT : COLOR_GRAY_DARKER;
-    gfx.fillRect(cx, layout.accent_y, cw - 1, layout.accent_h, fill);
-    gfx.drawRect(cx, layout.accent_y, cw - 1, layout.accent_h, COLOR_WHITE);
-    if (highlight == i) {
-      gfx.drawRect(cx - 1, layout.accent_y - 1, cw + 1, layout.accent_h + 1, COLOR_STEP_HILIGHT);
-    }
-  }
 
   // Grid cells
   for (int i = 0; i < SEQ_STEPS; ++i) {
@@ -186,6 +184,13 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
         fill = COLOR_LIGHT_GRAY;
       }
       gfx.fillRect(cx, cy, cw - 1, ch - 1, fill);
+      if (hit && stepData.accent) {
+        drawAccentFrame(gfx, cx, cy, cw - 1, ch - 1, COLOR_ACCENT);
+      }
+      if (hit) {
+        StepTimingMark::draw(gfx, cx, cy, cw - 1, 2, stepData.timing, COLOR_WHITE);
+        drawStepSettingsDot(gfx, cx, cy, cw - 1, 2, stepData, COLOR_WHITE);
+      }
       if (highlight == i) {
         gfx.drawRect(cx - 1, cy - 1, cw + 1, ch + 1, COLOR_STEP_HILIGHT);
       }
@@ -200,21 +205,21 @@ void DrumSequencerGridComponent::drawMinimalStyle(IGfx& gfx, const GridLayout& l
 }
 
 void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayout& layout) {
-      const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+    // CYBER and CLEAN share this grid. Palette roles carry the colour; the
+    // `clean` branch changes only the state forms (see docs/design/CLEAN_THEME_SPEC.md).
+    const UI::ThemePalette p = UI::themePalette();
+    const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
+    const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+    const std::string engine = mini_acid_.currentDrumEngineName();
     drawStepNumbers(gfx,
                     layout.grid_x,
                     layout.cell_w,
                     layout.bounds_y,
-                    IGfxColor(RetroTheme::TEXT_SECONDARY));
-    drawAccentLabel(gfx,
-                    layout.bounds_x,
-                    layout.accent_y,
-                    layout.accent_h,
-                    IGfxColor(RetroTheme::TEXT_SECONDARY));
+                    p.secondary);
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
-        gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+        gfx.setTextColor(p.secondary);
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
@@ -223,18 +228,9 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
     auto isSelected = [this](int step, int voice) {
       return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
     };
-    int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
-
-    for (int i = 0; i < SEQ_STEPS; ++i) {
-        int cx = layout.grid_x + i * layout.cell_w;
-        IGfxColor fill = stepHasAccent(patternSet, i) ? IGfxColor(RetroTheme::STATUS_ACCENT)
-                                                      : IGfxColor(RetroTheme::BG_DARK_GRAY);
-        gfx.fillRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, fill);
-        gfx.drawRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(RetroTheme::GRID_DIM));
-        if (highlight == i) {
-            retro::drawGlowBorder(gfx, cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
-        }
-    }
+    // The playhead shows only while the transport runs; currentStep() is 0 when stopped.
+    const bool transportRunning = mini_acid_.isPlaying();
+    int highlight = (callbacks_.currentStep && transportRunning) ? callbacks_.currentStep() : -1;
 
     for (int i = 0; i < SEQ_STEPS; ++i) {
         int cx = layout.grid_x + i * layout.cell_w;
@@ -242,23 +238,66 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
             int cy = layout.grid_y + v * layout.stripe_h;
             const DrumStep& stepData = patternSet.voices[v].steps[i];
             bool hit = stepData.hit != 0;
-            IGfxColor fill = hit
-                                 ? scaleColor(IGfxColor(RetroTheme::NEON_CYAN),
-                                              velocityToBrightness(effectiveVelocity(stepData)))
-                                 : IGfxColor(RetroTheme::BG_PANEL);
-            if (!hit && (i % 4 == 0)) fill = IGfxColor(RetroTheme::BG_DARK_GRAY);
+            const int cellW = layout.cell_w - 1;
+            const int cellH = layout.stripe_h - 1;
+            const bool isCursorCell = gridFocus && i == cursorStep && v == cursorVoice;
 
-            gfx.fillRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, fill);
-            gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::GRID_DIM));
+            if (clean) {
+                // Focus: inverted cell. Hit: a glyph square. Accent flag: accent glyph.
+                if (isCursorCell) {
+                    gfx.fillRect(cx, cy, cellW, cellH, p.focus);
+                } else {
+                    gfx.drawRect(cx, cy, cellW, cellH, p.grid);
+                }
+                if (hit) {
+                    const int m = std::min(6, cellH - 4);
+                    const int mx = cx + (cellW - m) / 2;
+                    const int my = cy + (cellH - m) / 2;
+                    // Velocity keeps the same brightness mapping as CYBER.
+                    const int brightness = velocityToBrightness(effectiveVelocity(stepData));
+                    const IGfxColor mark = isCursorCell
+                        ? p.invert
+                        : scaleColor(stepData.accent ? p.danger : p.text, brightness);
+                    gfx.fillRect(mx, my, m, m, mark);
+                    // Micro-timing beside the glyph: left = early, right = late.
+                    StepTimingMark::draw(gfx, cx, cy, cellW, 1, stepData.timing,
+                                         isCursorCell ? p.invert : p.accent);
+                    drawStepSettingsDot(gfx, cx, cy, cellW, 1, stepData,
+                                        isCursorCell ? p.invert : p.accent);
+                }
+                if (isSelected(i, v)) gfx.drawRect(cx, cy, cellW, cellH, p.text);
+                // Playhead: accent bar in the gap above the column, once per column.
+                if (highlight == i && v == 0) {
+                    gfx.fillRect(cx, layout.grid_y - 2, cellW, 2, p.active);
+                }
+                continue;
+            }
+
+            IGfxColor fill = hit
+                                 ? scaleColor(p.accent,
+                                              velocityToBrightness(effectiveVelocity(stepData)))
+                                 : p.panel;
+            if (!hit && (i % 4 == 0)) fill = p.fillAlt;
+
+            gfx.fillRect(cx, cy, cellW, cellH, fill);
+            gfx.drawRect(cx, cy, cellW, cellH, p.gridDim);
+            if (hit && stepData.accent) {
+                drawAccentFrame(gfx, cx, cy, cellW, cellH, p.danger);
+            }
+            // Micro-timing: the hit fill is accent-coloured, so the mark is text-coloured.
+            if (hit) {
+                StepTimingMark::draw(gfx, cx, cy, cellW, 2, stepData.timing, p.text);
+                drawStepSettingsDot(gfx, cx, cy, cellW, 2, stepData, p.text);
+            }
 
             if (highlight == i) {
-                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_PLAYING), 1);
+                retro::drawGlowBorder(gfx, cx, cy, cellW, cellH, p.active, 1);
             }
             if (isSelected(i, v)) {
-                retro::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::STATUS_ACCENT), 1);
+                retro::drawGlowBorder(gfx, cx, cy, cellW, cellH, p.danger, 1);
             }
-            if (gridFocus && i == cursorStep && v == cursorVoice) {
-                gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(RetroTheme::SELECT_BRIGHT));
+            if (isCursorCell) {
+                gfx.drawRect(cx, cy, cellW, cellH, p.selectBright);
             }
         }
     }
@@ -266,20 +305,16 @@ void DrumSequencerGridComponent::drawRetroClassicStyle(IGfx& gfx, const GridLayo
 
 void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& layout) {
       const DrumPatternSet& patternSet = mini_acid_.sceneManager().getCurrentDrumPattern();
+  const std::string engine = mini_acid_.currentDrumEngineName();
     drawStepNumbers(gfx,
                     layout.grid_x,
                     layout.cell_w,
                     layout.bounds_y,
                     IGfxColor(AmberTheme::TEXT_SECONDARY));
-    drawAccentLabel(gfx,
-                    layout.bounds_x,
-                    layout.accent_y,
-                    layout.accent_h,
-                    IGfxColor(AmberTheme::TEXT_SECONDARY));
     for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
         int ly = layout.grid_y + v * layout.stripe_h + (layout.stripe_h - gfx.fontHeight()) / 2;
         gfx.setTextColor(IGfxColor(AmberTheme::TEXT_SECONDARY));
-        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(mini_acid_, v));
+        gfx.drawText(layout.bounds_x, ly, drumVoiceLabel(engine, v));
     }
 
     int cursorStep = callbacks_.cursorStep ? callbacks_.cursorStep() : 0;
@@ -289,17 +324,6 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
       return callbacks_.isSelected ? callbacks_.isSelected(step, voice) : false;
     };
     int highlight = callbacks_.currentStep ? callbacks_.currentStep() : 0;
-
-    for (int i = 0; i < SEQ_STEPS; ++i) {
-        int cx = layout.grid_x + i * layout.cell_w;
-        IGfxColor fill = stepHasAccent(patternSet, i) ? IGfxColor(AmberTheme::NEON_ORANGE)
-                                                      : IGfxColor(AmberTheme::BG_DARK_GRAY);
-        gfx.fillRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, fill);
-        gfx.drawRect(cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(AmberTheme::GRID_DIM));
-        if (highlight == i) {
-            amber::drawGlowBorder(gfx, cx, layout.accent_y, layout.cell_w - 1, layout.accent_h, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
-        }
-    }
 
     for (int i = 0; i < SEQ_STEPS; ++i) {
         int cx = layout.grid_x + i * layout.cell_w;
@@ -315,6 +339,20 @@ void DrumSequencerGridComponent::drawAmberStyle(IGfx& gfx, const GridLayout& lay
 
             gfx.fillRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, fill);
             gfx.drawRect(cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::GRID_DIM));
+            if (hit && stepData.accent) {
+                // Amber is monochrome: an orange frame disappears on amber
+                // hits, so accent is a dark inset ring instead.
+                drawAccentFrame(gfx, cx, cy, layout.cell_w - 1,
+                                layout.stripe_h - 1,
+                                IGfxColor(AmberTheme::BG_DEEP_BLACK));
+            }
+            // Micro-timing: the hit fill is cyan, so the mark is the light amber text colour.
+            if (hit) {
+                StepTimingMark::draw(gfx, cx, cy, layout.cell_w - 1, 2, stepData.timing,
+                                     IGfxColor(AmberTheme::TEXT_PRIMARY));
+                drawStepSettingsDot(gfx, cx, cy, layout.cell_w - 1, 2, stepData,
+                                    IGfxColor(AmberTheme::TEXT_PRIMARY));
+            }
 
             if (highlight == i) {
                 amber::drawGlowBorder(gfx, cx, cy, layout.cell_w - 1, layout.stripe_h - 1, IGfxColor(AmberTheme::STATUS_PLAYING), 1);
@@ -344,18 +382,14 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   layout.cell_w = availableW / SEQ_STEPS;
   if (layout.cell_w < 1) layout.cell_w = 1;
 
-  layout.accent_h = 6;
-  layout.accent_gap = 2;
-
+  // Accent is a property of an individual hit, rendered inside its cell.
+  // The height below the step header belongs to the eight drum lanes, but
+  // never to the shell-owned performance HUD/footer band.
   layout.grid_x = bounds.x + labelWidth;
-  const int available_h = std::max(
-      1,
-      bounds.h - kStepHeaderHeight - (layout.accent_h + layout.accent_gap));
-  layout.stripe_h = available_h / NUM_DRUM_VOICES;
-  if (layout.stripe_h < 1) layout.stripe_h = 1;
+  layout.stripe_h = DrumGridGeometry::laneHeight(
+      bounds.y, bounds.h, kStepHeaderHeight, NUM_DRUM_VOICES);
 
-  layout.accent_y = bounds.y + kStepHeaderHeight;
-  layout.grid_y = layout.accent_y + layout.accent_h + layout.accent_gap;
+  layout.grid_y = bounds.y + kStepHeaderHeight;
 
   layout.grid_w = layout.cell_w * SEQ_STEPS;
   layout.grid_h = layout.stripe_h * NUM_DRUM_VOICES;
@@ -363,7 +397,10 @@ bool DrumSequencerGridComponent::computeLayout(GridLayout& layout) const {
   layout.grid_right = layout.grid_x + layout.grid_w;
   layout.grid_bottom = layout.grid_y + layout.grid_h;
 
-  layout.accent_bottom = layout.accent_y + layout.accent_h;
 
   return true;
+}
+
+const char* drumVoiceKeyLabel(const std::string& engine, int voice) {
+  return drumVoiceLabel(engine, voice);
 }

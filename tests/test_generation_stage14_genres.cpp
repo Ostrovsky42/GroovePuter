@@ -141,11 +141,18 @@ void testLoFiVariantsAndCorridors() {
     assert(profile.corridor.bpmMax == item.max);
     assert(profile.corridor.densityMin == item.densityMin);
     assert(profile.corridor.densityMax == item.densityMax);
-    assert(profile.secondaryRole == CompositionSecondaryRole::ChordWithMelodicFill);
     assert(contains(profile.chordRhythms,
                     static_cast<uint8_t>(ChordRhythmId::WholeBarHold)));
-    assert(contains(profile.melodicRhythms,
-                    static_cast<uint8_t>(MelodicRhythmId::RestHeavy)));
+    if (item.recipe == 0) {
+      // 0.9.18: the default LoFi recipe leads with a slow two-note melody.
+      assert(profile.secondaryRole == CompositionSecondaryRole::Melodic);
+      assert(contains(profile.melodicRhythms,
+                      static_cast<uint8_t>(MelodicRhythmId::SlowPair)));
+    } else {
+      assert(profile.secondaryRole == CompositionSecondaryRole::ChordWithMelodicFill);
+      assert(contains(profile.melodicRhythms,
+                      static_cast<uint8_t>(MelodicRhythmId::RestHeavy)));
+    }
   }
 }
 
@@ -170,7 +177,9 @@ void testLoFiMelodicPaletteIsSparseByConstruction() {
     const MelodicMotifResult result = realizeMelodicMotif(request);
     assert(result.status == MelodicMotifStatus::Ok ||
            result.status == MelodicMotifStatus::ValidButEmpty);
-    assert(popcount16(result.plan.onsets) <= 3);
+    // 0.9.18: LazyArp follows the Lo-Fi references (four notes a bar on a
+    // dotted-eighth grid, then a rest and a pickup); still no running lines.
+    assert(popcount16(result.plan.onsets) <= 4);
   }
 }
 

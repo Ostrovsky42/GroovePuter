@@ -11,13 +11,17 @@
 #include "sdl_display.h"
 #include "../cardputer_display.h"
 #include "../src/ui/miniacid_display.h"
+#include "../src/ui/ui_common.h"
 #include "../src/dsp/miniacid_engine.h"
 #include "../src/audio/audio_config.h"
 #include "scene_storage_sdl.h"
 #include "../src/sampler/ram_sample_store.h"
 #include "../src/input/performance_keyboard.h"
+#include "../src/input/performance_harmony_bridge.h"
+#include "../src/input/performance_harmony_route_cache.h"
 #include "../src/input/internal_synth_output.h"
 #include "../src/audio/audio_mutation_gate.h"
+#include "../src/audio/pattern_paging.h"
 #include "arduino_compat.h"
 
 // Define Serial and SD instances for SDL build
@@ -33,14 +37,20 @@ SDMock SD;
 struct AudioContext {
   explicit AudioContext(float sampleRate)
       : storage(),
+#if GROOVEPUTER_ENABLE_SAMPLER
         pool(),
+#endif
         synth(sampleRate, &storage),
         internalSynthOutput(synth, mutationGate),
         device(0) {
+#if GROOVEPUTER_ENABLE_SAMPLER
     synth.sampleStore = &pool;
+#endif
   }
   SceneStorageSdl storage;
+#if GROOVEPUTER_ENABLE_SAMPLER
   RamSampleStore pool;
+#endif
   MiniAcid synth;
   AudioMutationGate mutationGate;
   InternalSynthOutput internalSynthOutput;
@@ -57,6 +67,8 @@ struct AppState {
   AudioContext audio;
   MusicalEventRouter router;
   PerformanceKeyboard keyboard;
+  GroovePuterPerformance::PerformanceHarmonyBridge harmonyBridge;
+  GroovePuterPerformance::PerformanceHarmonyRouteCache harmonyRouteCache;
   IGfx* gfx = nullptr;
   SDLDisplay* sdl = nullptr;
   CardputerDisplay* card = nullptr;
@@ -77,6 +89,8 @@ static void audioCallback(void *userdata, Uint8 *stream, int len) {
   ctx->recorder.writeSamples(out, frames);
 }
 
+static bool s_hKeyHeld = false;
+
 static void handleEvents(AppState& s) {
   SDL_Event e;
   auto scaleMouse = [&](int value) {
@@ -93,7 +107,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = e.motion.state != 0 ? GROOVEPUTER_MOUSE_DRAG : GROOVEPUTER_MOUSE_MOVE;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       grooveputerEvent.x = scaleMouse(e.motion.x);
       grooveputerEvent.y = scaleMouse(e.motion.y);
@@ -112,7 +126,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = e.type == SDL_MOUSEBUTTONDOWN ? GROOVEPUTER_MOUSE_DOWN : GROOVEPUTER_MOUSE_UP;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       grooveputerEvent.x = scaleMouse(e.button.x);
       grooveputerEvent.y = scaleMouse(e.button.y);
@@ -136,7 +150,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = GROOVEPUTER_MOUSE_SCROLL;
       grooveputerEvent.alt = (SDL_GetModState() & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (SDL_GetModState() & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (SDL_GetModState() & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (SDL_GetModState() & KMOD_GUI) != 0;
       SDL_GetMouseState(&grooveputerEvent.x, &grooveputerEvent.y);
       grooveputerEvent.x = scaleMouse(grooveputerEvent.x);
@@ -155,7 +169,7 @@ static void handleEvents(AppState& s) {
       grooveputerEvent.event_type = GROOVEPUTER_KEY_DOWN;
       grooveputerEvent.alt = (e.key.keysym.mod & KMOD_ALT) != 0;
       grooveputerEvent.ctrl = (e.key.keysym.mod & KMOD_CTRL) != 0;
-      grooveputerEvent.shift = (e.key.keysym.mod & KMOD_SHIFT) != 0;
+      grooveputerEvent.shift = false;  // Shift is not a control modifier.
       grooveputerEvent.meta = (e.key.keysym.mod & KMOD_GUI) != 0;
       switch(sc) {
         case SDL_SCANCODE_DOWN:
@@ -190,10 +204,18 @@ static void handleEvents(AppState& s) {
         grooveputerEvent.key = static_cast<char>(keycode);
       }
 
+      if (!grooveputerEvent.alt && !grooveputerEvent.ctrl && !grooveputerEvent.meta &&
+          (keycode == SDLK_h || sc == SDL_SCANCODE_H)) {
+        s_hKeyHeld = true;
+      }
+
       bool handledByUI = s.ui ? s.ui->handleEvent(grooveputerEvent) : false;
       if (handledByUI) continue;
 
       if (sc == SDL_SCANCODE_ESCAPE) {
+        if (UI::dismissHintOverlay()) {
+          if (s.ui) s.ui->update();
+        }
         // s.running = false;
       } else if (sc == SDL_SCANCODE_RETURN || sc == SDL_SCANCODE_KP_ENTER) {
         if (s.ui) s.ui->dismissSplash();
@@ -207,10 +229,10 @@ static void handleEvents(AppState& s) {
         }
         SDL_UnlockAudioDevice(s.audio.device);
       } else if (sc == SDL_SCANCODE_LEFTBRACKET) {
-        if (s.ui) s.ui->previousPage();
+        if (s.ui) s.ui->previousPage((SDL_GetModState() & KMOD_GUI) != 0);
         if (s.ui) s.ui->update();
       } else if (sc == SDL_SCANCODE_RIGHTBRACKET) {
-        if (s.ui) s.ui->nextPage();
+        if (s.ui) s.ui->nextPage((SDL_GetModState() & KMOD_GUI) != 0);
         if (s.ui) s.ui->update();
       } else if (sc == SDL_SCANCODE_I) {
         SDL_LockAudioDevice(s.audio.device);
@@ -285,6 +307,9 @@ static void handleEvents(AppState& s) {
       }
     } else if (e.type == SDL_KEYUP) {
       const SDL_Keycode keycode = e.key.keysym.sym;
+      if (keycode == SDLK_h || e.key.keysym.scancode == SDL_SCANCODE_H) {
+        s_hKeyHeld = false;
+      }
       const bool modified = (e.key.keysym.mod & (KMOD_ALT | KMOD_CTRL | KMOD_SHIFT | KMOD_GUI)) != 0;
       if (!modified && keycode >= 32 && keycode < 127) {
         s.keyboard.keyUp(static_cast<char>(keycode));
@@ -294,6 +319,9 @@ static void handleEvents(AppState& s) {
 }
 
 static void updateUI(AppState& s) {
+  if (UI::updateHintOverlay(s_hKeyHeld, SDL_GetTicks())) {
+    if (s.ui) s.ui->update();
+  }
   unsigned long now = SDL_GetTicks();
   if (now - s.lastUIUpdate > 80) {
     s.lastUIUpdate = now;
@@ -331,6 +359,71 @@ static void cleanup(AppState& s) {
 static void mainLoopTick(void* userdata) {
   AppState* s = static_cast<AppState*>(userdata);
   handleEvents(*s);
+  s->audio.internalSynthOutput.syncPatternOwnership();
+  s->keyboard.setTransportPlaying(s->audio.synth.isPlaying());
+  GroovePuterHarmony::HarmonySnapshot snapshot{};
+  snapshot.status = GroovePuterHarmony::HarmonyStatus::NoHarmony;
+  GroovePuterPerformance::HarmonyPlaybackPosition position{};
+  const auto* origin = s->audio.synth.generatedSynthAOrigin();
+  const auto* recipe = s->audio.synth.generatedPhraseRecipe();
+  if (origin && recipe &&
+      s->audio.synth.tryCaptureHarmonyPlaybackPosition(position)) {
+    if (origin->common.harmonicAuthority ==
+        GroovePuterHarmony::HarmonicAuthority::Graph) {
+      using GroovePuterHarmony::SongHarmonicParticipant;
+      SongHarmonicParticipant participants[
+          GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
+      uint8_t participantCount = 0;
+      if (recipe->songSlot >= 0 && recipe->songSlot < 2 &&
+          recipe->songStart >= 0 && recipe->songStart < 128 &&
+          recipe->bars > 0 && recipe->bars <= 8 &&
+          s->audio.synth.tryCaptureSongHarmonicParticipants(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), recipe->bars,
+              participants, GroovePuterHarmony::kMaxSongHarmonyParticipants,
+              participantCount)) {
+        auto& cache = s->harmonyRouteCache;
+        const std::string& project = PatternPagingService::currentProjectName();
+        const uint32_t now = SDL_GetTicks();
+        if (cache.shouldLookup(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now)) {
+          GroovePuterHarmony::SongHarmonicState loaded{};
+          const auto result = PatternPagingService::loadSongHarmonicState(
+              static_cast<uint8_t>(recipe->songSlot),
+              static_cast<uint8_t>(recipe->songStart), participants,
+              participantCount, loaded);
+          const bool ok = result == SongHarmonicStorageStatus::Ok;
+          const bool retryable = result == SongHarmonicStorageStatus::NotFound ||
+                                 result == SongHarmonicStorageStatus::IoError;
+          cache.rememberResult(project, static_cast<uint8_t>(recipe->songSlot),
+                               static_cast<uint8_t>(recipe->songStart),
+                               participants, participantCount, now, ok,
+                               retryable, ok ? &loaded : nullptr);
+        }
+        if (const auto* state = cache.stateFor(
+                project, static_cast<uint8_t>(recipe->songSlot),
+                static_cast<uint8_t>(recipe->songStart), participants,
+                participantCount)) {
+          (void)GroovePuterPerformance::makeGraphHarmonySnapshot(
+              *state, participants, participantCount, *origin, *recipe,
+              position, snapshot);
+        }
+      }
+    } else {
+      (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
+          *origin, *recipe, position, snapshot);
+    }
+  } else if (!s->audio.synth.songModeEnabled()) {
+    const auto* patternOrigin = s->audio.synth.generatedPatternHarmonyOrigin();
+    GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
+    if (patternOrigin &&
+        s->audio.synth.tryCapturePatternHarmonyPlaybackPosition(patternPosition))
+      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+          *patternOrigin, patternPosition, snapshot);
+  }
+  s->harmonyBridge.update(s->keyboard, snapshot);
+  s->keyboard.service(SDL_GetTicks() * 1000u);
   updateUI(*s);
   if (!s->running) {
 #ifdef __EMSCRIPTEN__
@@ -371,12 +464,14 @@ int main(int argc, char **argv) {
   state.gfx->begin();
   state.audio.synth.init();
   
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Initialize sample index and register files into the store
   state.audio.synth.sampleIndex.scanDirectory("../samples");
   for (const auto& file : state.audio.synth.sampleIndex.getFiles()) {
       state.audio.pool.registerFile(file.id, file.fullPath);
   }
 
+#endif
   SDL_AudioSpec desired{};
   desired.freq = kSampleRate;
   desired.format = AUDIO_S16SYS;

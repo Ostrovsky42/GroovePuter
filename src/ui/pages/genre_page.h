@@ -5,8 +5,11 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../selection_popup.h"
+#include "../ui_view_continuity.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/generation/composition/rhythm_selection.h"
+#include "src/generation/tonal/scale_catalog.h"
 #include "src/state/scene_revision.h"
 
 class GenrePage : public IPage {
@@ -24,7 +27,22 @@ class GenrePage : public IPage {
     Variant,
     Rhythm,
     Depth,
+    Key,
     Apply,
+  };
+
+  // GENRE 1/3 and GEN 2/3 share this page; Tab steps GENRE -> GEN -> FEEL.
+  enum class Panel : uint8_t {
+    Genre = 0,
+    Gen,
+  };
+
+  enum class GenRow : uint8_t {
+    Target = 0,
+    Drums,
+    Length,
+    Lively,
+    Notes,
   };
 
   enum class ApplyMode : uint8_t {
@@ -32,6 +50,16 @@ class GenrePage : public IPage {
     Regenerate,
     RegenerateTempo,
   };
+
+  void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+    state.genreFocus = static_cast<uint8_t>(focus_);
+  }
+
+  void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+    uint8_t focus = state.genreFocus;
+    if (focus > static_cast<uint8_t>(FocusRow::Apply)) focus = 0;
+    focus_ = static_cast<FocusRow>(focus);
+  }
 
   void updateFromEngine();
   void moveFocus(int delta);
@@ -41,6 +69,16 @@ class GenrePage : public IPage {
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
   void applyCurrent(bool forceRegenerate = false);
+  void applyPreset(int index);
+  void applyPendingProfile();
+  bool generateFromG();
+  void drawGenPanel(IGfx& gfx);
+  bool handleGenPanelNav(int nav);
+  void openRecipePopup();
+  void openScalePopup();
+  void openHarmonyPopup();
+  bool cycleProjectKeyRoot(int direction = 1);
+  bool handleSelectionPopup(UIEvent& event);
 
   ApplyMode currentApplyMode() const;
   const char* applyModeName() const;
@@ -56,12 +94,27 @@ class GenrePage : public IPage {
   AudioGuard audio_guard_;
   VisualStyle style_ = VisualStyle::MINIMAL;
   FocusRow focus_ = FocusRow::Genre;
+  Panel panel_ = Panel::Genre;
+  GenRow gen_focus_ = GenRow::Target;
   int genre_index_ = 0;
   int recipeIndex_ = 0;
+  int presetCursor_ = -1;
   GroovePuterRhythm::RhythmSelectionMode rhythmMode_ =
       GroovePuterRhythm::RhythmSelectionMode::Auto;
   GroovePuterRhythm::RhythmArchetypeId rhythmArchetypeId_ =
       GroovePuterRhythm::kNoArchetypeId;
+  uint8_t pendingHarmonyStrategy_ = 0;
   bool rhythmFallbackPending_ = false;
+  enum class PopupKind : uint8_t { None = 0, Recipe, Scale, Harmony };
+  PopupKind popupKind_{PopupKind::None};
+  UI::SelectionPopup selectionPopup_;
+  static constexpr uint8_t kMaxPopupItems = 32;
+  const char* recipePopupLabels_[kMaxPopupItems]{};
+  GenreRecipeId recipePopupRecipes_[kMaxPopupItems]{};
+  uint8_t recipePopupCount_{0};
+  const char* scalePopupLabels_[GroovePuterRhythm::kScaleTypeCount]{};
+  const char* harmonyPopupLabels_[3]{};
+  uint8_t harmonyPopupValues_[3]{};
+  uint8_t harmonyPopupCount_{0};
   std::string title_ = "GENRE";
 };

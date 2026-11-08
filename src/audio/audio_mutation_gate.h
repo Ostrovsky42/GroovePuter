@@ -45,6 +45,32 @@ public:
     pauseRequested_.store(false, std::memory_order_release);
   }
 
+  // The outermost control mutation may temporarily release audio while it
+  // performs storage I/O against an immutable candidate. Its caller must
+  // reacquire before publishing any RAM state and before its Scope ends.
+  bool openControlIoWindow() {
+    if (controlDepth_ != 1 || ioWindowOpen_) return false;
+    ioWindowOpen_ = true;
+    pauseRequested_.store(false, std::memory_order_release);
+    while (audioTaskActive_.load(std::memory_order_acquire) &&
+           audioPaused_.load(std::memory_order_acquire)) {
+      yieldCurrentThread_();
+    }
+    return true;
+  }
+
+  bool closeControlIoWindow() {
+    if (controlDepth_ != 1 || !ioWindowOpen_) return false;
+    if (audioTaskActive_.load(std::memory_order_acquire)) {
+      pauseRequested_.store(true, std::memory_order_release);
+      while (!audioPaused_.load(std::memory_order_acquire)) {
+        yieldCurrentThread_();
+      }
+    }
+    ioWindowOpen_ = false;
+    return true;
+  }
+
   void waitAtAudioBoundary() {
     if (!pauseRequested_.load(std::memory_order_acquire)) return;
 
@@ -78,6 +104,7 @@ private:
 
   // Accessed only by the single control/UI thread.
   uint32_t controlDepth_ = 0;
+  bool ioWindowOpen_ = false;
 };
 
 class AudioMutationScope {

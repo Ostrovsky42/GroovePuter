@@ -1,6 +1,9 @@
+#include "src/ui/save_probe.h"
 #include "miniacid_display.h"
+#include "src/midi/transport_clock_runtime.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
+#include "src/ui/project_key.h"
 #include "src/state/undo_owner.h"
 #include "undo_ux.h"
 #include "src/platform/cardputer_ui_session.h"
@@ -29,6 +32,7 @@
 #include "ui_colors.h"
 #include "ui_input.h"
 #include "ui_common.h"
+#include "ui_location.h"
 #include "ui_theme.h"
 #include "screen_geometry.h"
 #if defined(ESP32) || defined(ESP_PLATFORM)
@@ -43,6 +47,30 @@
 
 namespace {
 constexpr int kSmfPlayerPage = WorkflowPages::kPlayer;
+#if defined(ARDUINO) && (defined(ESP32) || defined(ESP_PLATFORM))
+int g_firstSynthFrameTracePage = -1;
+void traceSynthUiStage(int page, const char* stage) {
+    if (page != 1 && page != 2) return;
+    Serial.printf("[UI-TRACE] page=%d stage=%s\n", page, stage);
+    Serial.flush();
+}
+#else
+int g_firstSynthFrameTracePage = -1;
+void traceSynthUiStage(int, const char*) {}
+#endif
+
+// Transition-only breadcrumbs: no logging in steady-state rendering or audio.
+void tracePageStage(int page, const char* stage) {
+#if defined(ESP32) || defined(ESP_PLATFORM)
+    Serial.printf("[UI-TRACE] page=%d stage=%s freeInt=%u largestInt=%u\n",
+                  page, stage,
+                  static_cast<unsigned>(heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)),
+                  static_cast<unsigned>(heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT)));
+#else
+    (void)page;
+    (void)stage;
+#endif
+}
 
 VisualStyle nextVisualStyle(VisualStyle style) {
     return UI::nextThemeStyle(style);
@@ -50,10 +78,10 @@ VisualStyle nextVisualStyle(VisualStyle style) {
 
 const char* visualStyleName(VisualStyle style) {
     switch (style) {
-        case VisualStyle::MINIMAL: return "CARBON";
+        case VisualStyle::MINIMAL: return "CLEAN";
         case VisualStyle::RETRO_CLASSIC: return "CYBER";
         case VisualStyle::AMBER: return "AMBER";
-        default: return "CARBON";
+        default: return "CLEAN";
     }
 }
 } // namespace
@@ -91,7 +119,7 @@ MiniAcidDisplay::MiniAcidDisplay(IGfx& gfx,
                   static_cast<int>(ui_session_.lastPageByWorkflow[3]),
                   static_cast<int>(ui_session_.lastPageByWorkflow[4]));
     UI::currentStyle = static_cast<VisualStyle>(ui_session_.visualStyle);
-    UI::waveformOverlay.enabled = ui_session_.waveformOverlayEnabled != 0;
+    UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && ui_session_.waveformOverlayEnabled != 0;
     if (mini_acid_.lastSceneLoadRecoveredAutosave()) {
         GroovePuterState::markSceneMutated();
     }
@@ -131,7 +159,7 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
         case 9:  page = std::make_unique<SettingsPage>(gfx_, mini_acid_, audio_guard_); break;
         case 10: page = std::make_unique<ProjectPage>(gfx_, mini_acid_, audio_guard_); break;
         case 11: page = std::make_unique<ModePage>(gfx_, mini_acid_, audio_guard_); break;
-        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_); break;
+        case 12: page = std::make_unique<PerformPage>(gfx_, mini_acid_, performance_keyboard_, audio_guard_); break;
         case WorkflowPages::kPhrase:
             page = std::make_unique<PhrasePage>(
                 gfx_, mini_acid_, audio_guard_, /*coreMode=*/false);
@@ -141,7 +169,11 @@ std::unique_ptr<IPage> MiniAcidDisplay::createPage_(int index) {
                 gfx_, mini_acid_, audio_guard_, /*coreMode=*/true);
             break;
         case WorkflowPages::kSampler:
+#if GROOVEPUTER_ENABLE_SAMPLER
             page = std::make_unique<SamplerPage>(gfx_, mini_acid_, audio_guard_);
+#else
+            page = std::make_unique<DrumSequencerPage>(gfx_, mini_acid_, audio_guard_);
+#endif
             break;
         case kSmfPlayerPage:
             page = std::make_unique<SmfPlayerPage>(gfx_, mini_acid_, audio_guard_);
@@ -173,13 +205,23 @@ IPage* MiniAcidDisplay::getPage_(int index) {
         for (int i = 0; i < kPageCount; ++i) {
             bool keep = (i == index);
             if (!aggressive && i == previous_page_index_) keep = true;
-            if (!keep && pages_[i]) pages_[i].reset();
+            if (!keep && pages_[i]) {
+                pages_[i]->captureViewContinuity(ui_view_continuity_);
+                pages_[i].reset();
+            }
         }
 
         pages_[index] = createPage_(index);
         if (pages_[index]) {
+            traceSynthUiStage(index, "post-create");
+            traceSynthUiStage(index, "restore-begin");
+            pages_[index]->restoreViewContinuity(ui_view_continuity_);
+            traceSynthUiStage(index, "restore-end");
             pages_[index]->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+            traceSynthUiStage(index, "bounds-end");
             pages_[index]->setVisualStyle(UI::currentStyle);
+            traceSynthUiStage(index, "style-end");
+            if (index == 1 || index == 2) g_firstSynthFrameTracePage = index;
         }
     }
     return pages_[index].get();
@@ -199,15 +241,62 @@ void MiniAcidDisplay::setAudioRecorder(IAudioRecorder* recorder) {
     audio_recorder_ = recorder;
 }
 
-void MiniAcidDisplay::update() {
+// One key for the whole project (0.9.17): the scene's key (Melody K/M, G)
+// and the KEYBOARD's scale/root are the same setting. The scene owns it; a
+// change made on KEYBOARD is written back, any other change (K/M, a loaded
+// scene) is pushed to the KEYBOARD. Runs once per frame on the UI thread.
+void MiniAcidDisplay::syncProjectKey_() {
+    auto& params = mini_acid_.sceneManager().currentScene().generatorParams;
+    const uint8_t sceneRoot = ProjectKey::pitchClass(params.scaleRoot);
+    const PerformanceScale sceneScale = ProjectKey::toPerformanceScale(
+        static_cast<ProjectKey::ScaleTypeValue>(params.scale));
+    const uint8_t keyboardRoot = performance_keyboard_.rootPitchClass();
+    const PerformanceScale keyboardScale = performance_keyboard_.scale();
+    const bool keyboardEdited = key_synced_ &&
+        (keyboardRoot != synced_key_root_ || keyboardScale != synced_key_scale_);
+    if (keyboardEdited) {
+        withAudioGuard([&]() {
+            params.scaleRoot = keyboardRoot;
+            params.scale = static_cast<ScaleType>(
+                ProjectKey::fromPerformanceScale(keyboardScale));
+        });
+        GroovePuterState::markSceneMutated();
+    } else if (!key_synced_ || keyboardRoot != sceneRoot ||
+               keyboardScale != sceneScale) {
+        performance_keyboard_.setRootPitchClass(sceneRoot);
+        performance_keyboard_.setScale(sceneScale);
+    }
+    key_synced_ = true;
+    synced_key_root_ = performance_keyboard_.rootPitchClass();
+    synced_key_scale_ = performance_keyboard_.scale();
+}
+
+void MiniAcidDisplay::update(void (*frameOverlay)()) {
+    if (mini_acid_.rhythmAuditionCleanupDue()) {
+        withAudioGuard([&]() { mini_acid_.serviceRhythmAuditionCleanup(); });
+    }
+    syncProjectKey_();
     servicePersistence_();
     syncVisualStyle_();
     handlePaging_();
+    // Song rows that name a Melody slot are prepared here, off the audio thread.
+    if (mini_acid_.songMaterialServiceDue()) {
+        withAudioGuard([&]() { mini_acid_.serviceSongMaterial(); });
+    }
+    // A finished synth engine crossfade is committed here, under the guard:
+    // the AudioTask never frees an engine the UI may be reading.
+    if (mini_acid_.synthEngineSwitchDue()) {
+        withAudioGuard([&]() { mini_acid_.commitSettledSynthEngineSwitches(); });
+    }
+    if (mini_acid_.drumEngineSwitchDue()) {
+        withAudioGuard([&]() { mini_acid_.applyPendingDrumEngineSwitch(); });
+    }
     gfx_.startWrite();
     if (splash_active_) {
         drawSplashScreen();
         if (millis() - splash_start_ms_ > 2000) dismissSplash();
         if (splash_active_) {
+            if (frameOverlay) frameOverlay();
             gfx_.flush();
             gfx_.endWrite();
             return;
@@ -221,27 +310,51 @@ void MiniAcidDisplay::update() {
     } else {
         gfx_.clear(COLOR_BLACK);
     }
+
+    UI::UiStatusContext statusContext = UI::UiStatusContext::Unknown;
+    UI::UiLocation statusLocation{};
+    if (UI::tryUiLocationForPage(page_index_, statusLocation)) {
+        statusContext = UI::uiStatusContextForLocation(statusLocation);
+    }
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-begin");
+    const UI::UiStatusSnapshot frameStatus = UI::captureUiStatusSnapshot(mini_acid_, statusContext);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-status-end");
     
+    UI::UiShellFrameModel shellFrame{};
+    UI::beginShellFrameModel(shellFrame);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-get-begin");
     IPage* currentPage = getPage_(page_index_);
+    if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-get-end");
     if (currentPage) {
+        if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.bounds.begin");
         currentPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        if (g_firstSynthFrameTracePage == page_index_) traceSynthUiStage(page_index_, "frame-tick-begin");
         currentPage->tick();
+        if (g_firstSynthFrameTracePage == page_index_) {
+            traceSynthUiStage(page_index_, "frame-tick-end");
+            traceSynthUiStage(page_index_, "frame-draw-begin");
+        }
         currentPage->draw(gfx_);
+        if (g_firstSynthFrameTracePage == page_index_) {
+            traceSynthUiStage(page_index_, "frame-draw-end");
+            g_firstSynthFrameTracePage = -1;
+        }
     } else {
-        LayoutManager::drawHeader(gfx_, "--", mini_acid_.bpm(), "WIP/INVALID PAGE", false);
         LayoutManager::clearContent(gfx_);
         gfx_.setTextColor(COLOR_WHITE);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(2), "PAGE INDEX INVALID");
         char buf[32];
         snprintf(buf, sizeof(buf), "idx=%d kPageCount=%d", page_index_, kPageCount);
         gfx_.drawText(Layout::COL_1, LayoutManager::lineY(3), buf);
-        LayoutManager::drawFooter(gfx_, "[ ] workspaces", "Fn+M menu");
+        UI::publishShellFooter("[ ] workspaces", "Fn+M menu");
     }
-    
-    UI::drawLiveMixLockBadge(gfx_, mini_acid_);
+    UI::endShellFrameModel();
+    UI::drawStatusChrome(gfx_, frameStatus);
+    UI::drawShellFooter(gfx_, shellFrame.footer);
 
     updateCyclePulse_();
-    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_);
+    UI::drawPerformanceHud(gfx_, mini_acid_, millis() < cycle_pulse_until_ms_,
+                           shellFrame.feelOverlay);
 
     if (workspace_launcher_.isVisible()) {
         workspace_launcher_.draw(gfx_);
@@ -251,10 +364,17 @@ void MiniAcidDisplay::update() {
         global_help_overlay_.setPageContext(page_index_);
         global_help_overlay_.draw(gfx_);
     }
+
+    if (global_midi_sync_overlay_.isVisible()) {
+        global_midi_sync_overlay_.draw(gfx_, mini_acid_);
+    }
     
     drawToast();
+    if (frameOverlay) frameOverlay();
     gfx_.flush();
     gfx_.endWrite();
+    if (first_draw_trace_pending_) tracePageStage(page_index_, "frame.end");
+    first_draw_trace_pending_ = false;
 }
 
 void MiniAcidDisplay::captureUiSession_() {
@@ -313,7 +433,9 @@ void MiniAcidDisplay::servicePersistence_() {
     if (revision.currentRevision != observed_scene_revision_) {
         observed_scene_revision_ = revision.currentRevision;
         recovery_save_pending_ = true;
-        recovery_save_due_ms_ = now + 3000;
+        // One recovery write per burst of edits: each write blocks the UI for up to ~3 s on SD,
+        // so wait 5 s of quiet before writing (was 12 s; 3 s was too soon).
+        recovery_save_due_ms_ = now + 5000;
     }
     if (!recovery_save_pending_ || mini_acid_.isPlaying() ||
         !due(recovery_save_due_ms_)) {
@@ -321,7 +443,13 @@ void MiniAcidDisplay::servicePersistence_() {
     }
 
     bool saved = false;
-    withAudioGuard([&]() { saved = mini_acid_.autoSaveSceneRecovery(); });
+    SAVE_PROBE_BEGIN("autosave", mini_acid_.isPlaying())
+    withAudioGuard([&]() {
+        SAVE_PROBE_HOLD_BEGIN();
+        saved = mini_acid_.autoSaveSceneRecovery();
+        SAVE_PROBE_HOLD_END();
+    });
+    SAVE_PROBE_END(saved);
     if (saved) {
         recovery_save_pending_ = false;
         Serial.printf("[AUTOSAVE] recovery revision=%u\n",
@@ -342,10 +470,12 @@ void MiniAcidDisplay::syncVisualStyle_() {
     }
 }
 
-void MiniAcidDisplay::nextPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::nextPage(bool workflowModifier) {
+    // Either source counts. The hardware query stays so the device keeps the
+    // exact behaviour it had; the argument is what makes the same gesture
+    // reachable where hardwareWorkflowModifierHeld() is compiled out to false.
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(1);
         return;
     }
@@ -353,10 +483,9 @@ void MiniAcidDisplay::nextPage() {
         ui_session_, page_index_, 1, false));
 }
 
-void MiniAcidDisplay::previousPage() {
-    const bool workflowModifier =
-        WorkflowPages::hardwareWorkflowModifierHeld();
-    if (workflowModifier) {
+void MiniAcidDisplay::previousPage(bool workflowModifier) {
+    if (workflowModifier ||
+        WorkflowPages::hardwareWorkflowModifierHeld()) {
         switchWorkflow_(-1);
         return;
     }
@@ -398,6 +527,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     }
 
     if (page_index_ == index && context == 0) return;
+    reset_pending_until_ms_ = 0;
 
     Serial.printf("[UI] transitionToPage: %d -> %d (ctx=%d)\n", page_index_, index, context);
 
@@ -406,6 +536,7 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
 
     previous_page_index_ = page_index_;
     page_index_ = index;
+    first_draw_trace_pending_ = true;
     if (WorkflowPages::isWorkspacePage(index)) {
         active_workspace_ = WorkflowPages::workspaceForPage(index);
     }
@@ -419,12 +550,37 @@ void MiniAcidDisplay::transitionToPage_(int index, int context) {
     scheduleUiSessionSave_();
 
     IPage* newPage = getPage_(index);
+    traceSynthUiStage(index, "transition-get-end");
     if (newPage) {
         newPage->setBoundaries(Rect{0, 0, gfx_.width(), gfx_.height()});
+        traceSynthUiStage(index, "transition-bounds-end");
         newPage->onEnter(context);
+        traceSynthUiStage(index, "transition-enter-end");
+        traceSynthUiStage(index, "transition-title-begin");
+        const std::string& transitionTitle = newPage->getTitle();
+        traceSynthUiStage(index, "transition-title-end");
         Serial.printf("[UI] transition: %d -> %d (%s, ctx=%d)\n", 
-                      previous_page_index_, page_index_, newPage->getTitle().c_str(), context);
+                      previous_page_index_, page_index_, transitionTitle.c_str(), context);
+        traceSynthUiStage(index, "transition-log-end");
     }
+}
+
+// Help opens at the section of what the page shows now (SYNTH help starts at
+// MELODY on the Melody editor, not at the pattern keys 25 lines above).
+void MiniAcidDisplay::openPageHelp_() {
+    global_help_overlay_.setPageContext(page_index_);
+    IPage* page = getPage_(page_index_);
+    const char* anchor = page ? page->helpAnchor() : nullptr;
+    global_help_overlay_.toggle(HelpContent::findLine(page_index_, anchor));
+}
+
+bool MiniAcidDisplay::repeatsAltVertical() {
+    if (splash_active_ || global_midi_sync_overlay_.isVisible() ||
+        global_help_overlay_.isVisible() || workspace_launcher_.isVisible()) {
+        return false;
+    }
+    IPage* page = getPage_(page_index_);
+    return page != nullptr && page->repeatsAltVertical();
 }
 
 void MiniAcidDisplay::dismissSplash() {
@@ -432,8 +588,41 @@ void MiniAcidDisplay::dismissSplash() {
 }
 
 bool MiniAcidDisplay::handleEvent(UIEvent event) {
+    if (reset_pending_until_ms_ != 0) {
+        // Modifier-only events (no key) must not cancel: Ctrl and Alt arrive before Backspace.
+        const bool modifierOnly = event.key == 0;
+        const bool resetCombo = event.ctrl && event.alt &&
+                                (event.key == '\b' || event.key == 0x7F);
+        if (!modifierOnly && (!resetCombo || millis() > reset_pending_until_ms_)) {
+            reset_pending_until_ms_ = 0;
+            showToast("RESET CANCELLED", 800);
+        }
+    }
+    if (global_midi_sync_overlay_.isVisible()) {
+        global_midi_sync_overlay_.handleEvent(event);
+        const int tempoDelta = global_midi_sync_overlay_.takeTempoDelta();
+        const auto& clock = GroovePuterMidi::transportClockRuntime();
+        const bool followsMidiClock = clock.source() ==
+            GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
+            clock.externalFollowEnabled();
+        if (tempoDelta != 0 && !followsMidiClock) {
+            const float before = mini_acid_.projectBpm();
+            withAudioGuard([&]() { mini_acid_.setBpm(before + tempoDelta); });
+            if (mini_acid_.projectBpm() != before) GroovePuterState::markSceneMutated();
+        }
+        return true;
+    }
+
     if (global_help_overlay_.isVisible()) {
         if (global_help_overlay_.handleEvent(event)) return true;
+    }
+
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && event.alt &&
+        !event.ctrl && !event.meta &&
+        (event.key == 'y' || event.key == 'Y')) {
+        workspace_launcher_.close();
+        global_midi_sync_overlay_.open();
+        return true;
     }
 
     if (workspace_launcher_.isVisible()) {
@@ -442,8 +631,9 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             if (workspace_launcher_.takePageRequest(requestedPage)) {
                 transitionToPage_(requestedPage);
             } else if (workspace_launcher_.takeHelpRequest()) {
-                global_help_overlay_.setPageContext(page_index_);
-                global_help_overlay_.toggle();
+                openPageHelp_();
+            } else if (workspace_launcher_.takeSyncRequest()) {
+                global_midi_sync_overlay_.open();
             }
             return true;
         }
@@ -465,7 +655,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.meta && (event.key == '\t' || event.scancode == GROOVEPUTER_TAB)) {
-            switchWorkflow_(event.shift ? -1 : 1);
+            switchWorkflow_(1);
             return true;
         }
 
@@ -483,26 +673,32 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
 
         if (event.alt && (event.key == 'h' || event.key == 'H')) {
             workspace_launcher_.close();
-            global_help_overlay_.setPageContext(page_index_);
-            global_help_overlay_.toggle();
+            openPageHelp_();
             return true;
         }
 
+        // A refused page switch says why instead of doing nothing.
+        const auto switchPageOrSay = [&](int page) {
+            if (mini_acid_.tryManualPageSwitch(page)) return;
+            const bool melody = mini_acid_.hasUnsavedWorkingMelody(0) ||
+                                mini_acid_.hasUnsavedWorkingMelody(1);
+            UI::showToast(melody ? "SAVE MELODY FIRST" : "SAVE STEPS FIRST", 1000);
+        };
         if (event.alt && (event.key == '[' || event.key == '{')) {
             int prev = mini_acid_.currentPageIndex() - 1;
             if (prev < 0) prev = kMaxPages - 1;
-            mini_acid_.requestPageSwitch(prev);
+            switchPageOrSay(prev);
             return true;
         }
         if (event.alt && (event.key == ']' || event.key == '}')) {
             int next = (mini_acid_.currentPageIndex() + 1) % kMaxPages;
-            mini_acid_.requestPageSwitch(next);
+            switchPageOrSay(next);
             return true;
         }
 
         if (event.alt && (event.key == 'v' || event.key == 'V')) {
-            Serial.println("[UI] Shortcut Alt+V -> Page 11");
-            goToPage(11);
+            // GENRE (0.9.17); legacy page id 11 would resolve to FEEL.
+            goToPage(WorkflowPages::kGenre);
             return true;
         }
 
@@ -512,13 +708,17 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.alt && (event.key == 'k' || event.key == 'K')) {
+#if GROOVEPUTER_ENABLE_SAMPLER
             goToPage(WorkflowPages::kSampler);
+#else
+            UI::showToast("SAMPLER NOT IN THIS BUILD", 1200);
+#endif
             return true;
         }
 
         if (event.alt && (event.key == 'w' || event.key == 'W') &&
             page_index_ != WorkflowPages::kPhraseCore) {
-            UI::waveformOverlay.enabled = !UI::waveformOverlay.enabled;
+            UI::waveformOverlay.enabled = GROOVEPUTER_ENABLE_WAVEFORM && !UI::waveformOverlay.enabled;
             return true;
         }
 
@@ -553,6 +753,12 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
 
         if (event.ctrl && event.alt && (event.key == '\b' || event.key == 0x7F)) {
+            if (reset_pending_until_ms_ == 0) {
+                reset_pending_until_ms_ = millis() + 3000;
+                showToast("PRESS AGAIN TO RESET", 3000);
+                return true;
+            }
+            reset_pending_until_ms_ = 0;
             performance_keyboard_.panic();
             withAudioGuard([&]() {
                 mini_acid_.sceneManager().loadDefaultScene();
@@ -567,20 +773,7 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
             page_index_ == kSmfPlayerPage && event.meta && !event.alt &&
             !event.ctrl && event.key >= '1' && event.key <= '9';
         if ((event.alt || event.meta) && !event.ctrl && !smfPlayerFnNumber) {
-            int targetPage = -1;
-            switch (event.key) {
-                case '1': targetPage = 1; break;
-                case '2': targetPage = 2; break;
-                case '3': targetPage = WorkflowPages::kSynthA; break;
-                case '4': targetPage = WorkflowPages::kSynthB; break;
-                case '5': targetPage = 5; break;
-                case '6': targetPage = 6; break;
-                case '7': targetPage = 7; break;
-                case '8': targetPage = 8; break;
-                case '9': targetPage = 9; break;
-                case '0': targetPage = 10; break;
-                default: break;
-            }
+            const int targetPage = WorkflowPages::directJumpPage(event.key);
             if (targetPage >= 0) {
                 Serial.printf("[UI] Shortcut Alt+%c -> Page %d\n", event.key, targetPage);
                 goToPage(targetPage);
@@ -607,9 +800,41 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
         }
     }
 
+    // Direct BPM: Ctrl+= / Ctrl+- by 1, Alt+= / Alt+- by 5 (10-250). Pages get
+    // first refusal; Alt+Y and the TEMPO panel are unchanged.
+    if (event.event_type == GROOVEPUTER_KEY_DOWN && !event.meta &&
+        (event.ctrl != event.alt)) {
+        int bpmDelta = 0;
+        if (event.key == '=' || event.key == '+') bpmDelta = 1;
+        else if (event.key == '-' || event.key == '_') bpmDelta = -1;
+        if (bpmDelta != 0) {
+            if (event.alt) bpmDelta *= 5;
+            const auto& clock = GroovePuterMidi::transportClockRuntime();
+            const bool followsMidiClock = clock.source() ==
+                GroovePuterMidi::TransportClockSource::SeqtrakExternal &&
+                clock.externalFollowEnabled();
+            if (followsMidiClock) {
+                showToast("SEQ MASTER BPM", 700);
+                return true;
+            }
+            const float before = mini_acid_.projectBpm();
+            withAudioGuard([&]() { mini_acid_.setBpm(before + bpmDelta); });
+            if (mini_acid_.projectBpm() != before) GroovePuterState::markSceneMutated();
+            char toast[24];
+            std::snprintf(toast, sizeof(toast), "BPM %d",
+                          static_cast<int>(mini_acid_.projectBpm() + 0.5f));
+            showToast(toast, 700);
+            return true;
+        }
+    }
+
     // Pages get first refusal on Space. This lets MIDI Player own its transport
     // without also toggling the global GroovePuter transport.
     if (event.event_type == GROOVEPUTER_KEY_DOWN && event.key == ' ') {
+        if (GroovePuterMidi::externalClockOwnsTransport()) {
+            showToast(GroovePuterMidi::toggleFollowOutputMute(), 900);
+            return true;
+        }
         if (!mini_acid_.isPlaying()) performance_keyboard_.setTransportPlaying(true);
         withAudioGuard([&]() {
             if (mini_acid_.isPlaying()) mini_acid_.stop();
@@ -621,18 +846,17 @@ bool MiniAcidDisplay::handleEvent(UIEvent event) {
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN &&
-        !event.alt && !event.ctrl && !event.shift && !event.meta &&
+        !event.alt && !event.ctrl && !event.meta &&
         WorkflowPages::allowsPerformanceKeyboard(page_index_) &&
         performance_keyboard_.keyDown(event.key)) {
         return true;
     }
 
     if (event.event_type == GROOVEPUTER_KEY_DOWN) {
-        if (event.key == ']') { nextPage(); return true; }
-        if (event.key == '[') { previousPage(); return true; }
+        if (event.key == ']') { nextPage(event.meta); return true; }
+        if (event.key == '[') { previousPage(event.meta); return true; }
 
-        if (event.key == 'h') {
-            showToast("[ ] workspaces  Fn+M menu  Alt+H help", 2200);
+        if (event.key == 'h' || event.key == 'H') {
             return true;
         }
 
@@ -752,9 +976,11 @@ void MiniAcidDisplay::drawSplashScreen() {
       for (int j = 0; j < len; ++j) {
           if (text[j] != ' ') {
               float t = 0.5f + 0.5f * sinf(timeShift * 0.003f + j * 0.08f + y * 0.03f);
-              uint8_t r = (uint8_t)(0x00 + (0x9D - 0x00) * t);
-              uint8_t g = (uint8_t)(0xE5 + (0x00 - 0xE5) * t);
-              uint8_t b = (uint8_t)(0xFF + (0xFF - 0xFF) * t);
+              // CLEAN: the logo breathes between warm white and warm grey
+              // (no cyan/violet gradient on the black theme).
+              uint8_t r = (uint8_t)(0xE7 + (0x9C - 0xE7) * t);
+              uint8_t g = (uint8_t)(0xE3 + (0x9A - 0xE3) * t);
+              uint8_t b = (uint8_t)(0xDE + (0x94 - 0xDE) * t);
               gfx_.setTextColor(IGfxColor((r << 16) | (g << 8) | b));
               char tmp[2] = {text[j], 0};
               gfx_.drawText(sx + j * 6, y, tmp);
@@ -820,7 +1046,8 @@ void MiniAcidDisplay::drawDebugOverlay() {
     (void)cpuIdeal;
     (void)cpuActual;
     gfx_.drawText(2, yy, buf); yy += 10;
-    snprintf(buf, sizeof(buf), "UNDR:%u", underruns);
+    snprintf(buf, sizeof(buf), "UNDR:%lu",
+             static_cast<unsigned long>(underruns));
     gfx_.drawText(2, yy, buf); yy += 10;
 }
 
@@ -881,16 +1108,34 @@ void MiniAcidDisplay::handlePaging_() {
             result = PageSwitchResult::SaveCurrentFailed;
         } else if (PatternPagingService::pageExists(target)) {
             if (PatternPagingService::loadPage(target, scene)) {
-                mini_acid_.setCurrentPage(target);
-                result = PageSwitchResult::Switched;
+                if (mini_acid_.rebuildPatternRuntimeEventBank()) {
+                    // Page first: rehydrate derives each voice's global slot (its SD
+                    // Melody address) from currentPageIndex().
+                    mini_acid_.setCurrentPage(target);
+                    // Melodies of the new page must sound as its own, not the previous page's.
+                    mini_acid_.rehydrateAcceptedMaterialForPage();
+                    result = PageSwitchResult::Switched;
+                } else if (PatternPagingService::loadPage(current, scene)) {
+                    result = PageSwitchResult::LoadTargetFailed;
+                } else {
+                    result = PageSwitchResult::RollbackFailed;
+                }
             } else {
                 result = PageSwitchResult::LoadTargetFailed;
             }
         } else {
             PatternPagingService::initializeEmptyPage(scene);
             if (PatternPagingService::savePage(target, scene)) {
-                mini_acid_.setCurrentPage(target);
-                result = PageSwitchResult::Created;
+                if (mini_acid_.rebuildPatternRuntimeEventBank()) {
+                    mini_acid_.setCurrentPage(target);
+                    // An empty page holds only Patterns: leave no previous Melody playing.
+                    mini_acid_.rehydrateAcceptedMaterialForPage();
+                    result = PageSwitchResult::Created;
+                } else if (PatternPagingService::loadPage(current, scene)) {
+                    result = PageSwitchResult::CreateTargetFailed;
+                } else {
+                    result = PageSwitchResult::RollbackFailed;
+                }
             } else if (PatternPagingService::loadPage(current, scene)) {
                 result = PageSwitchResult::CreateTargetFailed;
             } else {

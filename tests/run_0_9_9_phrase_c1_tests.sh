@@ -10,7 +10,6 @@ mapfile -t COMMON_SOURCES < <(
     grep -F '"${ROOT}/src/' |
     sed -E 's/.*"\$\{ROOT\}(.*)".*/\1/'
 )
-COMMON_SOURCES+=("/src/generation/composition/phrase_length_request.cpp")
 
 TESTS=(
   test_0_9_9_phrase_c1_axes

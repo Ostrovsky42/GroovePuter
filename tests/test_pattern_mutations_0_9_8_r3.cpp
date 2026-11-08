@@ -70,16 +70,27 @@ void testNoteStateMachineAndNoOps() {
   adjustNote(pattern, 0, -1);
   assert(pattern.steps[0].note == -2);
 
+  // Steps hold C1..C7 (kMaxPatternNote): B4 is no longer a ceiling, so
+  // C#5/E5 reach external MIDI as written.
   pattern.steps[1].note = 70;
   adjustNote(pattern, 1, 5);
-  assert(pattern.steps[1].note == kMax303Note);
+  assert(pattern.steps[1].note == 75);
+  pattern.steps[1].note = 94;
+  adjustNote(pattern, 1, 5);
+  assert(pattern.steps[1].note == kMaxPatternNote);
   const SynthPattern saturated = pattern;
   adjustNote(pattern, 1, 1);
   assert(samePattern(pattern, saturated));
 
-  pattern.steps[2].note = 60;
+  pattern.steps[2].note = 64;
   adjustOctave(pattern, 2, 1);
-  assert(pattern.steps[2].note == kMax303Note);
+  assert(pattern.steps[2].note == 76);  // E4 -> E5
+  pattern.steps[2].note = 61;
+  adjustOctave(pattern, 2, 1);
+  assert(pattern.steps[2].note == 73);  // C#4 -> C#5
+  pattern.steps[2].note = 90;
+  adjustOctave(pattern, 2, 1);
+  assert(pattern.steps[2].note == kMaxPatternNote);
 }
 
 void testArticulationAndFx() {
@@ -95,19 +106,51 @@ void testArticulationAndFx() {
 
   cycleFx(pattern, 2);
   assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
-  cycleFx(pattern, 2);
-  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Reverse));
-  cycleFx(pattern, 2);
-  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::None));
-
-  pattern.steps[2].fxParam = 255;
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+  adjustFxParam(pattern, 2, 1);
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount + 1);
+  pattern.steps[2].fxParam = kMaxRetrigCount;
   const SynthPattern high = pattern;
   adjustFxParam(pattern, 2, 1);
   assert(samePattern(pattern, high));
-  pattern.steps[2].fxParam = 0;
+  pattern.steps[2].fxParam = 1;
   const SynthPattern low = pattern;
   adjustFxParam(pattern, 2, -1);
   assert(samePattern(pattern, low));
+
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::None));
+  assert(pattern.steps[2].fxParam == 0);
+
+  // Legacy persisted R0 is a dead synth state. First F normalizes it to the
+  // audible bounded contract rather than spending a press on another no-op.
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Retrig);
+  pattern.steps[2].fxParam = 0;
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+
+  // Legacy persisted Reverse is not a supported synth effect. Pressing F
+  // converts it into the audible Retrig contract instead of exposing RV again.
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Reverse);
+  pattern.steps[2].fxParam = 0;
+  cycleFx(pattern, 2);
+  assert(pattern.steps[2].fx == static_cast<uint8_t>(StepFx::Retrig));
+  assert(pattern.steps[2].fxParam == kDefaultRetrigCount);
+
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::Retrig);
+  pattern.steps[2].fxParam = 255;
+  assert(effectiveRetrigCount(pattern.steps[2]) == kMaxRetrigCount);
+  adjustFxParam(pattern, 2, -1);
+  assert(pattern.steps[2].fxParam == kMaxRetrigCount - 1);
+  pattern.steps[2].fxParam = 255;
+  adjustFxParam(pattern, 2, 1);
+  assert(pattern.steps[2].fxParam == kMaxRetrigCount);
+  pattern.steps[2].fxParam = 0;
+  assert(effectiveRetrigCount(pattern.steps[2]) == 0);
+  pattern.steps[2].fx = static_cast<uint8_t>(StepFx::None);
+  pattern.steps[2].fxParam = 255;
+  assert(effectiveRetrigCount(pattern.steps[2]) == 0);
 }
 
 void testRotation() {

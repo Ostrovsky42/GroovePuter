@@ -6,6 +6,7 @@
 
 #include "../ui_core.h"
 #include "../ui_input.h"
+#include "../ui_view_continuity.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/state/scene_revision.h"
 
@@ -27,6 +28,19 @@ class FeelPage : public IPage {
     Repeats,
     Preset,
   };
+
+  void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+    state.feelFocus = static_cast<uint8_t>(focus_);
+    state.feelPreset = static_cast<uint8_t>(preset_index_);
+  }
+
+  void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+    uint8_t focus = state.feelFocus;
+    if (focus > static_cast<uint8_t>(FocusRow::Preset)) focus = 0;
+    focus_ = static_cast<FocusRow>(focus);
+    preset_index_ = state.feelPreset < 3 ? state.feelPreset : 1;
+    hold_accel_.reset();
+  }
 
   void moveFocus(int delta);
   void adjustFocused(int delta, bool fast);

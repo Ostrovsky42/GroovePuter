@@ -434,5 +434,5 @@ void DrumAutomationPage::draw(IGfx& gfx) {
     }
   }
 
-  UI::drawStandardFooter(gfx, "TAB:SubPg ARW:Edit N:+ X:-", "ENT:AUTO");
+  UI::drawStandardFooter(gfx, "[TAB]SAMPLES [ARWS]EDIT N:+ X:-", "[ENT]AUTO");
 }

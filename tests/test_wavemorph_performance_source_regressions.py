@@ -84,36 +84,50 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
     require("target_ == MusicalEventTarget::Drums" in keyboard_source,
             "native drum routing must remain outside melodic transforms")
 
-    require("bool toolsLayerVisible_{false};" in page_header,
-            "PERFORM must keep tool-layer state local to the page")
+    require("bool toolsLayerVisible_{false};" in page_header and
+            "selectedContext_" in page_header and "selectedRow_" in page_header,
+            "PERFORM must keep only bounded local navigation state")
     require("event.key == '\\t' || event.scancode == GROOVEPUTER_TAB" in page,
-            "plain Tab must open the local performance tool layer")
-    tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
-    for key in ("case '1':", "case '2':", "case '3':", "case '4':",
-                "case '5':", "case '6':", "case '7':", "case '8':"):
-        require(key in tool_block, f"PERFORM tool layer must expose {key}")
-    require("captureHeldPerformanceKeys(keyboard_)" in tool_block and
-            "restoreHeldPerformanceKeys(keyboard_, heldSnapshot)" in tool_block,
-            "tool changes must rehydrate physically held notes after legacy panic-based setters")
-    require("keyboard.heldCount() != 0" in page and
-            "keyboard.isPhysicalKeyHeld(key)" in page,
-            "revoice must be bounded and avoid duplicate logical key ownership")
-    require("new " not in page and "std::vector" not in page,
-            "held-note revoice must remain fixed-allocation")
+            "plain Tab must open the local Performance Instrument layer")
+    require("HeldPerformanceSnapshot" not in page and
+            "captureHeldPerformanceKeys" not in page and
+            "restoreHeldPerformanceKeys" not in page and
+            "keyboard_.keyDown(" not in page,
+            "UI changes must never synthetically recreate physical held-key ownership")
+    # TO MELODY is a separate, explicit control-side export. It uses one
+    # temporary nothrow buffer and refuses on allocation failure; exclude only
+    # that method from the no-allocation rule for the performance UI.
+    export_start = page.index("void PerformPage::exportLooperToMelody()")
+    export_end = page.index("bool PerformPage::looperKey(", export_start)
+    export = page[export_start:export_end]
+    performance_page = page[:export_start] + page[export_end:]
+    require("new " not in performance_page and "std::vector" not in page,
+            "Performance Instrument UI must remain fixed-allocation outside TO MELODY")
+    require("new (std::nothrow) PhraseRuntime::RuntimeSynthEventBuffer()" in export and
+            "TO MELODY: NO MEMORY" in export,
+            "TO MELODY must bound allocation and refuse cleanly on failure")
     handle_block = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    tool_block = block(page, "bool PerformPage::handleToolKey", "void PerformPage::drawToolsLayer")
     require("event.meta" in handle_block and "return false" in handle_block,
             "Fn/meta commands must pass through instead of stealing global shortcuts")
+    for scancode in ("GROOVEPUTER_LEFT", "GROOVEPUTER_RIGHT",
+                     "GROOVEPUTER_UP", "GROOVEPUTER_DOWN"):
+        require(scancode in tool_block,
+                f"local Performance Instrument layer must consume {scancode}")
+    require("adjustSelectedValue" in tool_block and "toggleSelectedValue" in tool_block,
+            "tool edits must use one bounded contextual command dispatcher")
+    require("keyboard_.panic()" not in tool_block,
+            "local command dispatcher must not own global panic")
     require("Fn A/C/K/S/R/E/V" not in page and "Tab Tools" in page,
             "PERFORM hints must describe the local tool layer, not conflicting Fn keys")
     require("keyboard_.setTempoBpm(miniAcid_.bpm());" in page,
             "arp/ratchet timing must follow the current GroovePuter BPM")
-    for label in ("1 ARPEGGIATOR", "2 DIRECTION", "3 CHORD", "4 MEMORY",
-                  "5 STRUM", "6 RATCHET", "7 EUCLIDEAN", "8 ROTATE"):
-        require(label in page, f"PERFORM tools must show the full label {label}")
-    for abbreviated in ("1 ARP  ", "2 DIR  ", "3 CHD  ", "4 MEM  ",
-                        "5 STR  ", "6 RAT  ", "7 EUC  ", "8 ROT  "):
-        require(abbreviated not in page,
-                f"PERFORM tools must not regress to abbreviated label {abbreviated}")
+    for label in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]",
+                  "ROOT", "SCALE", "OCTAVE", "VELOCITY",
+                  "MODE", "INVERSION", "SPREAD", "LEADING", "MEMORY",
+                  "ORDER", "RATE", "OCTAVES", "GATE", "LATCH",
+                  "RATCHET", "EUCLID", "ROTATE", "STRUM"):
+        require(label in page, f"PERFORM contextual tools must show {label}")
 
     require("kGeneratedBitsetBytes" in usb_header and
             "generatedActive_" in usb_header and
@@ -144,8 +158,11 @@ def test_knob_keys_use_coarse_and_fine_steps() -> None:
     require("const int directKnobStep = fine ? kKnobStepFine : kKnobStepCoarse;" in page,
             "direct knob keys must use the existing coarse/fine step policy")
     for expression in ("setValue(directKnobStep)", "setValue(-directKnobStep)"):
-        require(page.count(expression) == 4,
-                "all four knob key pairs must use the accelerated step")
+        require(page.count(expression) == 3,
+                "the three continuous controls must use the accelerated step")
+    require("isDualOsc() ? 1 : directKnobStep" in page and
+            "isDualOsc() ? -1 : -directKnobStep" in page,
+            "Dual OSC cutoff must retain one-step preset selection")
 
 
 def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
@@ -178,16 +195,38 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require("main_focus_slot_" in header and "more_focus_slot_" in header and
             "rememberFocusedSlot" in page and "restoreFocusedSlot" in page,
             "Knobs and More must remember focus independently")
-    require(page.count("LabelValueComponent::Style::Stepper") == 3,
-            "TYPE/OSC/FLT must use full-row steppers")
-    require(page.count("LabelValueComponent::Style::Toggle") == 2,
-            "DST/DLY must use full-row switches")
+
+    init_components = block(
+        page,
+        "void TB303ParamsPage::initComponents()",
+        "bool TB303ParamsPage::isTb303Engine() const",
+    )
+    expected_rows = (
+        ("engine_type", "TYPE", "Stepper"),
+        ("osc", "OSC", "Stepper"),
+        ("filter", "FLT", "Stepper"),
+        ("distortion", "DST", "Toggle"),
+        ("delay", "DLY", "Toggle"),
+        ("preset", "PRESET", "Stepper"),
+        ("make_phrase", "MAKE MELODY", "Stepper"),
+    )
+    for control, label, style in expected_rows:
+        assignment = next(
+            (line for line in init_components.splitlines()
+             if f"{control}_control_ = " in line),
+            "",
+        )
+        require(f'"{label}"' in assignment and f"Style::{style}" in assignment,
+                f"{label} must keep its explicit full-row {style.lower()} style")
+
     require("if (focused)" in page and
             "gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, focus_color_)" in page,
             "the active MORE row must use a filled focus state")
-    require("kMoreRowHeight = 13" in page and "LabelValueComponent* rows[5]" in page and
+    require("kMoreRowHeight = 9" in page and "kMoreRowCount = 7" in page and
+            "LabelValueComponent* rows[kMoreRowCount]" in page and
+            "make_phrase_control_.get()" in page and
             "synth MORE rows must stay above the performance HUD" in page,
-            "MORE must use five stable full-width rows above the HUD")
+            "MORE must keep seven stable full-width rows above the HUD, including MAKE PHRASE")
     require("setEnabled(oscAvailable)" in page and
             "setEnabled(filterAvailable)" in page and
             'setValue("--")' in page,
@@ -262,8 +301,9 @@ def test_tr606_shared_clock_is_not_owned_by_kick() -> None:
     require("6200.0f" in source and "0.55f" in source and
             "fast_tanh(metalSignal * 1.6f)" in source,
             "TR-606 cymbal must retain the tamed 22.05 kHz profile")
-    require('if (voice == 6) return "CYM";' in grid and
-            'if (voice == 7) return "---";' in grid,
+    # Lane labels carry their mute digit since PR #465 (9 -> voice 6, 0 -> 7).
+    require('if (voice == 6) return "9CYM";' in grid and
+            'if (voice == 7) return "0---";' in grid,
             "the 606 grid must label its actual cymbal and unavailable clap lane")
 
 

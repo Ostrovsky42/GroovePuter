@@ -1,12 +1,15 @@
 #include "pattern_edit_page.h"
+#include "../components/step_timing_mark.h"
 
 #include <cctype>
 #include <string>
 #include <utility>
 #include <vector>
 #include "../ui_common.h"
+#include "../melody_playhead.h"
 
 #include "../retro_ui_theme.h"
+#include "../ui_theme.h"
 #include "../retro_widgets.h"
 #include "../amber_ui_theme.h"
 #include "../amber_widgets.h"
@@ -35,7 +38,7 @@ static_assert((SEQ_STEPS % kPatternStepColumns) == 0,
               "Pattern step count must fill complete eight-step rows");
 
 inline IGfxColor voiceColor(int voiceIndex) {
-  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+  return UI::themePalette().voice(voiceIndex);
 }
 
 inline IGfxColor retroVoiceColor(int voiceIndex) {
@@ -72,6 +75,24 @@ inline std::string makePatternPageTitle(MiniAcid& mini_acid, int voiceIndex, int
   return std::string(buf);
 }
 
+// Header title of the STEPS page. The title field of the header bar is 41 px
+// (about 6 characters), so the pair view shows "A 1+2" instead of "303 A".
+inline void formatPatternTitle(char* dst, size_t dstSize, int voiceIndex,
+                               bool chaining, bool pairView, int slotNumber,
+                               bool hasNext) {
+  if (!dst || dstSize == 0) return;
+  const char voice = voiceIndex == 0 ? 'A' : 'B';
+  if (pairView) {
+    if (hasNext) {
+      std::snprintf(dst, dstSize, "%c %d+%d", voice, slotNumber, slotNumber + 1);
+    } else {
+      std::snprintf(dst, dstSize, "%c %d+-", voice, slotNumber);
+    }
+    return;
+  }
+  std::snprintf(dst, dstSize, "303 %c%s", voice, chaining ? " [CHAIN]" : "");
+}
+
 inline void formatPatternMode(char* dst, size_t dstSize,
                               int pageIndex, int bankIndex, int patternIndex,
                               const std::string& engine) {
@@ -106,7 +127,7 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
     if (mini_acid_.songModeEnabled()) return;
     focusPatternRow();
     setPatternCursor(index);
-    withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, index); });
+    withAudioGuard([&]() { mini_acid_.tryManual303TargetSwitch(voice_index_, index); });
   };
   pattern_bar_->setCallbacks(std::move(pattern_callbacks));
   BankSelectionBarComponent::Callbacks bank_callbacks;
@@ -150,8 +171,12 @@ void PatternEditPage::setBankIndex(int bankIndex) {
   if (bankIndex < 0) bankIndex = 0;
   if (bankIndex >= kBankCount) bankIndex = kBankCount - 1;
   if (bank_index_ == bankIndex) return;
+  if (mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
+    UI::showToast("ALT+ENTER SAVE", 1200);
+    return;
+  }
   bank_index_ = bankIndex;
-  withAudioGuard([&]() { mini_acid_.set303BankIndex(voice_index_, bank_index_); });
+  withAudioGuard([&]() { mini_acid_.tryManual303BankSwitch(voice_index_, bank_index_); });
 }
 
 void PatternEditPage::ensureStepFocus() {
@@ -326,26 +351,19 @@ const std::string & PatternEditPage::getTitle() const {
 }
 
 void PatternEditPage::setContext(int context) {
-    // Decode step index (0-15)
     int step = context;
     if (step < 0) step = 0;
     if (step >= SEQ_STEPS) step = SEQ_STEPS - 1;
-    
-    // Set focus to the specific step
     pattern_edit_cursor_ = step;
     focus_ = Focus::Steps;
-    
-    // Sync UI selection bars with current engine state
     pattern_row_cursor_ = mini_acid_.current303PatternIndex(voice_index_);
     bank_index_ = mini_acid_.current303BankIndex(voice_index_);
     bank_cursor_ = bank_index_;
 }
 
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
-  // Let global numeric mutes (1..0) pass through to MiniAcidDisplay.
-  // We intentionally skip local numeric quick-select on this page.
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
-    if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta &&
+    if (!ui_event.ctrl && !ui_event.meta &&
         ui_event.key >= '0' && ui_event.key <= '9') {
       return false;
     }
@@ -356,55 +374,40 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT) {
     switch (ui_event.app_event_type) {
       case GROOVEPUTER_APP_EVENT_COPY: {
-        int patIdx = activePatternCursor();
+        int patIdx = activePatternCursor() + (cursorOnNextSlot() ? 1 : 0);
         const SynthPattern& source = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
         g_pattern_step_clipboard.has_data = true;
         g_pattern_step_clipboard.steps.clear();
-        if (has_selection_) {
-          int min_row, max_row, min_col, max_col;
-          getSelectionBounds(min_row, max_row, min_col, max_col);
-          const bool single_cell = (min_row == max_row && min_col == max_col);
-          if (single_cell) {
-            // Single-cell selection: copy whole row (8 steps) as requested.
-            int row = min_row;
-            g_pattern_step_clipboard.full_row = true;
-            g_pattern_step_clipboard.rows = 1;
-            g_pattern_step_clipboard.cols = kPatternStepColumns;
-            g_pattern_step_clipboard.steps.reserve(kPatternStepColumns);
-            for (int c = 0; c < kPatternStepColumns; ++c) {
-              int step = row * kPatternStepColumns + c;
-              g_pattern_step_clipboard.steps.push_back(source.steps[step]);
-            }
-          } else {
-            g_pattern_step_clipboard.full_row = false;
-            g_pattern_step_clipboard.rows = max_row - min_row + 1;
-            g_pattern_step_clipboard.cols = max_col - min_col + 1;
-            g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
-            for (int r = min_row; r <= max_row; ++r) {
-              for (int c = min_col; c <= max_col; ++c) {
-                int step = r * kPatternStepColumns + c;
-                g_pattern_step_clipboard.steps.push_back(source.steps[step]);
-              }
-            }
-          }
-        } else {
-          // No selection: keep legacy full-pattern copy.
-          g_pattern_step_clipboard.full_row = false;
-          g_pattern_step_clipboard.rows = kPatternStepRows;
-          g_pattern_step_clipboard.cols = kPatternStepColumns;
-          g_pattern_step_clipboard.steps.reserve(SEQ_STEPS);
-          for (int i = 0; i < SEQ_STEPS; ++i) {
-            g_pattern_step_clipboard.steps.push_back(source.steps[i]);
+        // Copy follows the selection: no selection copies the cursor step,
+        // one cell copies that cell, an area copies the rectangle. A selection
+        // of every step (Ctrl+A) is the whole pattern, which Paste can place.
+        int min_row = activePatternStep() / kPatternStepColumns;
+        int max_row = min_row;
+        int min_col = activePatternStep() % kPatternStepColumns;
+        int max_col = min_col;
+        if (has_selection_) getSelectionBounds(min_row, max_row, min_col, max_col);
+        g_pattern_step_clipboard.full_row = false;
+        g_pattern_step_clipboard.rows = max_row - min_row + 1;
+        g_pattern_step_clipboard.cols = max_col - min_col + 1;
+        g_pattern_step_clipboard.steps.reserve(g_pattern_step_clipboard.rows * g_pattern_step_clipboard.cols);
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            g_pattern_step_clipboard.steps.push_back(source.steps[r * kPatternStepColumns + c]);
           }
         }
-        if (has_selection_) {
-          // Area copy is authoritative; avoid stale full-pattern clipboard consumers.
-          g_pattern_clipboard.has_pattern = false;
-        } else {
-          g_pattern_clipboard.has_pattern = true;
+        const bool wholePattern = g_pattern_step_clipboard.rows == kPatternStepRows &&
+                                  g_pattern_step_clipboard.cols == kPatternStepColumns;
+        g_pattern_clipboard.has_pattern = wholePattern;
+        if (wholePattern) {
           for (int i = 0; i < SEQ_STEPS; ++i) g_pattern_clipboard.pattern.steps[i] = source.steps[i];
         }
         if (has_selection_) selection_locked_ = true;
+        {
+          char msg[32];
+          std::snprintf(msg, sizeof(msg), "COPIED %d STEPS",
+                        static_cast<int>(g_pattern_step_clipboard.steps.size()));
+          UI::showToast(msg, 800);
+        }
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {
@@ -459,6 +462,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
               const auto restore = [&]() {
                 GroovePuterUndo::exchangeSynthPatternUndo(
                     mini_acid_.sceneManager(), receipt);
+                (void)mini_acid_.refreshPatternRuntimeEvents(
+                    receipt.synthIndex, receipt.bankIndex, receipt.patternIndex);
               };
               if (audio_guard_) audio_guard_(restore);
               else restore();
@@ -488,13 +493,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   }
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  // Alt+Esc must be handled before global Esc navigation.
   if (((ui_event.scancode == GROOVEPUTER_ESCAPE) || (ui_event.key == 0x1B)) && ui_event.alt) {
     chaining_mode_ = !chaining_mode_;
     return true;
   }
 
-  // Handle local ESC/backtick selection clear before global nav steals the key.
   const bool early_is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (ui_event.key == 0x1B);
   const bool early_is_backtick = (ui_event.key == '`' || ui_event.key == '~');
   if ((early_is_escape || early_is_backtick) && has_selection_) {
@@ -502,16 +505,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Let parent handle global navigation keys; do not steal them here.
   if (UIInput::isGlobalNav(ui_event)) return false;
 
   bool handled = false;
-  
-  // Arrow-first: Cardputer may deliver arrows in scancode OR key.
-  // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
 
-  // Pattern Rotation: Alt + Left/Right
   if (ui_event.alt && (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT)) {
       int dir = (nav == GROOVEPUTER_RIGHT) ? 1 : -1;
       withAudioGuard([&]() {
@@ -519,7 +517,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       });
       return true;
   }
-  bool extend_selection = (ui_event.shift || ui_event.ctrl) && !ui_event.alt;
+  bool extend_selection = ui_event.ctrl && !ui_event.alt;
   if (ui_event.meta) {
     auto applyMetaStep = [&](auto&& fn) {
       if (patternRowFocused()) {
@@ -544,10 +542,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     };
     switch (nav) {
       case GROOVEPUTER_UP:
-        applyMetaStep([&](int step) { mini_acid_.adjust303StepNote(voice_index_, step, 1); });
+        applyMetaStep([&](int step) { mini_acid_.adjustWorking303StepNote(voice_index_, step, 1); });
         return true;
       case GROOVEPUTER_DOWN:
-        applyMetaStep([&](int step) { mini_acid_.adjust303StepNote(voice_index_, step, -1); });
+        applyMetaStep([&](int step) { mini_acid_.adjustWorking303StepNote(voice_index_, step, -1); });
         return true;
       case GROOVEPUTER_LEFT:
         applyMetaStep([&](int step) { mini_acid_.adjust303StepOctave(voice_index_, step, -1); });
@@ -578,7 +576,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
         }
         int next = mini_acid_.currentPageIndex() - 1;
         if (next < 0) next = UI::kPageCount - 1;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -593,7 +591,7 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           break;
         }
         int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -602,35 +600,22 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       handled = true;
       break;
     case GROOVEPUTER_UP:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, 1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(-1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(-1);
+      handled = true;
       break;
     case GROOVEPUTER_DOWN:
-      if (ui_event.alt) {
-           ensureStepFocus();
-           int step = activePatternStep();
-           withAudioGuard([&]() { mini_acid_.adjust303StepFxParam(voice_index_, step, -1); });
-           handled = true;
-      } else {
-          if (extend_selection && focus_ == Focus::Steps) updateSelection();
-          movePatternCursorVertical(1);
-          handled = true;
-      }
+      if (ui_event.alt) break;  // owned by PatternEditPage::handleEvent()
+      if (extend_selection && focus_ == Focus::Steps) updateSelection();
+      movePatternCursorVertical(1);
+      handled = true;
       break;
     default:
       break;
   }
   if (handled) return true;
 
-  // Let TAB pass through to parent wrappers
   if (UIInput::isTab(ui_event)) {
       return false;
   }
@@ -645,38 +630,31 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   const bool is_escape = (ui_event.scancode == GROOVEPUTER_ESCAPE) || (key == 0x1B);
   const bool is_backspace = (key == '\b' || key == 0x7F);
 
-  // Let app-level back navigation handle ESC when nothing local to clear.
   if (is_escape) return false;
 
-  // Q-I Pattern Selection (Standardized) - only if NO modifiers (ignore shift for CapsLock safety)
   if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
         patternIdx = scancodeToPatternIndex(ui_event.scancode);
     }
-    
+
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
       setPatternCursor(patternIdx);
-      withAudioGuard([&]() { 
-          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
-          
+      withAudioGuard([&]() {
+          mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
+
           if (chaining_mode_) {
-              // Find next empty position in song and append
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
               int nextPos = -1;
-              
-              // Search for the first empty slot (-1) or the first slot after the last used one
               for (int i = 0; i < Song::kMaxPositions; ++i) {
                   if (mini_acid_.songPatternAt(i, track) == -1) {
                       nextPos = i;
                       break;
                   }
               }
-              
               if (nextPos != -1) {
-                  // If we found an empty slot, put it there. 
                   mini_acid_.setSongPattern(nextPos, track, patternIdx);
               }
           }
@@ -685,7 +663,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
-  // Bank Selection (Ctrl + 1..2)
   if (ui_event.ctrl && !ui_event.alt && key >= '1' && key <= '2') {
     int bankIdx = bankIndexFromKey(key);
     if (bankIdx >= 0) {
@@ -717,11 +694,10 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       if (mini_acid_.songModeEnabled()) return true;
       int cursor = activePatternCursor();
       setPatternCursor(cursor);
-      withAudioGuard([&]() { mini_acid_.set303PatternIndex(voice_index_, cursor); });
+      withAudioGuard([&]() { mini_acid_.tryManual303TargetSwitch(voice_index_, cursor); });
       return true;
     }
   }
-
 
   auto ensureStepFocusAndCursor = [&]() {
     if (patternRowFocused()) {
@@ -808,14 +784,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       }
     } else {
       applyToSelectionOrCursor([&](int step) {
-        mini_acid_.adjust303StepNote(voice_index_, step, 1);
+        mini_acid_.adjustWorking303StepNote(voice_index_, step, 1);
       });
     }
     return true;
   }
   if (key_z) {
     applyToSelectionOrCursor([&](int step) {
-      mini_acid_.adjust303StepNote(voice_index_, step, -1);
+      mini_acid_.adjustWorking303StepNote(voice_index_, step, -1);
     });
     return true;
   }
@@ -833,14 +809,17 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
   if (key_g) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     withAudioGuard([&]() { mini_acid_.randomize303Pattern(voice_index_); });
     return true;
   }
   if (key_f) {
-    ensureStepFocus();
-    int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.cycle303StepFx(voice_index_, step); });
-    return true;
+    // Public PatternEditPage::handleEvent()/handleEventLegacy() own Synth FX
+    // mutation. Never let the retained unowned body mutate it directly.
+    return false;
   }
   if (key_c && ui_event.ctrl) {
     ApplicationEventType type = GROOVEPUTER_APP_EVENT_COPY;
@@ -858,15 +837,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     handleEvent(appEvent);
     return true;
   }
-  if (key_r && (ui_event.ctrl || ui_event.alt)) { 
-    // Ctrl+R is Reverse in SongMode, handle it specifically or let global handle.
-    // In PatternEdit, we just prevent it from being REST when modified.
-    return false; 
+  if (key_r && (ui_event.ctrl || ui_event.alt)) {
+    return false;
   }
 
-  // Alt + Backspace = Reset Pattern. R2 routes this one destructive edit
-  // through the authoritative persistent-mutation/Undo owner.
-  if (ui_event.alt && (key == '\b' || key == 0x7F)) {
+  if (ui_event.ctrl && (key == '\b' || key == 0x7F)) {
     GroovePuterUndo::SynthPatternUndoPayload before{};
     if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
             mini_acid_.sceneManager(), voice_index_, before)) {
@@ -884,11 +859,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
             for (int i = 0; i < SEQ_STEPS; ++i) {
               mini_acid_.clear303Step(i, voice_index_);
             }
+            // The audio engine plays the runtime event bank, not the scene:
+            // rebuild the cleared pattern's events, as every other STEPS edit does.
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                before.synthIndex, before.bankIndex, before.patternIndex);
           };
           if (audio_guard_) audio_guard_(clear_pattern);
           else clear_pattern();
         });
-    UI::showToast(committed ? "Pattern Cleared" : "PATTERN CLEAR FAILED", 900);
+    UI::showToast(committed ? "PATTERN CLEARED  CTRL+Z UNDO" : "PATTERN CLEAR FAILED", 900);
     return true;
   }
 
@@ -904,44 +883,40 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
           }
       });
       clearSelection();
-      UI::showToast("Selection Cleared");
+      UI::showToast("SELECTION CLEARED");
       return true;
   }
 
-  if (is_backspace) { // Backspace / Del = Clear Step (REST)
+  if (is_backspace) {
     ensureStepFocusAndCursor();
     int step = activePatternStep();
-    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); }); // Use full clear
+    withAudioGuard([&]() { mini_acid_.clear303Step(step, voice_index_); });
     return true;
   }
 
-  // Q-I Pattern Selection (Standardized)
-  if (!ui_event.shift && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+  if (!ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     int patternIdx = patternIndexFromKey(lowerKey);
     if (patternIdx < 0) {
         patternIdx = scancodeToPatternIndex(ui_event.scancode);
     }
-    
+
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
       focusPatternRow();
       setPatternCursor(patternIdx);
-      withAudioGuard([&]() { 
-          mini_acid_.set303PatternIndex(voice_index_, patternIdx);
-          
+      withAudioGuard([&]() {
+          mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
+
           if (chaining_mode_) {
-              // Find next empty position in song and append
               SongTrack track = (voice_index_ == 0) ? SongTrack::SynthA : SongTrack::SynthB;
               int nextPos = -1;
-              
-              // Search for the first empty slot (-1) or the first slot after the last used one
               for (int i = 0; i < Song::kMaxPositions; ++i) {
                   if (mini_acid_.songPatternAt(i, track) == -1) {
                       nextPos = i;
                       break;
                   }
               }
-              
+
               if (nextPos != -1) {
                   mini_acid_.setSongPattern(nextPos, track, patternIdx);
               }
@@ -955,6 +930,8 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 }
 
 void PatternEditPage::tick() {
+    if (mini_acid_.consumePairNoNextNotice(voice_index_))
+        UI::showToast("PAIR PLAY: NO NEXT SLOT", 1200);
     int actualPage = mini_acid_.currentPageIndex();
     const std::string freshTitle = makePatternPageTitle(mini_acid_, voice_index_, actualPage);
     if (actualPage != last_page_ || title_ != freshTitle) {
@@ -982,26 +959,247 @@ void PatternEditPage::drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) cons
   }
 }
 
+namespace {
 
+bool drawActiveMaterialRollIfNeeded(IGfx& gfx, MiniAcid& engine,
+                                    int voiceIndex, const Rect& bounds) {
+  const auto state = engine.songVoiceDisplayState(voiceIndex);
+  if (state == MiniAcid::SongVoiceDisplayState::Pattern) return false;
+
+  gfx.fillRect(bounds.x, bounds.y, bounds.w, bounds.h, IGfxColor(0));
+  const char* status = "MELODY";
+  if (state == MiniAcid::SongVoiceDisplayState::Held) {
+    status = "HOLD: WORKING MELODY";
+  } else if (state == MiniAcid::SongVoiceDisplayState::Awaiting) {
+    status = "WAIT: SONG MELODY";
+  } else if (state == MiniAcid::SongVoiceDisplayState::LoadFailed) {
+    status = "FAIL: MELODY LOAD";
+  }
+  gfx.setTextColor(state == MiniAcid::SongVoiceDisplayState::LoadFailed
+                       ? COLOR_ACCENT
+                       : voiceColor(voiceIndex));
+  gfx.drawText(bounds.x + 3, bounds.y + 3, status);
+
+  const auto* melody = engine.activeMelodyForDisplay(voiceIndex);
+  if (!melody) {
+    gfx.setTextColor(COLOR_GRAY);
+    gfx.drawText(bounds.x + 3, bounds.y + 22, "NO ACTIVE NOTE DATA");
+    UI::drawStandardFooter(gfx, "SONG MATERIAL", "WAIT/CANCEL NEXT OR RETRY");
+    return true;
+  }
+
+  const uint16_t phase = engine.currentPhrasePlayTick(voiceIndex);
+  const uint16_t barStart =
+      static_cast<uint16_t>((phase / PhraseRuntime::kTicksPerBar) *
+                            PhraseRuntime::kTicksPerBar);
+  const uint16_t barEnd = static_cast<uint16_t>(
+      std::min<uint32_t>(melody->lengthTicks,
+                         static_cast<uint32_t>(barStart) +
+                             PhraseRuntime::kTicksPerBar));
+  const int rollX = bounds.x + 4;
+  const int rollY = bounds.y + 18;
+  const int rollW = std::max(8, bounds.w - 8);
+  const int rollH = std::max(20, bounds.h - 34);
+
+  int minPitch = 127;
+  int maxPitch = 0;
+  for (uint16_t i = 0; i < melody->count; ++i) {
+    const auto& event = melody->events[i];
+    const uint32_t durTicks = std::max<uint32_t>(
+        1, (static_cast<uint32_t>(event.durationSubticks) +
+            PhraseRuntime::kSubticksPerTick - 1) /
+               PhraseRuntime::kSubticksPerTick);
+    const uint32_t eventEnd = static_cast<uint32_t>(event.startTick) + durTicks;
+    if (event.startTick >= barEnd || eventEnd <= barStart) continue;
+    minPitch = std::min(minPitch, static_cast<int>(event.note));
+    maxPitch = std::max(maxPitch, static_cast<int>(event.note));
+  }
+  if (minPitch > maxPitch) {
+    minPitch = 60;
+    maxPitch = 60;
+  }
+
+  gfx.drawRect(rollX, rollY, rollW, rollH, COLOR_GRAY);
+  const int pitchSpan = std::max(1, maxPitch - minPitch);
+  for (uint16_t i = 0; i < melody->count; ++i) {
+    const auto& event = melody->events[i];
+    const uint32_t durTicks = std::max<uint32_t>(
+        1, (static_cast<uint32_t>(event.durationSubticks) +
+            PhraseRuntime::kSubticksPerTick - 1) /
+               PhraseRuntime::kSubticksPerTick);
+    const uint32_t eventEnd = static_cast<uint32_t>(event.startTick) + durTicks;
+    if (event.startTick >= barEnd || eventEnd <= barStart) continue;
+    const uint32_t clippedStart =
+        std::max<uint32_t>(event.startTick, barStart) - barStart;
+    const uint32_t clippedEnd =
+        std::min<uint32_t>(eventEnd, barEnd) - barStart;
+    const int ex = rollX + static_cast<int>(
+        clippedStart * static_cast<uint32_t>(rollW - 1) /
+        PhraseRuntime::kTicksPerBar);
+    const int ew = std::max(
+        2, static_cast<int>(
+               std::max<uint32_t>(1, clippedEnd - clippedStart) *
+               static_cast<uint32_t>(rollW - 1) /
+               PhraseRuntime::kTicksPerBar));
+    const int ey = rollY + rollH - 3 -
+        ((static_cast<int>(event.note) - minPitch) * (rollH - 6) / pitchSpan);
+    gfx.fillRect(ex, ey, ew, 3, voiceColor(voiceIndex));
+  }
+
+  const int playX = MelodyPlayhead::x(phase, rollX, rollW);
+  gfx.drawLine(playX, rollY, playX, rollY + rollH - 1, COLOR_WHITE);
+
+  char phaseText[48];
+  std::snprintf(phaseText, sizeof(phaseText), "T:%u/%u BAR:%u",
+                static_cast<unsigned>(phase),
+                static_cast<unsigned>(melody->lengthTicks),
+                static_cast<unsigned>(barStart / PhraseRuntime::kTicksPerBar + 1));
+  gfx.setTextColor(COLOR_WHITE);
+  gfx.drawText(bounds.x + 3, bounds.y + bounds.h - 22, phaseText);
+  UI::drawStandardFooter(
+      gfx, "MELODY ROLL = ACTIVE MATERIAL",
+      state == MiniAcid::SongVoiceDisplayState::Held
+          ? "Alt+ENT:ACCEPT Alt+BKSP:DISCARD"
+          : "PLAYHEAD = PHRASE PHASE");
+  return true;
+}
+
+}  // namespace
 
 void PatternEditPage::draw(IGfx& gfx) {
   switch (UI::currentStyle) {
     case VisualStyle::RETRO_CLASSIC:
+    case VisualStyle::MINIMAL:
+    default:
+      // CLEAN shares the CYBER structure; its palette and state forms come from
+      // the shared draw (see `clean` in drawRetroClassicStyle).
       drawRetroClassicStyle(gfx);
       break;
     case VisualStyle::AMBER:
       drawAmberStyle(gfx);
       break;
-    case VisualStyle::MINIMAL:
-    default:
-      drawMinimalStyle(gfx);
-      break;
   }
+  if (mini_acid_.songVoiceDisplayState(voice_index_) ==
+      MiniAcid::SongVoiceDisplayState::Pattern) {
+    char pairPlayBuf[32];
+    const bool pairPlaying = mini_acid_.pairPlayActive(voice_index_);
+    if (pairPlaying) {
+      const int n = mini_acid_.pairPlayBaseSlot(voice_index_) + 1;
+      if (mini_acid_.pairPlayArmed(voice_index_)) {
+        std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY: WAIT NEXT BAR");
+      } else {
+        std::snprintf(pairPlayBuf, sizeof(pairPlayBuf), "PAIR PLAY %d+%d", n, n + 1);
+      }
+    }
+    // Badge: the other synth's pair plays while this page shows none.
+    const int otherVoice = voice_index_ == 0 ? 1 : 0;
+    const bool otherPair = !pairPlaying && mini_acid_.pairPlayActive(otherVoice);
+    UI::drawStandardFooter(gfx,
+        pairPlaying ? pairPlayBuf
+            : note_entry_mode_ ? "G/P:NOTES N:EXIT"
+            : (pair_view_ ? "L:1 SLOT P:STYLE G:GEN AltG:LEGACY"
+                          : "L:PAIR P:STYLE G:GEN AltG:LEGACY"),
+        pairPlaying ? "L:STOP"
+            : otherPair ? (voice_index_ == 0 ? "B:PAIR" : "A:PAIR")
+            : note_entry_mode_ ? "C1/2:BANK Alt[]:PAGE" : "L:PLAY AltE:STEP");
+  }
+  if (step_settings_open_) {
+    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ENT/ESC:CLOSE");
+  }
+  drawStepSettings(gfx);
+}
+
+void PatternEditPage::drawStepSettings(IGfx& gfx) const {
+  if (!step_settings_open_) return;
+  const UI::ThemePalette p = UI::themePalette();
+  const Rect& b = getBoundaries();
+  const int lineH = gfx.fontHeight() + 3;
+  const int w = std::min(
+      b.w - 8, std::max(150, textWidth(gfx, GroovePuterUndo::StepSettingMarks::kStepSettingsHint) + 8));
+  const int h = lineH * (kStepSettingsFields + 2) + 6;
+  const int x = b.x + (b.w - w) / 2;
+  const int y = b.y + std::max(0, (b.h - h) / 2);
+
+  int first = activePatternStep();
+  int count = 1;
+  if (has_selection_) {
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    first = min_row * kPatternStepColumns + min_col;
+    count = (max_row - min_row + 1) * (max_col - min_col + 1);
+  }
+  const SynthPattern& pattern =
+      cursorOnNextSlot()
+          ? mini_acid_.sceneManager().getSynthPattern(voice_index_,
+                                                      editPatternIndex())
+          : slotNPattern();
+  const SynthStep& st = pattern.steps[first < 0 ? 0 : first % SEQ_STEPS];
+  bool mixed[kStepSettingsFields] = {false, false, false, false};
+  if (count > 1) {
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    for (int r = min_row; r <= max_row; ++r) {
+      for (int c = min_col; c <= max_col; ++c) {
+        const SynthStep& other =
+            pattern.steps[(r * kPatternStepColumns + c) % SEQ_STEPS];
+        for (int f = 0; f < kStepSettingsFields; ++f) {
+          if (GroovePuterUndo::StepSettingMarks::synthFieldDiffers(st, other, f))
+            mixed[f] = true;
+        }
+      }
+    }
+  }
+
+  gfx.fillRect(x, y, w, h, p.panel);
+  gfx.drawRect(x, y, w, h, p.accent);
+  char line[32];
+  if (count > 1) std::snprintf(line, sizeof(line), "STEP SETTINGS  SEL %d", count);
+  else std::snprintf(line, sizeof(line), "STEP SETTINGS  STEP %d", first + 1);
+  gfx.setTextColor(p.accent);
+  gfx.drawText(x + 4, y + 3, line);
+
+  char values[kStepSettingsFields][12];
+  std::snprintf(values[0], sizeof(values[0]), "%d%%", static_cast<int>(st.probability));
+  std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
+  std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
+  // The engine multiplies CHANCE (80%) with PROB: show the product next to it.
+  if (st.ghost && st.probability < GroovePuterUndo::StepSettingMarks::kDefaultProbability) {
+    std::snprintf(values[3], sizeof(values[3]), "80%% =%d%%",
+                  GroovePuterUndo::StepSettingMarks::effectiveChancePercent(
+                      st.probability, true));
+  } else {
+    std::snprintf(values[3], sizeof(values[3]), "%s", st.ghost ? "80%" : "100%");
+  }
+  for (int i = 0; i < kStepSettingsFields; ++i) {
+    if (mixed[i]) std::snprintf(values[i], sizeof(values[i]), "MIXED");
+  }
+  static const char* const kLabels[kStepSettingsFields] = {"PROB", "TIMING", "VEL", "CHANCE"};
+  for (int i = 0; i < kStepSettingsFields; ++i) {
+    const int ry = y + 3 + lineH * (i + 1);
+    const bool sel = i == step_settings_field_;
+    if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    // A value that differs from a plain step gets a 2x2 square left of the
+    // label and an accent-coloured value; the default shows neither.
+    const bool custom = GroovePuterUndo::StepSettingMarks::synthFieldCustom(st, i) || mixed[i];
+    if (custom) {
+      gfx.fillRect(x + 3, ry + gfx.fontHeight() / 2 - 1, 2, 2,
+                   sel ? p.invert : p.accent);
+    }
+    gfx.setTextColor(sel ? p.invert : p.text);
+    gfx.drawText(x + 6, ry, kLabels[i]);
+    if (custom && !sel) gfx.setTextColor(p.accent);
+    gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
+  }
+  gfx.setTextColor(p.dim);
+  gfx.drawText(x + 4, y + 3 + lineH * (kStepSettingsFields + 1),
+               GroovePuterUndo::StepSettingMarks::kStepSettingsHint);
 }
 
 void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
+  const UI::ThemePalette p = UI::themePalette();
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
@@ -1011,16 +1209,18 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   int body_h = h - 2;
   if (body_h <= 0) return;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
   bool bankFocus = !songMode && focus_ == Focus::BankRow;
   bool stepFocus = !patternFocus && !bankFocus;
+  // currentStep() reports 0 while stopped, so the playhead is shown only while
+  // transport runs and only on the pattern that is actually playing (as CYBER does).
+  const bool playingHere = mini_acid_.isPlaying() &&
+                           mini_acid_.current303PatternIndex(voice_index_) == activePatternCursor();
   int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
   int bankCursor = activeBankCursor();
 
@@ -1048,13 +1248,12 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
   bank_bar_->setBoundaries(Rect{x, body_y - 1, w, bank_bar_h});
   bank_bar_->draw(gfx);
 
-  // Page Indicator
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
   char pageBuf[24];
   formatPatternMode(pageBuf, sizeof(pageBuf),
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
-  gfx.setTextColor(COLOR_WHITE);
+  gfx.setTextColor(p.text);
   gfx.drawText(x + w - textWidth(gfx, pageBuf) - 2, y + 2, pageBuf);
 
   const int column_spacing = 4;
@@ -1078,61 +1277,83 @@ void PatternEditPage::drawMinimalStyle(IGfx& gfx) {
     int col = i % kPatternStepColumns;
     int cell_x = x + col * (cell_w + column_spacing);
     int cell_y = grid_top + row * (row_height + row_spacing);
+    const int8_t note = pattern.steps[i].note;
+    const bool isAccent = pattern.steps[i].accent;
+    const bool isSlide = pattern.steps[i].slide;
 
     int indicator_w = (cell_w - 2) / 2;
     if (indicator_w < 4) indicator_w = 4;
     int slide_x = cell_x + cell_w - indicator_w;
     int indicator_y = cell_y;
 
-    gfx.fillRect(cell_x, indicator_y, indicator_w, indicator_h, slide[i] ? COLOR_SLIDE : COLOR_GRAY_DARKER);
-    gfx.drawRect(cell_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
-    gfx.fillRect(slide_x, indicator_y, indicator_w, indicator_h, accent[i] ? COLOR_ACCENT : COLOR_GRAY_DARKER);
-    gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, COLOR_WHITE);
+    // Flags as small rules: a set flag is filled, an unset one is an outline.
+    gfx.drawRect(cell_x, indicator_y, indicator_w, indicator_h, p.dim);
+    if (isSlide) gfx.fillRect(cell_x, indicator_y, indicator_w, indicator_h, p.text);
+    gfx.drawRect(slide_x, indicator_y, indicator_w, indicator_h, p.dim);
+    if (isAccent) gfx.fillRect(slide_x, indicator_y, indicator_w, indicator_h, p.accent);
 
-    int note_box_y = indicator_y + indicator_h + indicator_gap;
-    IGfxColor noteColor = voiceColor(voice_index_);
-    IGfxColor fill = notes[i] >= 0 ? noteColor : COLOR_GRAY;
-    gfx.fillRect(cell_x, note_box_y, cell_w, note_box_h, fill);
-    gfx.drawRect(cell_x, note_box_y, cell_w, note_box_h, COLOR_WHITE);
+    const int note_box_y = indicator_y + indicator_h + indicator_gap;
+    const bool isCursor = stepFocus && stepCursor == i;
+    const bool isSelectedStep = stepFocus && isStepSelected(i);
+    const bool isPlayingStep = playingHere && playing == i;
 
-    if (playing == i) {
-      gfx.drawRect(cell_x - 1, note_box_y - 1, cell_w + 2, note_box_h + 2, COLOR_STEP_HILIGHT);
-      // Scanning line for smooth sub-step progress
-      float prog = mini_acid_.getStepProgress();
-      int scanX = cell_x + (int)(prog * (float)(cell_w - 1));
-      gfx.drawLine(scanX, note_box_y, scanX, note_box_y + note_box_h - 1, COLOR_WHITE);
+    // Focus is the only solid area: an inverted cell. Notes are glyphs, not blocks.
+    if (isCursor) {
+      gfx.fillRect(cell_x, note_box_y, cell_w, note_box_h, p.focus);
+    } else {
+      gfx.drawRect(cell_x, note_box_y, cell_w, note_box_h, p.dim);
     }
-    if (stepFocus && stepCursor == i) {
-      gfx.drawRect(cell_x - 2, note_box_y - 2, cell_w + 4, note_box_h + 4, COLOR_STEP_SELECTED);
+    // Playhead: accent bar in the gap above the cell, never over the flags.
+    if (isPlayingStep) {
+      gfx.fillRect(cell_x, cell_y - 2, cell_w, 2, p.accent);
+      const float prog = mini_acid_.getStepProgress();
+      const int scanX = cell_x + static_cast<int>(prog * static_cast<float>(cell_w - 1));
+      if (!isCursor) gfx.drawLine(scanX, note_box_y, scanX, note_box_y + note_box_h - 1, p.accent);
     }
-    if (stepFocus && isStepSelected(i)) {
-      gfx.drawRect(cell_x - 3, note_box_y - 3, cell_w + 6, note_box_h + 6, COLOR_ACCENT);
+    // Selected (not focused): 1 px rule in the gap below the cell.
+    if (isSelectedStep) {
+      gfx.fillRect(cell_x, note_box_y + note_box_h, cell_w, 1, p.text);
+    }
+
+    // Micro-timing: 2x2 in the top corner of the note box (the flag rules own the cell top).
+    if (note >= 0) {
+      StepTimingMark::draw(gfx, cell_x, note_box_y, cell_w, 2, pattern.steps[i].timing,
+                           isCursor ? p.invert : p.accent);
+      // PROB / VEL / CHANCE set: one dot in the bottom-right corner.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(pattern.steps[i]) &&
+          cell_w >= 8) {
+        gfx.fillRect(cell_x + cell_w - 4, note_box_y + note_box_h - 4, 2, 2,
+                     isCursor ? p.invert : p.accent);
+      }
     }
 
     char note_label[8];
-    formatNoteName(notes[i], note_label, sizeof(note_label));
-    int tw = textWidth(gfx, note_label);
-    int tx = cell_x + (cell_w - tw) / 2;
-    int ty = note_box_y + note_box_h / 2 - gfx.fontHeight() / 2;
-    gfx.setTextColor(notes[i] >= 0 ? COLOR_BLACK : COLOR_WHITE);
+    formatNoteName(note, note_label, sizeof(note_label));
+    const int tw = textWidth(gfx, note_label);
+    const int tx = cell_x + (cell_w - tw) / 2;
+    const int ty = note_box_y + note_box_h / 2 - gfx.fontHeight() / 2;
+    IGfxColor labelColor = note >= 0 ? p.text : p.dim;
+    if (isCursor) labelColor = p.invert;
+    gfx.setTextColor(labelColor);
     gfx.drawText(tx, ty, note_label);
   }
-  }
+  UI::drawStandardFooter(gfx, "ARROWS Q-I:PAT F:RTG", "C1/2:BANK Alt[]:PAGE");
+}
 
 void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
 #ifdef USE_RETRO_THEME
+  const UI::ThemePalette p = UI::themePalette();
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
   int h = bounds.h;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
@@ -1141,197 +1362,224 @@ void PatternEditPage::drawRetroClassicStyle(IGfx& gfx) {
   int patternCursor = songMode && selectedPattern >= 0 ? selectedPattern : activePatternCursor();
   int bankCursor = activeBankCursor();
 
-  // 1. Header (from RetroWidgets, like GenrePage)
   char modeBuf[16];
   const std::string engineName = currentEngineName(mini_acid_, voice_index_);
   formatPatternMode(modeBuf, sizeof(modeBuf),
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
   char titleBuf[32];
-  snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
-           voice_index_ == 0 ? "303 A" : "303 B",
-           chaining_mode_ ? " [CHAIN]" : "");
+  formatPatternTitle(titleBuf, sizeof(titleBuf), voice_index_, chaining_mode_,
+                     pair_view_,
+                     mini_acid_.current303PatternIndex(voice_index_) + 1,
+                     nextSlotAvailable());
 
-  drawHeaderBar(gfx, x, y, w, 14, 
-                titleBuf, 
-                modeBuf, 
-                mini_acid_.isPlaying(), 
-                (int)(mini_acid_.bpm() + 0.5f), 
+  drawHeaderBar(gfx, x, y, w, 14,
+                titleBuf,
+                modeBuf,
+                mini_acid_.isPlaying(),
+                (int)(mini_acid_.bpm() + 0.5f),
                 playing);
 
-  // 2. Background (deep black for contrast, like GenrePage)
   int contentY = y + 15;
   int contentH =
       std::min(y + h - 12, Layout::PERFORMANCE_HUD.y) - contentY;
-  gfx.fillRect(x, contentY, w, contentH, IGfxColor(BG_DEEP_BLACK));
+  gfx.fillRect(x, contentY, w, contentH, p.background);
 
-  // 3. Bank/Pattern Selectors (inline, with selective highlighting)
-  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 4, contentY + 2, "BK");
   for (int i = 0; i < kBankCount; i++) {
     int slotX = x + 22 + i * 18;
     bool sel = (i == bank_index_);
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
-    
-    IGfxColor bankColor = retroVoiceColor(voice_index_);
-    IGfxColor bgColor = sel ? bankColor : IGfxColor(BG_PANEL);
+
+    IGfxColor bankColor = p.voice(voice_index_);
+    IGfxColor bgColor = sel ? bankColor : p.panel;
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
-    
-    // Glow border only when focused
+
     if (focused) {
       drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, bankColor, 1);
     } else if (cur) {
-      gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(GRID_MEDIUM));
+      gfx.drawRect(slotX, contentY + 1, 16, 10, p.grid);
     }
-    
+
     char c[2] = {static_cast<char>('A' + i), 0};
-    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.setTextColor(sel ? p.background : p.secondary);
     gfx.drawText(slotX + 4, contentY + 2, c);
   }
 
-  gfx.setTextColor(IGfxColor(TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 72, contentY + 2, "PTRN");
   for (int i = 0; i < 8; i++) {
     int slotX = x + 106 + i * 10;
     bool sel = (i == selectedPattern);
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
-    
-    IGfxColor selColor = retroVoiceColor(voice_index_);
-    IGfxColor bgColor = sel ? selColor : IGfxColor(BG_PANEL);
+
+    IGfxColor selColor = p.voice(voice_index_);
+    IGfxColor bgColor = sel ? selColor : p.panel;
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
-    
+
     if (focused) {
       drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, selColor, 1);
     } else if (cur) {
-      gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(GRID_MEDIUM));
+      gfx.drawRect(slotX, contentY + 1, 9, 10, p.grid);
     }
-    
+
     char c1[2] = {static_cast<char>('1' + i), 0};
-    gfx.setTextColor(sel ? IGfxColor(BG_DEEP_BLACK) : IGfxColor(TEXT_SECONDARY));
+    gfx.setTextColor(sel ? p.background : p.secondary);
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
-  // 4. Step Grid (Direct Scene Access - No Cache Lag)
-  int gridY = contentY + 16;
-  const int spacing = 2;
+  // PAIR VIEW: rows 3-4 are slot N+1, so the four rows are lower and tighter.
+  const int gridRows = pair_view_ ? 2 * kPatternStepRows : kPatternStepRows;
+  int gridY = contentY + (pair_view_ ? 13 : 16);
+  const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
-              kPatternStepRows;
-  if (cellH < 12) cellH = 12;
-
-  // READ DIRECTLY from source of truth
-  int patIdx = activePatternCursor();
-  const SynthPattern& pattern = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
-
-  // Check if we are viewing the currently playing pattern
-  bool isPlayingPattern = false;
-  if (mini_acid_.isPlaying()) {
-     int playingIdx = mini_acid_.current303PatternIndex(voice_index_); 
-     // Note: current303PatternIndex returns what the engine is playing
-     if (playingIdx == patIdx) isPlayingPattern = true;
+  // Leftover width (7 px in the pair view) becomes extra 1 px gaps so the last
+  // column ends at the same 5 px side margin the first one starts at.
+  const int gridW = w - 10;
+  const int cellRem = gridW - cellW * kPatternStepColumns -
+                      spacing * (kPatternStepColumns - 1);
+  int cellH = (contentH - (pair_view_ ? 15 : 20) - spacing * (gridRows - 1)) /
+              gridRows;
+  const int minCellH = pair_view_ ? 10 : 12;
+  if (cellH < minCellH) cellH = minCellH;
+  const SynthPattern* nextPattern = nullptr;
+  if (pair_view_ && nextSlotAvailable()) {
+    nextPattern = &mini_acid_.sceneManager().getSynthPattern(
+        voice_index_,
+        gridSourceSlot(1, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
   }
+  const bool cursorNext = cursorOnNextSlot();
+  const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;
+  const int textDy = pair_view_ ? 2 : 3;
 
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / kPatternStepColumns;
+  const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
+  // CLEAN uses the same cells and logic as CYBER; only the state forms differ.
+  const bool clean = UI::currentStyle == VisualStyle::MINIMAL;
+
+  for (int vi = 0; vi < shownSteps; ++vi) {
+    const int slot = vi / SEQ_STEPS;
+    const int i = vi % SEQ_STEPS;
+    const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
+    int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
-    int cellX = x + 5 + col * (cellW + spacing);
+    int cellX = x + 5 + col * (cellW + spacing) +
+                (col < cellRem ? col : cellRem);
     int cellRowY = gridY + row * (cellH + spacing);
 
-    bool isCurrent = (isPlayingPattern && playing == i); // Only show playhead if we are looking at the playing pattern
-    bool isCursor = (stepFocus && stepCursor == i);
-    bool isSelected = stepFocus && isStepSelected(i);
-    
-    int8_t note = pattern.steps[i].note;
-    bool acc = pattern.steps[i].accent;
-    bool sld = pattern.steps[i].slide;
+    // Slot 8 has no N+1: its rows are empty and never take the cursor.
+    if (!shown) {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, p.dim);
+      continue;
+    }
+    // The playhead sits in slot N, or in N+1 while pair play sounds it.
+    const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
+    bool isCurrent = (slot == playheadPair() && isPlayingPattern && playing == i);
+    bool isCursor = (slotCursor && stepCursor == i);
+    bool isSelected = slotCursor && isStepSelected(i);
+
+    int8_t note = shown->steps[i].note;
+    bool acc = shown->steps[i].accent;
+    bool sld = shown->steps[i].slide;
     bool hasNote = (note >= 0);
 
-    // Background (darker on beat markers for subtle rhythm guide)
-    IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(BG_INSET) : IGfxColor(BG_PANEL);
+    IGfxColor bgColor = clean ? p.background : ((col % 4 == 0) ? p.inset : p.panel);
+    if (!clean && isSelected) bgColor = p.selectBg;
     gfx.fillRect(cellX, cellRowY, cellW, cellH, bgColor);
 
-    // Border: glow on cursor, simple otherwise
-    // Border: glow on cursor, simple otherwise
-    if (isSelected) {
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(NEON_ORANGE), 1);
-    }
-    if (isCursor) {
-      // Use Voice Color for cursor to indicate which voice is being edited
-      IGfxColor cursorColor = retroVoiceColor(voice_index_);
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, cursorColor, 1);
-    } else if (!isSelected) {
-      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(GRID_MEDIUM));
+    if (clean) {
+      // Focus: inverted cell. Selected: 1 px rule in the gap below. Grid: rule.
+      if (isCursor) {
+        gfx.fillRect(cellX, cellRowY, cellW, cellH, p.focus);
+      } else {
+        gfx.drawRect(cellX, cellRowY, cellW, cellH, p.grid);
+      }
+      if (isSelected) gfx.fillRect(cellX, cellRowY + cellH, cellW, 1, p.text);
+    } else {
+      if (!isCursor && !isSelected) {
+        gfx.drawRect(cellX, cellRowY, cellW, cellH, p.grid);
+      }
     }
 
-    // Playing indicator: voice color glow (prominence)
-    if (isCurrent) {
-      IGfxColor playColor = retroVoiceColor(voice_index_);
-      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, playColor, 2);
-      
-      // Scanning LED bar for smooth progress
+    if (isCurrent && clean) {
+      // Playhead: accent bar in the gap above the cell, scan line in accent.
+      gfx.fillRect(cellX, cellRowY - 2, cellW, 2, p.accent);
       float prog = mini_acid_.getStepProgress();
       int scanX = cellX + (int)(prog * (float)(cellW - 1));
-      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(TEXT_PRIMARY));
+      if (!isCursor) gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, p.accent);
+    } else if (isCurrent) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, p.active, 2);
+      float prog = mini_acid_.getStepProgress();
+      int scanX = cellX + (int)(prog * (float)(cellW - 1));
+      gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, p.text);
+    }
+    // Focus is drawn last so it stays visible on the playing step.
+    if (!clean && isCursor) {
+      drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, p.voice(voice_index_), 1);
     }
 
-    // Note content
-    if (hasNote) {
+    if (hasNote || note == -2) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
-      
-      // "Teal & Orange" Harmony: Cleaner, distinct, professional
-      // Voice Color = Normal, Orange = Accent
-      IGfxColor baseColor = retroVoiceColor(voice_index_);
-      IGfxColor noteColor = acc ? IGfxColor(NEON_ORANGE) : baseColor;
-      
+      IGfxColor baseColor = p.voice(voice_index_);
+      IGfxColor noteColor = acc ? p.noteAccent : baseColor;
+
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
-      int ty = cellRowY + 3;
-      
-      // Glow text only when focused for emphasis
-      if (isCursor) {
-        drawGlowText(gfx, tx, ty, note_label, noteColor, IGfxColor(TEXT_PRIMARY));
+      int ty = cellRowY + textDy;
+
+      if (clean) {
+        gfx.setTextColor(isCursor ? p.invert : (acc ? p.noteAccent : p.text));
+        gfx.drawText(tx, ty, note_label);
+      } else if (isCursor) {
+        drawGlowText(gfx, tx, ty, note_label, noteColor, p.text);
       } else {
         gfx.setTextColor(noteColor);
         gfx.drawText(tx, ty, note_label);
       }
     } else {
-      gfx.setTextColor(IGfxColor(TEXT_DIM));
-      // Use a subtle dot for "no note" steps
-      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+      gfx.setTextColor(p.dim);
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
     }
 
-    // Indicators (Persistent dots below the note)
-    int dotY = cellRowY + cellH - 4;
-    // Slide LED (Purple or Magenta for better pop)
-    RetroWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(NEON_MAGENTA));
-    // Accent LED (Matches Note Accent Color -> Orange)
-    RetroWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(NEON_ORANGE));
+    // Micro-timing: 2x2 in the top corner, left = early, right = late.
+    if (hasNote) {
+      StepTimingMark::draw(gfx, cellX, cellRowY, cellW, 2, shown->steps[i].timing,
+                           (clean && isCursor) ? p.invert : p.accent);
+      // PROB / VEL / CHANCE set: one dot at the bottom centre, between the LEDs.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(shown->steps[i]) &&
+          cellW >= 10) {
+        gfx.fillRect(cellX + cellW / 2 - 1, cellRowY + cellH - 3, 2, 2,
+                     (clean && isCursor) ? p.invert : p.accent);
+      }
+    }
 
-    // FX Indicator
-    uint8_t fx = pattern.steps[i].fx;
-    if (fx != 0) {
-        gfx.setTextColor(IGfxColor(NEON_YELLOW));
-        if (fx == (uint8_t)StepFx::Retrig) {
-            char buf[8]; snprintf(buf, sizeof(buf), "R%d", pattern.steps[i].fxParam);
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
-        } else if (fx == (uint8_t)StepFx::Reverse) {
-            gfx.drawText(cellX + cellW/2 - textWidth(gfx,"RV")/2, dotY - 8, "RV");
-        }
+    // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.
+    const int dotY = pair_view_ ? cellRowY + cellH / 2 : cellRowY + cellH - 4;
+    const int ledInset = pair_view_ ? 2 : 4;
+    RetroWidgets::drawLED(gfx, cellX + ledInset, dotY, 1, sld, p.accent2);
+    RetroWidgets::drawLED(gfx, cellX + cellW - ledInset, dotY, 1, acc, p.noteAccent);
+
+    const uint8_t retrigCount =
+        GroovePuterUndo::PatternEdit::effectiveRetrigCount(shown->steps[i]);
+    if (retrigCount != 0 && !pair_view_) {
+        gfx.setTextColor(p.warning);
+        char buf[8];
+        snprintf(buf, sizeof(buf), "R%u", static_cast<unsigned>(retrigCount));
+        gfx.drawText(cellX + cellW/2 - textWidth(gfx,buf)/2, dotY - 8, buf);
     }
   }
 
   // Scanlines disabled: caused flicker on small TFT
 
   // 5. Footer (consistent with header)
-  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
-  drawFooterBar(gfx, x, y + h - 12, w, 12,
-                "A/Z:Nt F:FX Alt+Arw:Prm",
-                "Q-I:PAT B:Bank Alt[]:PG",
-                focusLabel);
+  UI::drawStandardFooter(gfx,
+                     "A/Z:Nt F:RTG AltUD:#",
+                     "Q-I:PAT B:Bank Alt[]:PG");
 
   // NO scanlines - clean and readable
 #else
@@ -1343,16 +1591,15 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 #ifdef USE_AMBER_THEME
   bank_index_ = mini_acid_.current303BankIndex(voice_index_);
   const Rect& bounds = getBoundaries();
+  if (drawActiveMaterialRollIfNeeded(gfx, mini_acid_, voice_index_, bounds)) return;
   int x = bounds.x;
   int y = bounds.y;
   int w = bounds.w;
   int h = bounds.h;
 
-  const int8_t* notes = mini_acid_.pattern303Steps(voice_index_);
-  const bool* accent = mini_acid_.pattern303AccentSteps(voice_index_);
-  const bool* slide = mini_acid_.pattern303SlideSteps(voice_index_);
+  const SynthPattern& pattern = slotNPattern();
   int stepCursor = pattern_edit_cursor_;
-  int playing = mini_acid_.currentStep();
+  int playing = mini_acid_.isPlaying() ? mini_acid_.currentStep() : -1;
   int selectedPattern = mini_acid_.display303LocalPatternIndex(voice_index_);
   bool songMode = mini_acid_.songModeEnabled();
   bool patternFocus = !songMode && patternRowFocused();
@@ -1367,9 +1614,10 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
                     mini_acid_.currentPageIndex(), bank_index_, selectedPattern,
                     engineName);
   char titleBuf[32];
-  snprintf(titleBuf, sizeof(titleBuf), "%s%s", 
-           voice_index_ == 0 ? "303 A" : "303 B",
-           chaining_mode_ ? " [CHAIN]" : "");
+  formatPatternTitle(titleBuf, sizeof(titleBuf), voice_index_, chaining_mode_,
+                     pair_view_,
+                     mini_acid_.current303PatternIndex(voice_index_) + 1,
+                     nextSlotAvailable());
 
   AmberWidgets::drawHeaderBar(
       gfx, x, y, w, 14,
@@ -1391,17 +1639,17 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     bool sel = (i == bank_index_);
     bool cur = (i == bankCursor);
     bool focused = bankFocus && cur;
-    
+
     IGfxColor bankColor = amberVoiceColor(voice_index_);
     IGfxColor bgColor = sel ? bankColor : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 16, 10, bgColor);
-    
+
     if (focused) {
       AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 16, 10, bankColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 16, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
-    
+
     char c[2] = {static_cast<char>('A' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(slotX + 4, contentY + 2, c);
@@ -1414,52 +1662,74 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
     bool sel = (i == selectedPattern);
     bool cur = (i == patternCursor);
     bool focused = patternFocus && cur;
-    
+
     IGfxColor selColor = amberVoiceColor(voice_index_);
     IGfxColor bgColor = sel ? selColor : IGfxColor(AmberTheme::BG_PANEL);
     gfx.fillRect(slotX, contentY + 1, 9, 10, bgColor);
-    
+
     if (focused) {
       AmberWidgets::drawGlowBorder(gfx, slotX, contentY + 1, 9, 10, selColor, 1);
     } else if (cur) {
       gfx.drawRect(slotX, contentY + 1, 9, 10, IGfxColor(AmberTheme::GRID_MEDIUM));
     }
-    
+
     char c1[2] = {static_cast<char>('1' + i), 0};
     gfx.setTextColor(sel ? IGfxColor(AmberTheme::BG_DEEP_BLACK) : IGfxColor(AmberTheme::TEXT_SECONDARY));
     gfx.drawText(slotX + 2, contentY + 2, c1);
   }
 
-  int gridY = contentY + 16;
-  const int spacing = 2;
+  // PAIR VIEW: rows 3-4 are slot N+1, so the four rows are lower and tighter.
+  const int gridRows = pair_view_ ? 2 * kPatternStepRows : kPatternStepRows;
+  int gridY = contentY + (pair_view_ ? 13 : 16);
+  const int spacing = pair_view_ ? 1 : 2;
   int cellW = (w - 10 - spacing * (kPatternStepColumns - 1)) /
               kPatternStepColumns;
-  int cellH = (contentH - 20 - spacing * (kPatternStepRows - 1)) /
-              kPatternStepRows;
-  if (cellH < 12) cellH = 12;
-
-  int patIdx = activePatternCursor();
-  const SynthPattern& pattern = mini_acid_.sceneManager().getSynthPattern(voice_index_, patIdx);
-
-  bool isPlayingPattern = false;
-  if (mini_acid_.isPlaying()) {
-     int playingIdx = mini_acid_.current303PatternIndex(voice_index_); 
-     if (playingIdx == patIdx) isPlayingPattern = true;
+  // Leftover width (7 px in the pair view) becomes extra 1 px gaps so the last
+  // column ends at the same 5 px side margin the first one starts at.
+  const int gridW = w - 10;
+  const int cellRem = gridW - cellW * kPatternStepColumns -
+                      spacing * (kPatternStepColumns - 1);
+  int cellH = (contentH - (pair_view_ ? 15 : 20) - spacing * (gridRows - 1)) /
+              gridRows;
+  const int minCellH = pair_view_ ? 10 : 12;
+  if (cellH < minCellH) cellH = minCellH;
+  const SynthPattern* nextPattern = nullptr;
+  if (pair_view_ && nextSlotAvailable()) {
+    nextPattern = &mini_acid_.sceneManager().getSynthPattern(
+        voice_index_,
+        gridSourceSlot(1, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
   }
+  const bool cursorNext = cursorOnNextSlot();
+  const int shownSteps = (pair_view_ ? 2 : 1) * SEQ_STEPS;
+  const int textDy = pair_view_ ? 2 : 3;
 
-  for (int i = 0; i < SEQ_STEPS; ++i) {
-    int row = i / kPatternStepColumns;
+  const bool isPlayingPattern = mini_acid_.isPlaying() && selectedPattern >= 0;
+
+  for (int vi = 0; vi < shownSteps; ++vi) {
+    const int slot = vi / SEQ_STEPS;
+    const int i = vi % SEQ_STEPS;
+    const SynthPattern* shown = slot == 0 ? &pattern : nextPattern;
+    int row = i / kPatternStepColumns + slot * kPatternStepRows;
     int col = i % kPatternStepColumns;
-    int cellX = x + 5 + col * (cellW + spacing);
+    int cellX = x + 5 + col * (cellW + spacing) +
+                (col < cellRem ? col : cellRem);
     int cellRowY = gridY + row * (cellH + spacing);
 
-    bool isCurrent = (isPlayingPattern && playing == i);
-    bool isCursor = (stepFocus && stepCursor == i);
-    bool isSelected = stepFocus && isStepSelected(i);
-    
-    int8_t note = pattern.steps[i].note;
-    bool acc = pattern.steps[i].accent;
-    bool sld = pattern.steps[i].slide;
+    // Slot 8 has no N+1: its rows are empty and never take the cursor.
+    if (!shown) {
+      gfx.drawRect(cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::GRID_MEDIUM));
+      continue;
+    }
+    // The playhead sits in slot N, or in N+1 while pair play sounds it.
+    const bool slotCursor = stepFocus && (cursorNext == (slot == 1));
+    bool isCurrent = (slot == playheadPair() && isPlayingPattern && playing == i);
+    bool isCursor = (slotCursor && stepCursor == i);
+    bool isSelected = slotCursor && isStepSelected(i);
+
+    int8_t note = shown->steps[i].note;
+    bool acc = shown->steps[i].accent;
+    bool sld = shown->steps[i].slide;
     bool hasNote = (note >= 0);
 
     IGfxColor bgColor = (col % 4 == 0) ? IGfxColor(AmberTheme::BG_INSET) : IGfxColor(AmberTheme::BG_PANEL);
@@ -1476,23 +1746,21 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
 
     if (isCurrent) {
       AmberWidgets::drawGlowBorder(gfx, cellX, cellRowY, cellW, cellH, IGfxColor(AmberTheme::STATUS_PLAYING), 2);
-      
-      // Smooth scanning line
       float prog = mini_acid_.getStepProgress();
       int scanX = cellX + (int)(prog * (float)(cellW - 1));
       gfx.drawLine(scanX, cellRowY + 1, scanX, cellRowY + cellH - 2, IGfxColor(AmberTheme::NEON_YELLOW));
     }
 
-    if (hasNote) {
+    if (hasNote || note == -2) {
       char note_label[8];
       formatNoteName(note, note_label, sizeof(note_label));
-      
+
       IGfxColor noteColor = acc ? IGfxColor(AmberTheme::NEON_ORANGE) : amberVoiceColor(voice_index_);
-      
+
       int tw = textWidth(gfx, note_label);
       int tx = cellX + (cellW - tw) / 2;
-      int ty = cellRowY + 3;
-      
+      int ty = cellRowY + textDy;
+
       if (isCursor) {
         AmberWidgets::drawGlowText(gfx, tx, ty, note_label, IGfxColor(AmberTheme::FOCUS_GLOW), noteColor);
       } else {
@@ -1501,22 +1769,34 @@ void PatternEditPage::drawAmberStyle(IGfx& gfx) {
       }
     } else {
       gfx.setTextColor(IGfxColor(AmberTheme::TEXT_DIM));
-      gfx.drawText(cellX + cellW/2 - 2, cellRowY + 3, ".");
+      gfx.drawText(cellX + cellW/2 - 2, cellRowY + textDy, ".");
     }
 
-    int dotY = cellRowY + cellH - 4;
-    AmberWidgets::drawLED(gfx, cellX + 4, dotY, 1, sld, IGfxColor(AmberTheme::NEON_MAGENTA));
-    AmberWidgets::drawLED(gfx, cellX + cellW - 4, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
+    // Micro-timing: 2x2 in the top corner, left = early, right = late.
+    if (hasNote) {
+      StepTimingMark::draw(gfx, cellX, cellRowY, cellW, 2, shown->steps[i].timing,
+                           IGfxColor(AmberTheme::NEON_CYAN));
+      // PROB / VEL / CHANCE set: one dot at the bottom centre, between the LEDs.
+      if (GroovePuterUndo::StepSettingMarks::synthStepHasNonTimingSettings(shown->steps[i]) &&
+          cellW >= 10) {
+        gfx.fillRect(cellX + cellW / 2 - 1, cellRowY + cellH - 3, 2, 2,
+                     IGfxColor(AmberTheme::NEON_CYAN));
+      }
+    }
+
+    // PAIR VIEW cells are too low for a LED row: the LEDs sit at the sides.
+    const int dotY = pair_view_ ? cellRowY + cellH / 2 : cellRowY + cellH - 4;
+    const int ledInset = pair_view_ ? 2 : 4;
+    AmberWidgets::drawLED(gfx, cellX + ledInset, dotY, 1, sld, IGfxColor(AmberTheme::NEON_MAGENTA));
+    AmberWidgets::drawLED(gfx, cellX + cellW - ledInset, dotY, 1, acc, IGfxColor(AmberTheme::NEON_ORANGE));
   }
 
   // Scanlines disabled: caused flicker on small TFT
 
-  const char* focusLabel = stepFocus ? "STEPS" : (bankFocus ? "BANK" : "PTRN");
-  AmberWidgets::drawFooterBar(
-      gfx, x, y + h - 12, w, 12,
-      "A/Z:Note  Alt+S/A:Slide/Acc  G:Rand",
-      "Q-I:PAT  B:Bank  Alt[]:PG",
-      focusLabel);
+  UI::drawStandardFooter(
+      gfx,
+      "A/Z:Note F:RTG AltUD:#",
+      "Q-I:PAT B:Bank Alt[]:PG");
 #else
   drawMinimalStyle(gfx);
 #endif

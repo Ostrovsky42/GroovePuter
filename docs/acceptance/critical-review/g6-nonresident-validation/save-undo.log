@@ -1,0 +1,58 @@
+  - MiniAcid::init: DRAM-only mode (constrained)
+TempoDelay::init: sr=44100.0 maxSeconds=0.100 => samples=4410
+TempoDelay::init: Allocating 4410 samples (17.2 KB)...
+TempoDelay::init: sr=44100.0 maxSeconds=0.100 => samples=4410
+TempoDelay::init: Allocating 4410 samples (17.2 KB)...
+  - MiniAcid::init: DRAM MODE ACTIVE (Reduced buffers)
+  - MiniAcid::init: Memory strategy applied
+  - MiniAcid::init: Initializing scene storage...
+  - MiniAcid::init: Loading scene from storage...
+  - loadSceneFromStorage: Streaming parse failed, loading default scene
+  - MiniAcid::init: reset()...
+    - MiniAcid::reset: Start
+    - MiniAcid::reset: voices reset
+    - MiniAcid::reset: resetting drums...
+    - MiniAcid::reset: Done
+  - MiniAcid::init: applySceneStateFromManager()...
+  - MiniAcid::applySceneStateFromManager: Start
+  - MiniAcid::applySceneStateFromManager: setting drum engine to 808
+    - MiniAcid::setDrumEngine: setting to 808
+[Synth] 0 -> TB303
+[Synth] 1 -> TB303
+  - MiniAcid::applySceneStateFromManager: setting voice params...
+  - MiniAcid::applySceneStateFromManager: syncing patterns...
+  - MiniAcid::applySceneStateFromManager: syncing Voice...
+  - MiniAcid::applySceneStateFromManager: restore genre metadata...
+  - MiniAcid::syncGrooveModeToGenre: mode realigned to genre (0)
+  - MiniAcid::applySceneStateFromManager: applyFeelTiming...
+  - MiniAcid::applySceneStateFromManager: applyFeelTexture...
+  - MiniAcid::applySceneStateFromManager: Done
+  - MiniAcid::init: Done
+[SESSION] load=0 active=0 mem=12,0,7,6,10
+[UI] transitionToPage: 0 -> 14 (ctx=0)
+[UI] transition: 0 -> 14 (MATERIAL, ctx=0)
+start: page=14 revision=2 hasUndo=1
+[UI] transitionToPage: 14 -> 10 (ctx=0)
+[UI] transition: 14 -> 10 (PROJECT, ctx=0)
+  goToPage(10)                 page=10 revision 2 hasUndo=1
+    (after handleEvent 2, after update 2)
+  Down                         page=10 revision 2 -> 2 hasUndo=1 saveDialog=0 loadDialog=0
+    (after handleEvent 2, after update 2)
+  Down                         page=10 revision 2 -> 2 hasUndo=1 saveDialog=0 loadDialog=0
+    (after handleEvent 2, after update 2)
+  Enter (open Save As)         page=10 revision 2 -> 2 hasUndo=1 saveDialog=1 loadDialog=0
+    (after handleEvent 2, after update 2)
+  Enter (save)                 page=10 revision 2 -> 2 hasUndo=1 saveDialog=0 loadDialog=0
+[UI] Shortcut Alt+7 -> Page 6
+[UI] transitionToPage: 10 -> 6 (ctx=0)
+[UI] transition: 10 -> 6 (SONG, ctx=0)
+    (after handleEvent 2, after update 2)
+  Alt+7 (SONG)                 page= 6 revision 2 -> 2 hasUndo=1 saveDialog=0 loadDialog=0
+[UI] transitionToPage: 6 -> 14 (ctx=5)
+[UI] transition: 6 -> 14 (MATERIAL, ctx=5)
+    (after handleEvent 2, after update 2)
+  Alt+j (MATERIAL)             page=14 revision 2 -> 2 hasUndo=1 saveDialog=0 loadDialog=0
+    (after handleEvent 1, after update 1)
+  Ctrl+Z                       page=14 revision 2 -> 1 hasUndo=0 saveDialog=0 loadDialog=0
+result: hadUndo=1 songLength=4
+0.9.14 Save keeps the cycle Undo (UI path): PASS

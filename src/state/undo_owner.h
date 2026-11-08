@@ -87,6 +87,35 @@ class UndoOwner {
     return true;
   }
 
+  // Session-only Runtime Phrase uses the same single retained slot but must not
+  // manufacture persistent Scene dirt. Scene currentRevision is retained only
+  // as an expiration token: any later persistent mutation invalidates this
+  // runtime receipt. Revision zero is valid here because slot kind owns receipt
+  // validity; unlike persistent commitPrepared(), no mutation is performed to
+  // force the revision away from zero.
+  template <typename Payload, typename ApplyFn>
+  bool commitRuntimePrepared(UndoKind kind,
+                             const Payload& before,
+                             ApplyFn&& apply) {
+    static_assert(std::is_trivially_copyable<Payload>::value,
+                  "runtime Undo payloads must remain fixed values");
+
+    if (kind != UndoKind::RuntimePhrase ||
+        sizeof(Payload) > kUndoPayloadBytes) {
+      return false;
+    }
+
+    const GroovePuterState::SceneRevisionState revision_before =
+        GroovePuterState::sceneRevisionSnapshot();
+    if (!slot_.publish(kind, before, revision_before)) return false;
+
+    // PREPARE/stale checks belong before this entry point. The callback is the
+    // bounded, synchronous, infallible runtime commit and must not mutate Scene.
+    std::forward<ApplyFn>(apply)();
+    committed_revision_ = revision_before.currentRevision;
+    return true;
+  }
+
   // Receipt inspection stays typed and owned by the child that understands the
   // payload. Do not add scalar-returning peek helpers: values such as synth 0
   // are valid identities, not validity flags.
@@ -182,6 +211,47 @@ class UndoOwner {
     }
     slot_.setNextIsRedo(!was_redo);
     committed_revision_ = restored_revision.currentRevision;
+    return UndoResult::Restored;
+  }
+
+  // Runtime Phrase toggle deliberately does not restore or advance Scene
+  // revision state. It only checks that the persistent revision has not moved
+  // since the runtime receipt was published, then exchanges the retained
+  // fixed-size state in the same single slot.
+  template <typename Payload, typename ValidateFn, typename ExchangeFn>
+  UndoResult toggleRuntimePrepared(UndoKind expected_kind,
+                                   ValidateFn&& validate,
+                                   ExchangeFn&& exchange) {
+    static_assert(std::is_trivially_copyable<Payload>::value,
+                  "runtime Undo payloads must remain fixed values");
+    if (!slot_.hasUndo()) return UndoResult::NothingToUndo;
+    if (expected_kind != UndoKind::RuntimePhrase ||
+        slot_.kind() != expected_kind) {
+      return UndoResult::KindMismatch;
+    }
+
+    const GroovePuterState::SceneRevisionState current =
+        GroovePuterState::sceneRevisionSnapshot();
+    if (current.currentRevision != committed_revision_) {
+      clear();
+      return UndoResult::Expired;
+    }
+
+    Payload retained{};
+    if (!slot_.read(expected_kind, retained)) return UndoResult::KindMismatch;
+    if (!std::forward<ValidateFn>(validate)(retained)) {
+      return UndoResult::ContextUnavailable;
+    }
+
+    const bool was_redo = slot_.nextIsRedo();
+    std::forward<ExchangeFn>(exchange)(retained);
+
+    if (!slot_.publish(expected_kind, retained, current)) {
+      clear();
+      return UndoResult::Expired;
+    }
+    slot_.setNextIsRedo(!was_redo);
+    committed_revision_ = current.currentRevision;
     return UndoResult::Restored;
   }
 

@@ -135,6 +135,41 @@ void testForcedTransportStartMapsToFrameZero() {
     assert(scheduled.frameOffset == 0);
 }
 
+// MIDI IN Start: the engine begins `lead` steps into the bar
+// (MiniAcid::advanceStartPhase). The downbeat ticks run on sample zero, so
+// they stay on frame zero; later events are measured from `lead`, not 0.
+void testAdvancedTransportStartKeepsDownbeatAndShiftsGrid() {
+    MusicalEventQueue queue;
+    FakeSequencerPhase phase{};
+    queue.setPhaseReader(readPhase, &phase);
+
+    constexpr float sampleRate = 22050.0f;
+    constexpr float bpm = 128.0f;
+    constexpr float samplesPerStep = (sampleRate * 60.0f) / (bpm * 4.0f);
+    constexpr float lead = 0.25f;
+
+    const float forcedStartPhase = 15.0f + (23.0f / 24.0f);
+    queue.beginMidiRenderBlock(
+        4, 512, forcedStartPhase, bpm, sampleRate, true, true, true, lead);
+    // The real engine fires the skipped ticks one by one on sample zero, so
+    // the downbeat is published at a phase *below* the start phase.
+    phase.phaseSteps = 0.2f / 24.0f;
+    assert(queue.tryPush(event(MusicalEventType::NoteOn,
+                               MusicalEventTarget::SynthA, 48)));
+    phase.phaseSteps = lead + 0.1f;
+    assert(queue.tryPush(event(MusicalEventType::NoteOn,
+                               MusicalEventTarget::SynthA, 50)));
+    queue.endMidiRenderBlock();
+
+    ScheduledMusicalEvent downbeat{};
+    assert(queue.tryPop(downbeat));
+    assert(downbeat.frameOffset == 0);
+    ScheduledMusicalEvent later{};
+    assert(queue.tryPop(later));
+    const long expected = std::lround(0.1f * samplesPerStep) - 1L;
+    assert(std::labs(static_cast<long>(later.frameOffset) - expected) <= 1);
+}
+
 void testExternalMasterSuppressesOnlyOutboundTransport() {
     MusicalEventQueue queue;
     FakeSequencerPhase phase{};
@@ -199,6 +234,7 @@ int main() {
     testPatternDrumTapUsesCurrentRenderPhase();
     testPatternLifecycleAlsoInvalidatesDrums();
     testForcedTransportStartMapsToFrameZero();
+    testAdvancedTransportStartKeepsDownbeatAndShiftsGrid();
     testExternalMasterSuppressesOnlyOutboundTransport();
     testOutsideRenderIsSuppressedAndCleansUp();
     testBoundedOverflowContract();

@@ -1,0 +1,23 @@
+FS1B COMPILER-MEASURED layout: FIL 4136 -> 44; FATFS 4152 -> 60; FF_MAX_SS 4096 -> 4096
+FS1B COMPILER-MEASURED static-structure class: 5*FIL+FATFS 24832 -> 280; delta=24552 B
+FS1B dynamic compile proof: ff.c.obj -> ff_memalloc + ff_memfree
+FS1B source commit: 858a988d6eb90f54661abe282c523879c6ad0116
+FS1B stock archive: /home/gg/.arduino15/packages/m5stack/tools/esp32-arduino-libs/idf-release_v5.4-858a988d-v1/esp32s3/lib/libfatfs.a
+FS1B candidate: /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv/fatfs-dynbuffers/libfatfs.a
+68b0c90d961705651ea723a24ee3afd5a8d219ec8a405e668ccfa8c8d269ce57  /home/gg/.arduino15/packages/m5stack/tools/esp32-arduino-libs/idf-release_v5.4-858a988d-v1/esp32s3/lib/libfatfs.a
+9ba56b670154168829c6c14ab37b29fdde484e80b9221fc8bd6198a97f7856c6  /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv/fatfs-dynbuffers/libfatfs.a
+FS1B link response: replaced 2 -lfatfs token(s) with /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv/fatfs-dynbuffers/libfatfs.a
+=== Building GroovePuter for Cardputer ADV ===
+FQBN: m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc
+Output: /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv
+Sketch uses 1593162 bytes (50%) of program storage space. Maximum is 3145728 bytes.
+Global variables use 184252 bytes (56%) of dynamic memory, leaving 143428 bytes for local variables. Maximum is 327680 bytes.
+FS1B link proof: candidate-only FatFs archive
+  map: /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv/.arduino-build/GroovePuter.ino.map
+  candidate: /tmp/gp-g6-failed-load-64ae/build/g6-sd-bound-adv/fatfs-dynbuffers/libfatfs.a
+  stock absent: /home/gg/.arduino15/packages/m5stack/tools/esp32-arduino-libs/idf-release_v5.4-858a988d-v1/esp32s3/lib/libfatfs.a
+Cardputer DRAM globals: 184252 bytes (budget 191488)
+  .dram0.data: 41996 bytes
+  .dram0.bss:  142256 bytes
+  policy: provisional exception; threshold-rule items 5-7 pending
+=== FS1B dynamic-FatFs Cardputer build PASS ===

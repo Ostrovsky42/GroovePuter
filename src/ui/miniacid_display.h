@@ -11,9 +11,12 @@
 
 #include "ui_core.h"
 #include "ui_config.h"
+#include "ui_view_continuity.h"
 #include "cassette_skin.h"
 #include "global_help_overlay.h"
+#include "global_midi_sync_overlay.h"
 #include "workflow_mode.h"
+#include "src/input/performance_instrument_types.h"
 #include "workspace_launcher_overlay.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/state/ui_session_state.h"
@@ -27,7 +30,8 @@ public:
   ~MiniAcidDisplay();
   void setAudioGuard(AudioGuard guard);
   void setAudioRecorder(IAudioRecorder* recorder);
-  void update();
+  // Optional control-side overlay, composed before the frame is flushed.
+  void update(void (*frameOverlay)() = nullptr);
   
   template <typename F>
   void withAudioGuard(F&& fn) {
@@ -35,13 +39,21 @@ public:
       else fn();
   }
 
-  void nextPage();
-  void previousPage();
+  // Fn arrives in the UIEvent as `meta` on the Cardputer, and the emulator
+  // has no hardware Fn to poll at all, so the modifier travels with the
+  // caller instead of being read from a global keyboard state.
+  void nextPage(bool workflowModifier = false);
+  void previousPage(bool workflowModifier = false);
   void goToPage(int index);
   void togglePreviousPage();
   void dismissSplash();
   bool handleEvent(UIEvent event);
   int currentPageIndex() const { return page_index_; }
+  // True when a held Alt+Up/Down should repeat: the current page scrolls with
+  // it and no overlay takes the keys.
+  bool repeatsAltVertical();
+  void openPageHelp_();
+  void syncProjectKey_();
 
 private:
   void initMuteButtons(int x, int y, int w, int h);
@@ -68,7 +80,11 @@ private:
   IGfx& gfx_;
   MiniAcid& mini_acid_;
   PerformanceKeyboard& performance_keyboard_;
+  bool key_synced_ = false;
+  uint8_t synced_key_root_ = 0;
+  PerformanceScale synced_key_scale_ = PerformanceScale::Chromatic;
   int page_index_ = 0;
+  bool first_draw_trace_pending_ = true;
   int previous_page_index_ = 0;  // For Backspace/` toggle
   Workspace active_workspace_ = Workspace::Groove;
   unsigned long splash_start_ms_ = 0;
@@ -76,11 +92,13 @@ private:
   bool help_dialog_visible_ = false;
   std::unique_ptr<MultiPageHelpDialog> help_dialog_;
   GlobalHelpOverlay global_help_overlay_;
+  GlobalMidiSyncOverlay global_midi_sync_overlay_;
   WorkspaceLauncherOverlay workspace_launcher_;
 
   AudioGuard audio_guard_;
   IAudioRecorder* audio_recorder_ = nullptr;
   std::vector<std::unique_ptr<IPage>> pages_;
+  UI::UiViewContinuityState ui_view_continuity_{};
   std::unique_ptr<IPage> help_page_;  // Separate help page for 'h' key
   Container mute_buttons_container_;
   bool mute_buttons_initialized_ = false;
@@ -105,6 +123,7 @@ private:
   void drawToast();
   uint32_t last_cycle_pulse_counter_ = 0;
   unsigned long cycle_pulse_until_ms_ = 0;
+  unsigned long reset_pending_until_ms_ = 0;  // Ctrl+Alt+Bksp confirm window
   VisualStyle applied_visual_style_ = VisualStyle::MINIMAL;
   bool visual_style_initialized_ = false;
   GroovePuterState::UiSessionState ui_session_{};

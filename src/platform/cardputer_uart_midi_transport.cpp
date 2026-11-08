@@ -92,6 +92,15 @@ bool CardputerUartMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
     return deferNoteOff(clampChannel(zeroBasedChannel), clampDataByte(note));
 }
 
+bool CardputerUartMidiTransport::sendPitchBend(uint8_t zeroBasedChannel,
+                                               uint16_t value14) {
+    if (value14 > 16383u) value14 = 16383u;
+    return queueChannelMessage(0xE0u, zeroBasedChannel,
+                               static_cast<uint8_t>(value14 & 0x7fu),
+                               static_cast<uint8_t>((value14 >> 7u) & 0x7fu),
+                               UartMidiPriority::Musical);
+}
+
 bool CardputerUartMidiTransport::deferNoteOff(uint8_t channel, uint8_t note) {
     if (!begun_) return false;
     // Taking responsibility for delivery is success from the caller's point of
@@ -212,6 +221,20 @@ void CardputerUartMidiTransport::service() {
     core_.drain(
         [](const uint8_t*, std::size_t length) -> std::size_t { return length; },
         kCardputerUartMidiDrainBudget);
+#endif
+}
+
+bool CardputerUartMidiTransport::readByte(uint8_t& out) {
+    if (!begun_) return false;
+#if defined(ARDUINO_M5STACK_CARDPUTER)
+    if (uart().available() <= 0) return false;
+    const int value = uart().read();
+    if (value < 0) return false;
+    out = static_cast<uint8_t>(value);
+    return true;
+#else
+    (void)out;
+    return false;
 #endif
 }
 

@@ -1,0 +1,22 @@
+{
+  "base_head": "a0ad73df007f498193a264d4cf3d378c8db9c35d",
+  "source_state": "committed production fix and regression; remaining worktree changes are acceptance evidence",
+  "bin": "build/g6-save-rollback-adv/GroovePuter.ino.bin",
+  "bin_sha256": "77b634b589c20cc5865eaf667134d58de36b05fd31c5180cb0cc3ed393f724f9",
+  "bin_bytes": 1623392,
+  "data": 41996,
+  "bss": 142256,
+  "dram": 184252,
+  "dram_limit": 191488,
+  "extra_flags": "GROOVEPUTER_FELUCCA_ANALOG=1",
+  "checks": {
+    "red_exit": 134,
+    "full_g6_runner_exit": 0,
+    "sdl_build_exit": 0,
+    "adv_build_exit": 0,
+    "real_ui_save_keeps_undo_exit": 0
+  },
+  "flashed": false,
+  "runtime_heap_largest_cpu": "OPEN",
+  "production_commit": "b6c3daf9fa7a59abadbe3f0b259bea350f809675"
+}

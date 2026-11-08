@@ -4,11 +4,13 @@
 #include "src/audio/pattern_paging.h"
 #include "src/phrase/phrase_core.h"
 #include "src/state/generated_phrase_product_state.h"
+#include "src/state/melody_promotion.h"
 #ifdef ARDUINO
 #include <SD.h>
 #endif
 
 #include <memory>
+#include <algorithm>
 
 namespace {
 int clampIndex(int value, int maxExclusive) {
@@ -38,6 +40,9 @@ float valueToFloat(ArduinoJson::JsonVariantConst value, float defaultValue) {
 }
 
 bool isStableSynthEngineName(const std::string& name) {
+#if defined(GROOVEPUTER_FELUCCA_ANALOG)
+  if (name == "DUAL OSC") return true;
+#endif
   return name == "TB303" || name == "SID" || name == "AY" ||
          name == "SH101" || name == "SN76489" || name == "WAVEMORPH";
 }
@@ -78,6 +83,7 @@ void clearSong(Song& song) {
   }
   song.length = 1;
   song.reverse = false;
+  std::memset(song.stepsOverride, 0, sizeof(song.stepsOverride));
 }
 
 void clearCustomPhrases(Scene& scene) {
@@ -119,6 +125,7 @@ void clearSceneData(Scene& scene) {
   scene.vocal = VocalSettings();
   scene.drumFX = DrumFX();
   scene.activeSongSlot = 0;
+  for (int16_t& mark : scene.songMarks) mark = -1;
   scene.mode = GrooveboxMode::Minimal;
   scene.grooveFlavor = 0;
 }
@@ -967,6 +974,8 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       if (v < 0) v = 0;
       if (v > 0xFFFF) v = 0xFFFF;
       target_.genre.rhythmArchetypeId = static_cast<uint16_t>(v);
+    } else if (lastKey_ == "hsm") {
+      target_.genre.harmonicStrategy = v == 1 ? 1 : 0;
     }
     return;
   }
@@ -978,6 +987,19 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
     else if (lastKey_ == "b") trackIdx = 1;
     else if (lastKey_ == "drums") trackIdx = 2;
     else if (lastKey_ == "voice") trackIdx = 3;
+    int overrideVoice = -1;
+    if (lastKey_ == "as") overrideVoice = 0;
+    else if (lastKey_ == "bs") overrideVoice = 1;
+    if (overrideVoice >= 0) {
+      int songIdx = 0;
+      for (int i = stackSize_ - 1; i >= 0; --i) {
+        if (stack_[i].path == Path::Songs) { songIdx = stack_[i].index; break; }
+      }
+      if (songIdx < 0) songIdx = 0;
+      if (songIdx > 1) songIdx = 1;
+      target_.songs[songIdx].setStepsOverride(overrideVoice, posIdx, value != 0);
+      return;
+    }
     if (trackIdx >= 0 && trackIdx < SongPosition::kTrackCount) {
       int songIdx = 0;
       // stack: ..., Songs(Array), Song(Object), SongPositions(Array), SongPosition(Object)
@@ -1232,6 +1254,11 @@ void SceneJsonObserver::handlePrimitiveNumber(double value, bool isInteger) {
       drumBankIndex_ = intValue;
     } else if (lastKey_ == "synthPatternIndex") {
       synthPatternIndex_[0] = intValue;
+    } else if (lastKey_ == "songMark0" || lastKey_ == "songMark1" ||
+               lastKey_ == "songMark2" || lastKey_ == "songMark3") {
+      const int index = lastKey_[8] - '0';
+      target_.songMarks[index] = static_cast<int16_t>(
+          intValue < -1 ? -1 : (intValue > 127 ? 127 : intValue));
     } else if (lastKey_ == "activeSongSlot") {
       target_.activeSongSlot = intValue;
       if (target_.activeSongSlot < 0) target_.activeSongSlot = 0;
@@ -1371,6 +1398,7 @@ void SceneJsonObserver::handlePrimitiveBool(bool value) {
   if (path == Path::Genre) {
     if (lastKey_ == "regen") target_.genre.regenerateOnApply = value;
     else if (lastKey_ == "tempo") target_.genre.applyTempoOnApply = value;
+    else if (lastKey_ == "hma") target_.genre.harmonicAuto = value;
     else if (lastKey_ == "cur" || lastKey_ == "curated" ||
              lastKey_ == "sound" || lastKey_ == "snd") {
       // Legacy TEXTURE policy values are decode-only.
@@ -1635,7 +1663,9 @@ void SceneManager::loadDefaultScene() {
   grooveFlavor_ = 0;
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
+  applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
+  for (int16_t& mark : scene_->songMarks) mark = -1;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
@@ -1645,6 +1675,12 @@ void SceneManager::loadDefaultScene() {
       scene_->songs[i].positions[0].patterns[2] = 0;
       scene_->songs[i].positions[0].patterns[3] = -1;
       scene_->songs[i].reverse = false;
+  }
+
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene_->materialSlots[voice][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
+    }
   }
 
   for (int b = 0; b < kBankCount; ++b) {
@@ -1658,24 +1694,6 @@ void SceneManager::loadDefaultScene() {
       clearSynthPattern(scene_->synthBBanks[b].patterns[i]);
     }
   }
-
-  int8_t notes[SynthPattern::kSteps] = {64, 64, -1, 64, -1, 60, 64, -1,
-                                        67, -1, -1, -1, 55, -1, -1, -1};
-  bool accent[SynthPattern::kSteps] = {true, true, false, true, false, true,
-                                       true, false, true, false, false, false,
-                                       true, false, false, false};
-  bool slide[SynthPattern::kSteps] = {false, false, false, false, false, false,
-                                      false, false, false, false, false, false,
-                                      false, false, false, false};
-
-  int8_t notes2[SynthPattern::kSteps] = {52, 52, -1, 52, -1, 48, 52, -1,
-                                         55, -1, -1, -1, 43, -1, -1, -1};
-  bool accent2[SynthPattern::kSteps] = {true, true, false, true, false, true,
-                                        true, false, true, false, false, false,
-                                        true, false, false, false};
-  bool slide2[SynthPattern::kSteps] = {false, false, false, false, false, false,
-                                       false, false, false, false, false, false,
-                                       false, false, false, false};
 
   bool kick[DrumPattern::kSteps] = {true,  true,  false, true,  false, true,
                                     true,  false, true,  false, false, false,
@@ -1818,6 +1836,13 @@ void SceneManager::loadDefaultScene() {
 }
 
 void SceneManager::wipeToZero() {
+  // New/Clear removes the project's Melody payloads. Clear their descriptors
+  // and identities as well, so the saved blank page has no dangling material.
+  for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+    for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+      scene_->materialSlots[voice][slot] = GroovePuterMaterial::MaterialSlotDescriptor{};
+    }
+  }
   drumPatternIndex_ = 0;
   drumBankIndex_ = 0;
   synthPatternIndex_[0] = 0;
@@ -1848,7 +1873,9 @@ void SceneManager::wipeToZero() {
   grooveFlavor_ = 0;
   currentPageIndex_ = 0;
   scene_->grooveFlavor = 0;
+  applyNewSceneMix(*scene_);  // mix C, new scenes only (loaders keep 1.0)
   scene_->activeSongSlot = 0;
+  for (int16_t& mark : scene_->songMarks) mark = -1;
   PhraseCore::reset(scene_->phraseBank);
   for (int i = 0; i < 2; ++i) {
       clearSongData(scene_->songs[i]);
@@ -2148,7 +2175,11 @@ void SceneManager::setSongPattern(int position, SongTrack track, int patternInde
     s.length = clampSongLength(pos + 1);
   }
 
-  s.positions[pos].patterns[trackIdx] = clampSongPatternIndex(patternIndex);
+  const int16_t newPattern = clampSongPatternIndex(patternIndex);
+  if (trackIdx < 2 && s.positions[pos].patterns[trackIdx] != newPattern) {
+    s.setStepsOverride(trackIdx, pos, false);  // a new slot starts following its type
+  }
+  s.positions[pos].patterns[trackIdx] = newPattern;
   // NOTE: Do NOT clamp `position` by current song length here.
   // It breaks multi-row write/fill when length==1 by collapsing writes to row 0.
   // Also do NOT call trimSongLength() here.
@@ -2163,6 +2194,7 @@ void SceneManager::clearSongPattern(int position, SongTrack track) {
   int trackIdx = songTrackToIndex(track);
   if (trackIdx < 0 || trackIdx >= SongPosition::kTrackCount) return;
   scene_->songs[scene_->activeSongSlot].positions[pos].patterns[trackIdx] = -1;
+  if (trackIdx < 2) scene_->songs[scene_->activeSongSlot].setStepsOverride(trackIdx, pos, false);
   // Trim length only when saving, not on every edit
 }
 
@@ -2182,6 +2214,12 @@ int SceneManager::songPatternAtSlot(int slot, int position, SongTrack track) con
   const Song& s = scene_->songs[slot];
   if (position >= s.length) return -1;
   return clampSongPatternIndex(s.positions[position].patterns[trackIdx]);
+}
+
+bool SceneManager::songCellStepsOverrideAtSlot(int slot, int position, int voice) const {
+  if (slot < 0 || slot > 1) return false;
+  if (position < 0 || position >= scene_->songs[slot].length) return false;
+  return scene_->songs[slot].stepsOverrideAt(voice, position);
 }
 
 int SceneManager::songLengthAtSlot(int slot) const {
@@ -2283,6 +2321,7 @@ void SceneManager::mergeSongs() {
       // Only write B's track data when A genuinely has nothing there.
       if (a.positions[i].patterns[t] < 0 && i < b.length) {
         a.positions[i].patterns[t] = b.positions[i].patterns[t];
+        if (t < 2) a.setStepsOverride(t, i, b.stepsOverrideAt(t, i));
       }
     }
   }
@@ -2323,6 +2362,14 @@ void SceneManager::alternateSongs() {
     }
   }
 
+  for (int v = 0; v < 2; ++v) {
+    for (int i = 0; i < steps; ++i) {
+      if (i * 2 < Song::kMaxPositions)
+        target.setStepsOverride(v, i * 2, i < a.length && a.stepsOverrideAt(v, i));
+      if (i * 2 + 1 < Song::kMaxPositions)
+        target.setStepsOverride(v, i * 2 + 1, i < b.length && b.stepsOverrideAt(v, i));
+    }
+  }
   target.length = newLen;
   trimSongLength();
 }
@@ -2344,6 +2391,7 @@ void SceneManager::insertSongRow(int position) {
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
         song.positions[position].patterns[t] = -1;
     }
+    song.insertOverrideRow(position);
 
     if (len < Song::kMaxPositions) {
         song.length = len + 1;
@@ -2367,6 +2415,7 @@ void SceneManager::deleteSongRow(int position) {
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
         song.positions[last].patterns[t] = -1;
     }
+    song.deleteOverrideRow(position);
 
     if (len > 1) {
         song.length = len - 1;
@@ -2436,6 +2485,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
         pos["b"] = s.positions[i].patterns[1];
         pos["drums"] = s.positions[i].patterns[2];
         pos["voice"] = s.positions[i].patterns[3];
+        if (s.stepsOverrideAt(0, i)) pos["as"] = 1;
+        if (s.stepsOverrideAt(1, i)) pos["bs"] = 1;
       }
   }
   
@@ -2498,6 +2549,11 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   synthDelay.add(synthDelay_[1]);
 
   state["masterVolume"] = scene_->masterVolume;
+  for (int i = 0; i < 4; ++i) {
+    char key[12];
+    std::snprintf(key, sizeof(key), "songMark%d", i);
+    state[key] = scene_->songMarks[i];
+  }
   ArduinoJson::JsonArray volumes = state["trackVolumes"].to<ArduinoJson::JsonArray>();
   for (int i = 0; i < (int)VoiceId::Count; ++i) {
     volumes.add(scene_->trackVolumes[i]);
@@ -2523,6 +2579,8 @@ void SceneManager::buildSceneDocument(ArduinoJson::JsonDocument& doc) const {
   genreObj["tempo"] = scene_->genre.applyTempoOnApply;
   genreObj["rsm"] = scene_->genre.rhythmSelectionMode;
   genreObj["rid"] = scene_->genre.rhythmArchetypeId;
+  genreObj["hsm"] = scene_->genre.harmonicStrategy;
+  if (scene_->genre.harmonicAuto) genreObj["hma"] = true;
 
   ArduinoJson::JsonObject genParams = root["generatorParams"].to<ArduinoJson::JsonObject>();
   serializeGeneratorParams(scene_->generatorParams, genParams);
@@ -2648,6 +2706,8 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
                          if (posObj["b"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[1] = clampSongPatternIndex(posObj["b"].as<int>());
                          if (posObj["drums"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[2] = clampSongPatternIndex(posObj["drums"].as<int>());
                          if (posObj["voice"].is<int>()) loadedSongs[sIdx].positions[posIdx].patterns[3] = clampSongPatternIndex(posObj["voice"].as<int>());
+                         if (posObj["as"].is<int>() && posObj["as"].as<int>() != 0) loadedSongs[sIdx].setStepsOverride(0, posIdx, true);
+                         if (posObj["bs"].is<int>() && posObj["bs"].as<int>() != 0) loadedSongs[sIdx].setStepsOverride(1, posIdx, true);
                      }
                      if (posIdx + 1 > loadedSongs[sIdx].length) loadedSongs[sIdx].length = posIdx + 1;
                      ++posIdx;
@@ -2672,7 +2732,6 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
             if (!posObj.isNull()) {
               auto a = posObj["a"];
               auto b = posObj["b"];
-              auto d = posObj["drums"];
               if (a.is<int>()) {
                 loadedSongs[0].positions[posIdx].patterns[0] = clampSongPatternIndex(a.as<int>());
               }
@@ -2770,6 +2829,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     loopStartRow = valueToInt(state["loopStart"], loopStartRow);
     loopEndRow = valueToInt(state["loopEnd"], loopEndRow);
     loaded->masterVolume = valueToFloat(state["masterVolume"], loaded->masterVolume);
+    for (int i = 0; i < 4; ++i) {
+      char key[12];
+      std::snprintf(key, sizeof(key), "songMark%d", i);
+      loaded->songMarks[i] = static_cast<int16_t>(valueToInt(state[key], -1));
+    }
   }
 
   ArduinoJson::JsonObjectConst feelObjRoot = obj["feel"].as<ArduinoJson::JsonObjectConst>();
@@ -2857,6 +2921,11 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     if (rhythmId < 0) rhythmId = 0;
     if (rhythmId > 0xFFFF) rhythmId = 0xFFFF;
     loaded->genre.rhythmArchetypeId = static_cast<uint16_t>(rhythmId);
+
+    const int harmonicStrategy = valueToInt(genreObj["hsm"], 0);
+    loaded->genre.harmonicStrategy =
+        harmonicStrategy == 1 ? static_cast<uint8_t>(1) : static_cast<uint8_t>(0);
+    loaded->genre.harmonicAuto = genreObj["hma"].is<bool>() && genreObj["hma"].as<bool>();
   }
 
   ArduinoJson::JsonObjectConst drumFXObj = obj["drumFX"].as<ArduinoJson::JsonObjectConst>();
@@ -2953,6 +3022,13 @@ bool SceneManager::applySceneDocument(const ArduinoJson::JsonDocument& doc) {
     }
   }
 
+  // M1: absent key means a scene from before material kinds existed, which
+  // decodes as entirely Pattern -- decodeKinds handles the null itself.
+  GroovePuterMaterial::decodeKinds(
+      obj["matKind"].is<const char*>() ? obj["matKind"].as<const char*>()
+                                       : nullptr,
+      *loaded);
+
   if (obj["customPhrases"].is<ArduinoJson::JsonArrayConst>()) {
     auto phrasesArr = obj["customPhrases"].as<ArduinoJson::JsonArrayConst>();
     int idx = 0;
@@ -3030,13 +3106,15 @@ std::string SceneManager::dumpCurrentScene() const {
   return serialized;
 }
 
-bool SceneManager::loadScene(const std::string& json) {
+bool SceneManager::loadScene(const std::string& json, bool restoreResidentPage,
+                             const std::function<bool()>& acknowledge,
+                             const SceneSynthPreparation& prepare) {
   size_t idx = 0;
   JsonVisitor::NextChar nextChar = [&json, &idx]() -> int {
     if (idx >= json.size()) return -1;
     return static_cast<unsigned char>(json[idx++]);
   };
-  if (loadSceneEventedWithReader(nextChar)) return true;
+  if (loadSceneEventedWithReader(nextChar, restoreResidentPage, acknowledge, prepare)) return true;
   
   // DISABLED: ArduinoJson fallback causes abort() on ESP32 due to insufficient DRAM
   // return loadSceneJson(json);
@@ -3053,7 +3131,159 @@ Scene& sceneTransactionScratch() {
   return s_tempLoadScene;
 }
 
-bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
+namespace {
+bool validateStoredProjectMaterial(const Scene& resident) {
+  bool referencedPages[kMaxPages]{};
+  for (size_t songIndex = 0; songIndex < sizeof(resident.songs) / sizeof(resident.songs[0]); ++songIndex) {
+    const auto& song = resident.songs[songIndex];
+    for (int row = 0; row < std::clamp<int>(song.length, 0, Song::kMaxPositions); ++row) {
+      // Synth A/B and drums reference pattern pages; the vocal column does not.
+      for (int track = 0; track < 3; ++track) {
+        const int reference = song.positions[row].patterns[track];
+        if (reference < 0) continue;
+        const int page = songPatternPage(reference);
+        if (page < 0 || page >= kMaxPages) {
+#ifdef ARDUINO
+          Serial.printf("[SCENE-MATERIAL] reject=bad_song_ref song=%u row=%d track=%d ref=%d\n",
+                        static_cast<unsigned>(songIndex), row, track, reference);
+#endif
+          return false;
+        }
+        referencedPages[page] = true;
+      }
+    }
+  }
+  PhraseRuntime::RuntimeSynthEventBuffer verified{};
+  PatternPagingService::PageMaterialDescriptors descriptors{};
+  const auto& project = PatternPagingService::currentProjectName();
+  for (int page = 0; page < kMaxPages; ++page) {
+    if (page != 0) {
+      if (!PatternPagingService::pageExists(page)) {
+        if (referencedPages[page]) {
+#ifdef ARDUINO
+          Serial.printf("[SCENE-MATERIAL] reject=missing_song_page page=%d project=%s\n",
+                        page, project.c_str());
+#endif
+          return false;
+        }
+        continue;
+      }
+      if (!PatternPagingService::readPageMaterialDescriptors(page, descriptors)) {
+#ifdef ARDUINO
+        Serial.printf("[SCENE-MATERIAL] reject=page_descriptors page=%d project=%s\n",
+                      page, project.c_str());
+#endif
+        return false;
+      }
+    }
+    for (int voice = 0; voice < Scene::kMaterialVoices; ++voice) {
+      for (int slot = 0; slot < Scene::kMaterialSlotsPerVoice; ++slot) {
+        const auto& descriptor = page == 0 ? resident.materialSlots[voice][slot]
+            : descriptors[voice * Scene::kMaterialSlotsPerVoice + slot];
+        if (descriptor.kind != GroovePuterMaterial::MaterialKind::Melody) continue;
+        const GroovePuterMaterial::MaterialAddress address{static_cast<uint8_t>(voice),
+            static_cast<uint8_t>(page * Scene::kMaterialSlotsPerVoice + slot)};
+        if (!MelodyPromotion::loadMaterial(MelodyPromotion::defaultFileSystem(),
+                                          project, address, verified)) {
+#ifdef ARDUINO
+          const auto& fs = MelodyPromotion::defaultFileSystem();
+          const auto pathA = MelodyPromotion::slotPath(
+              project, address, GroovePuterMaterial::PublicationSlot::SlotA);
+          const auto pathB = MelodyPromotion::slotPath(
+              project, address, GroovePuterMaterial::PublicationSlot::SlotB);
+          const auto legacyPath = MelodyPromotion::finalPath(project, address);
+          Serial.printf("[SCENE-MATERIAL] payload_files a=%d b=%d legacy=%d\n",
+                        fs.exists(pathA.c_str()), fs.exists(pathB.c_str()),
+                        fs.exists(legacyPath.c_str()));
+          Serial.printf("[SCENE-MATERIAL] reject=melody_payload page=%d voice=%d slot=%d project=%s\n",
+                        page, voice, slot, project.c_str());
+          // Check whether the same project's Melody folder contains valid
+          // payloads under this or another slot. This is read-only and helps
+          // distinguish a missing file from stale slot descriptors.
+          const std::string melodyDirectoryPath =
+              "/projects/" + project + "/melody";
+          File melodyDirectory = SD.open(melodyDirectoryPath.c_str(), FILE_READ);
+          if (melodyDirectory && melodyDirectory.isDirectory()) {
+            for (File entry = melodyDirectory.openNextFile(); entry;
+                 entry = melodyDirectory.openNextFile()) {
+              const bool isDirectory = entry.isDirectory();
+              std::string leaf = entry.name();
+              entry.close();
+              if (isDirectory) continue;
+              const size_t slash = leaf.find_last_of('/');
+              if (slash != std::string::npos) leaf.erase(0, slash + 1);
+              if ((leaf.compare(0, 5, "v0_g") != 0 &&
+                   leaf.compare(0, 5, "v1_g") != 0) ||
+                  leaf.size() < 10 ||
+                  leaf.compare(leaf.size() - 5, 5, ".gpml") != 0) continue;
+              const int candidateVoice = leaf[1] - '0';
+              int candidateSlot = -1;
+              if (std::sscanf(leaf.c_str(), "v%*1d_g%3d_", &candidateSlot) != 1 ||
+                  candidateSlot < 0 || candidateSlot >= kMaxGlobalPatterns) continue;
+              const std::string fullPath = melodyDirectoryPath + "/" + leaf;
+              std::vector<uint8_t> payload;
+              uint32_t generation = 0;
+              if (fs.read(fullPath.c_str(), payload) &&
+                  MelodyStore::decode(payload.data(), payload.size(), verified,
+                                      &generation)) {
+                Serial.printf("[SCENE-MATERIAL] same_project_candidate voice=%d slot=%d bars=%u events=%u gen=%lu\n",
+                              candidateVoice, candidateSlot,
+                              static_cast<unsigned>(verified.lengthTicks /
+                                  PhraseRuntime::kTicksPerBar),
+                              static_cast<unsigned>(verified.count),
+                              static_cast<unsigned long>(generation));
+              }
+            }
+          }
+          melodyDirectory.close();
+          // Read-only recovery census: a prior Save As or interrupted project
+          // migration may have left the payload under another project name.
+          // Never copy or publish it automatically; report valid candidates so
+          // recovery can be reviewed without changing the SD card.
+          File projects = SD.open("/projects", FILE_READ);
+          if (projects && projects.isDirectory()) {
+            for (File entry = projects.openNextFile(); entry;
+                 entry = projects.openNextFile()) {
+              const bool isDirectory = entry.isDirectory();
+              std::string candidateProject = entry.name();
+              entry.close();
+              if (!isDirectory) continue;
+              const size_t slash = candidateProject.find_last_of('/');
+              if (slash != std::string::npos) {
+                candidateProject.erase(0, slash + 1);
+              }
+              if (candidateProject.empty() || candidateProject == project) continue;
+              for (uint8_t candidateVoice = 0;
+                   candidateVoice < Scene::kMaterialVoices; ++candidateVoice) {
+                const GroovePuterMaterial::MaterialAddress candidateAddress{
+                    candidateVoice, address.globalSlot};
+                if (MelodyPromotion::loadMaterial(fs, candidateProject,
+                                                  candidateAddress, verified)) {
+                  Serial.printf("[SCENE-MATERIAL] recovery_candidate project=%s voice=%u slot=%u bars=%u events=%u\n",
+                                candidateProject.c_str(),
+                                static_cast<unsigned>(candidateVoice),
+                                static_cast<unsigned>(address.globalSlot),
+                                static_cast<unsigned>(verified.lengthTicks /
+                                    PhraseRuntime::kTicksPerBar),
+                                static_cast<unsigned>(verified.count));
+                }
+              }
+            }
+          }
+          projects.close();
+#endif
+          return false;
+        }
+      }
+    }
+  }
+  return true;
+}
+}
+
+bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar,
+    bool restoreResidentPage, const std::function<bool()>& acknowledge,
+                             const SceneSynthPreparation& prepare) {
 #ifdef ARDUINO
   Serial.println("  - loadSceneEventedWithReader: Using static loading buffer...");
 #endif
@@ -3079,9 +3309,54 @@ bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar nextChar) {
 #ifdef ARDUINO
   Serial.printf("  - loadSceneEventedWithReader: Parse done, result=%d, error=%d\n", (int)parsed, (int)observer.hadError());
 #endif
-  if (!parsed || observer.hadError()) return false;
+  if (!parsed || observer.hadError()) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=json_parse");
+#endif
+    return false;
+  }
+
+  // JSON and the resident page form one candidate. Both readers use the same
+  // existing staging Scene; no canonical state or page index is published yet.
+  if (restoreResidentPage && PatternPagingService::pageExists(0) &&
+      !PatternPagingService::loadPage(0, *loaded, false)) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=resident_page");
+#endif
+    return false;
+  }
+  // Validate stored material on every page without overwriting this resident
+  // candidate. JSON-only page 0 remains valid for historical projects.
+  if (restoreResidentPage && !validateStoredProjectMaterial(*loaded)) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=stored_material");
+#endif
+    return false;
+  }
+  if (prepare) {
+    const uint8_t slotA = clampIndex(observer.synthBankIndex(0), kBankCount) *
+        Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(0));
+    const uint8_t slotB = clampIndex(observer.synthBankIndex(1), kBankCount) *
+        Bank<SynthPattern>::kPatterns + clampPatternIndex(observer.synthPatternIndex(1));
+    if (!prepare(*loaded, slotA, slotB)) {
+#ifdef ARDUINO
+      Serial.println("[SCENE-LOAD] rejected stage=melody_prepare");
+#endif
+      return false;
+    }
+  }
+  // Streaming filters may reject the completed input after JSON parsing.
+  // Their final acknowledgement must precede canonical Scene publication.
+  if (acknowledge && !acknowledge()) {
+#ifdef ARDUINO
+    Serial.println("[SCENE-LOAD] rejected stage=finish_ack");
+#endif
+    return false;
+  }
 
   *scene_ = *loaded;
+  currentPageIndex_ = 0;
+  PatternPagingService::resetLoadedPageIndex();
   // Songs are already in *loaded (target_.songs populated by observer)
   // scene_->songs[0] = observer.songs(0); // Not needed, observer writes to loaded->songs
   drumPatternIndex_ = clampPatternIndex(observer.drumPatternIndex());

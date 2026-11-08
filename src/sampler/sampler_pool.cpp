@@ -1,9 +1,12 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "sampler_pool.h"
 
 SamplerPool::SamplerPool() {
 }
 
 void SamplerPool::trigger(const SamplerVoice::Params& params, ISampleStore& store, int tag) {
+  maybeActive_ = true;
   // Find first inactive voice
   for (auto& voice : voices_) {
     if (!voice.isActive()) {
@@ -43,3 +46,5 @@ void SamplerPool::stopByTag(int tag) {
     }
   }
 }
+
+#endif

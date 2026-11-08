@@ -36,10 +36,14 @@ inline Palette paletteFor(VisualStyle style) {
     case VisualStyle::MINIMAL_DARK:
     case VisualStyle::MINIMAL:
     default:
+      // CLEAN (ui_theme.h MINIMAL tokens): true black, no panel colour,
+      // warm white text, warm grey labels, rule-coloured borders. Axes are
+      // told apart by their tag text, not by hue; the one accent is warnings.
       return {
-          COLOR_BG, COLOR_PANEL, IGfxColor(0x101A23), COLOR_LIGHT_GRAY,
-          COLOR_TEXT, COLOR_MUTED, COLOR_INFO, COLOR_SYNTH_A, COLOR_WARN,
-          IGfxColor(0xC978E8), COLOR_DANGER};
+          IGfxColor(0x000000), IGfxColor(0x000000), IGfxColor(0x1C1B19),
+          IGfxColor(0x393734), IGfxColor(0xE7E3DE), IGfxColor(0x9C9A94),
+          IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE), IGfxColor(0xE7E3DE),
+          IGfxColor(0xE7E3DE), IGfxColor(0xFF7931)};
   }
 }
 
@@ -55,7 +59,9 @@ inline void drawAxisTag(IGfx& gfx,
   gfx.setTextColor(color);
   gfx.drawText(x + 3, y + 2, axis);
   gfx.setTextColor(palette.muted);
-  gfx.drawText(x + 58, y + 2, subtitle);
+  // At least a space after the tag: "GENRE 1/2" ran into a fixed x + 58.
+  const int tagEnd = x + 3 + gfx.textWidth(axis) + 6;
+  gfx.drawText(tagEnd > x + 58 ? tagEnd : x + 58, y + 2, subtitle);
 }
 
 inline void drawValueRow(IGfx& gfx,
@@ -73,8 +79,32 @@ inline void drawValueRow(IGfx& gfx,
   }
   gfx.setTextColor(palette.muted);
   gfx.drawText(x + 2, y + 1, label);
+
+  // The value column used to be a hard x+66. Several labels in production use
+  // are wider than that -- "SWING OFFBEAT" is 78 px -- so the value landed
+  // inside the label's glyphs and the FEEL screen showed three collisions at
+  // once ("SWING OFFBE50%").
+  //
+  // Measure the label instead, but keep the old column as the *minimum*: rows
+  // whose labels fit stay aligned with each other, so a list of settings reads
+  // as a column and not as a staircase. Only a row that genuinely needs more
+  // room moves, and only as far as it needs.
+  // The gap is a minimum, not a preference: "FEEL CYCLE" ends 4 px short of
+  // the shared column, and demanding more would evict it from the column for
+  // no visible gain.
+  constexpr int kSharedValueColumn = 66;
+  constexpr int kMinLabelGap = 4;
+  const int afterLabel = 2 + gfx.textWidth(label ? label : "") + kMinLabelGap;
+  int valueX = x + (afterLabel > kSharedValueColumn ? afterLabel
+                                                    : kSharedValueColumn);
+
+  // Never push the value off the row. Pulling it back is only allowed while it
+  // still clears the label -- an overlap is worse than an overhang.
+  const int rightLimit = x + width - 2 - gfx.textWidth(value ? value : "");
+  if (valueX > rightLimit && rightLimit >= x + afterLabel) valueX = rightLimit;
+
   gfx.setTextColor(focused ? color : palette.text);
-  gfx.drawText(x + 66, y + 1, value);
+  gfx.drawText(valueX, y + 1, value);
 }
 
 inline void drawMeter(IGfx& gfx,

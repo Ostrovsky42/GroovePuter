@@ -9,6 +9,9 @@
 #include <type_traits>
 
 #include "../../scenes.h"
+#include "../phrase/runtime_synth_events.h"
+#include "material_identity.h"
+#include "material_lineage.h"
 #include "undo_owner.h"
 
 namespace GroovePuterUndo {
@@ -35,13 +38,15 @@ inline bool validSynthPatternAddress(const SynthPatternUndoPayload& receipt) {
          receipt.patternIndex < Bank<SynthPattern>::kPatterns;
 }
 
-inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
-                                           int synthIndex,
-                                           SynthPatternUndoPayload& receipt) {
+// Before-image of one named slot of the synth's current bank. The pair view
+// of STEPS edits slot N+1 through this, with its own receipt.
+inline bool captureSynthPatternUndoAt(SceneManager& manager,
+                                      int synthIndex,
+                                      int pattern,
+                                      SynthPatternUndoPayload& receipt) {
   if (synthIndex < 0 || synthIndex >= 2) return false;
   const int page = manager.currentPageIndex();
   const int bank = manager.getCurrentBankIndex(synthIndex + 1);
-  const int pattern = manager.getCurrentSynthPatternIndex(synthIndex);
   if (page < 0 || page >= kMaxPages ||
       bank < 0 || bank >= kBankCount ||
       pattern < 0 || pattern >= Bank<SynthPattern>::kPatterns) {
@@ -52,8 +57,17 @@ inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
   receipt.synthIndex = static_cast<uint8_t>(synthIndex);
   receipt.bankIndex = static_cast<uint8_t>(bank);
   receipt.patternIndex = static_cast<uint8_t>(pattern);
-  receipt.before = manager.getCurrentSynthPattern(synthIndex);
+  receipt.before = manager.getSynthPattern(synthIndex, pattern);
   return true;
+}
+
+inline bool captureCurrentSynthPatternUndo(SceneManager& manager,
+                                           int synthIndex,
+                                           SynthPatternUndoPayload& receipt) {
+  if (synthIndex < 0 || synthIndex >= 2) return false;
+  return captureSynthPatternUndoAt(
+      manager, synthIndex, manager.getCurrentSynthPatternIndex(synthIndex),
+      receipt);
 }
 
 inline bool synthPatternUndoTargetAvailable(
@@ -87,9 +101,6 @@ inline bool isCanonicalClearedSynthPattern(const SynthPattern& pattern) {
   return true;
 }
 
-// R4 owns committed Song arrangement edits only. Transport position/mode/loop
-// and playback-slot switching are runtime/TIME. This receipt does not describe
-// Phrase->Song generation; that domain has its own Generation receipt.
 struct SongUndoPayload {
   uint8_t pageIndex{0};
   uint8_t songSlot{0};
@@ -98,13 +109,17 @@ struct SongUndoPayload {
 
 static_assert(std::is_trivially_copyable<SongUndoPayload>::value,
               "Song Undo receipt must remain a fixed value");
-static_assert(sizeof(SongUndoPayload) <= 1040,
+static_assert(sizeof(SongUndoPayload) <= 1080,
               "R4 Song Undo receipt exceeded the measured ~1 KiB budget");
 static_assert(sizeof(SongUndoPayload) <= kUndoPayloadBytes,
               "Song Undo receipt exceeds canonical owner capacity");
 
 inline bool sameSong(const Song& lhs, const Song& rhs) {
   if (lhs.length != rhs.length || lhs.reverse != rhs.reverse) return false;
+  if (std::memcmp(lhs.stepsOverride, rhs.stepsOverride,
+                  sizeof(lhs.stepsOverride)) != 0) {
+    return false;
+  }
   for (int row = 0; row < Song::kMaxPositions; ++row) {
     for (int track = 0; track < SongPosition::kTrackCount; ++track) {
       if (lhs.positions[row].patterns[track] != rhs.positions[row].patterns[track]) {
@@ -133,14 +148,24 @@ inline bool songUndoTargetAvailable(const SceneManager& manager,
          manager.currentPageIndex() == receipt.pageIndex;
 }
 
+// Same receipt for an explicit slot (for example the slot that is playing).
+inline bool captureSongUndoForSlot(SceneManager& manager,
+                                   int slot,
+                                   SongUndoPayload& receipt) {
+  const int page = manager.currentPageIndex();
+  if (page < 0 || page >= kMaxPages || slot < 0 || slot > 1) return false;
+  receipt = SongUndoPayload{};
+  receipt.pageIndex = static_cast<uint8_t>(page);
+  receipt.songSlot = static_cast<uint8_t>(slot);
+  receipt.before = manager.currentScene().songs[slot];
+  return true;
+}
+
 inline void restoreSongUndo(SceneManager& manager,
                             const SongUndoPayload& receipt) {
   manager.currentScene().songs[receipt.songSlot] = receipt.before;
 }
 
-// Phrase capture/derive/clear can change nextPhraseId as well as one slot. The
-// whole fixed 244-byte bank is still a bounded domain receipt, not a Scene
-// snapshot, and provides exact rollback for every current Phrase command.
 struct PhraseUndoPayload {
   uint8_t pageIndex{0};
   PhraseCore::PhraseBank before{};
@@ -167,6 +192,38 @@ inline bool phraseUndoTargetAvailable(const SceneManager& manager,
 inline void restorePhraseUndo(SceneManager& manager,
                               const PhraseUndoPayload& receipt) {
   manager.currentScene().phraseBank = receipt.before;
+}
+
+// P3 Runtime Phrase is session-only and is not represented by the Scene codec.
+// It therefore gets a distinct receipt in the same canonical Undo slot instead
+// of aliasing the persisted PhraseCore bank kind. Source is kept as its bounded
+// enum byte so the receipt layer stays independent from MiniAcid headers.
+struct RuntimePhraseUndoPayload {
+  uint8_t voiceIndex{0};
+  uint8_t source{0};
+  PhraseRuntime::RuntimeSynthEventBuffer before{};
+  uint8_t representation{0};  // 0 = Pattern, 1 = Melody
+  bool wasDirty{false};
+  SynthPattern patternBefore{};
+  GroovePuterMaterial::MaterialReference reference{};
+  GroovePuterMaterial::DevelopmentLineage lineageBefore{};
+  bool hadSourceAnchorSnapshot{false};
+};
+
+static_assert(std::is_trivially_copyable<RuntimePhraseUndoPayload>::value,
+              "runtime Phrase Undo receipt must remain a fixed value");
+static_assert(sizeof(RuntimePhraseUndoPayload) <= kUndoPayloadBytes,
+              "runtime Phrase Undo receipt exceeds canonical owner capacity");
+
+inline bool validRuntimePhraseUndoPayload(
+    const RuntimePhraseUndoPayload& receipt) {
+  return receipt.voiceIndex < 2 && receipt.source <= 1;
+}
+
+inline bool sameRuntimePhraseBuffer(
+    const PhraseRuntime::RuntimeSynthEventBuffer& lhs,
+    const PhraseRuntime::RuntimeSynthEventBuffer& rhs) {
+  return std::memcmp(&lhs, &rhs, sizeof(lhs)) == 0;
 }
 
 struct DrumPatternUndoPayload {

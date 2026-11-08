@@ -1,6 +1,9 @@
 #include "../scenes.h"
+#include "../src/phrase/runtime_synth_events.h"
+#include "../src/phrase/runtime_pattern_event_bank.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/state/generation_request_state.h"
+#include "../src/state/generated_pattern_harmony_origin.h"
 #include "../src/state/scene_revision.h"
 #include "../src/state/undo_owner.h"
 
@@ -9,6 +12,7 @@
 #include <cstdint>
 #include <cstdio>
 #include <type_traits>
+#include <thread>
 
 class TestSceneManager {
  public:
@@ -84,6 +88,16 @@ class MiniAcid {
   const TestGenreManager& genreManager() const { return genreManager_; }
 
   void regeneratePatternsWithGenre() {}
+  bool rebuildPatternRuntimeEventBank() { return true; }
+  bool refreshPatternRuntimeEvents(int, int, int) { return true; }
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(
+      int synthIndex) const {
+    return runtimeEvents_[synthIndex == 1 ? 1 : 0];
+  }
+  void barrierPatternRuntimeSourceTransition() {}
+  void publishGeneratedPatternHarmony(
+      const GroovePuterMaterial::GeneratedPatternHarmonyOrigin&) {}
+  void clearGeneratedPatternHarmony() {}
 
  private:
   TestSceneManager scenes_{};
@@ -92,6 +106,7 @@ class MiniAcid {
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   GrooveboxModeManager modeManager_;
   TestGenreManager genreManager_{};
+  PhraseRuntime::RuntimePatternEventBuffer runtimeEvents_[2]{};
 };
 
 struct AtlasRuntimeMetadata {
@@ -188,6 +203,7 @@ const char* resultName(QuantizedGenerationResult result) {
     case QuantizedGenerationResult::CommittedNow: return "CommittedNow";
     case QuantizedGenerationResult::PendingNextBar: return "PendingNextBar";
     case QuantizedGenerationResult::AttemptUnavailable: return "AttemptUnavailable";
+    case QuantizedGenerationResult::Busy: return "Busy";
   }
   return "Unknown";
 }
@@ -300,10 +316,205 @@ void testBoundedActivationStorage() {
               sizeof(PendingGeneration));
 }
 
+// A non-committing audition cannot use the generation publication protocol:
+// the owner reserves both slots as a unit, and BAR_START retires a published
+// slot with no committed revision. Keep these facts visible while designing
+// an explicitly separate lifecycle within the existing owner.
+void testUncommittedAuditionIsNotGenerationActivation() {
+  using namespace GroovePuterRhythm;
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+
+  resetQuantizedState();
+  MiniAcid engine;
+  const WriteLease candidate = acquireWriteLease();
+  assert(candidate.slot >= 0);
+  assert(acquireWriteLease().slot < 0);
+
+  PendingGeneration& pending = g_slots[candidate.slot];
+  pending.owner = &engine;
+  pending.target = captureTarget(engine.sceneManager());
+  pending.scope = QuantizedGenerationScope::Full;
+  pending.committedRevision = 0;
+  publishWriteSlot(candidate.slot);
+  assert(pendingAudibleDrumPatternSet(engine) == &pending.drums);
+  assert(pendingAudibleSynthPattern(engine, 0) == &pending.synth[0]);
+  assert(!commitQuantizedGenerationAtBarStart(engine.sceneManager()));
+  assert(g_publishedSlot.load(std::memory_order_acquire) == -1);
+  assert(g_slotState[candidate.slot].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Empty));
+  assert(g_status.load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(QuantizedGenerationStatus::CancelledRevisionChanged));
+  assert(pendingAudibleDrumPatternSet(engine) == nullptr);
+  assert(GroovePuterState::sceneRevisionSnapshot().currentRevision == 100);
+}
+
+void testAuditionReservationExcludesGeneration() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  assert(reserveAuditionSlots());
+  assert(!reserveAuditionSlots());
+  assert(acquireWriteLease().slot < 0);
+  releaseAuditionSlots();
+  const WriteLease generation = acquireWriteLease();
+  assert(generation.slot >= 0);
+  assert(!reserveAuditionSlots());
+  releaseWriteSlot(generation.slot);
+  assert(reserveAuditionSlots());
+  releaseAuditionSlots();
+
+  // A busy second slot must not leave the first slot reserved on failure.
+  g_slotState[1].store(static_cast<uint8_t>(SlotState::Writing),
+                       std::memory_order_release);
+  assert(!reserveAuditionSlots());
+  assert(g_slotState[0].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Empty));
+  assert(g_slotState[1].load(std::memory_order_acquire) ==
+         static_cast<uint8_t>(SlotState::Writing));
+  releaseWriteSlot(1);
+}
+
+void testAuditionCandidateBoundaryAndSession() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  MiniAcid engine;
+  AuditionContext context{};
+  context.owner = &engine;
+  context.target = captureTarget(engine.sceneManager());
+  context.revision = 100;
+  context.drumAddress = 0;
+  const uint32_t session = beginAuditionSession(context);
+  assert(session != 0);
+  releaseAuditionSlots();  // legacy reservation release must not end a session
+  assert(acquireWriteLease().slot < 0);
+  DrumPatternSet first{};
+  first.voices[0].steps[0].hit = true;
+  first.voices[0].steps[0].velocity = 31;
+  DrumPatternSet second{};
+  second.voices[0].steps[0].hit = true;
+  second.voices[0].steps[0].velocity = 77;
+  DrumPatternSet accepted{};
+  accepted.groove.swing = 0.25f;
+  accepted.lanes[0].targetParam = 3;
+  assert(stageAuditionCandidate(session, first, accepted));
+  assert(audibleAuditionDrums(session) == nullptr);
+  assert(activateAuditionAtBar(session));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 31);
+  assert(audibleAuditionDrums(session)->groove.swing == 0.25f);
+  assert(audibleAuditionDrums(session)->lanes[0].targetParam == 3);
+  assert(stageAuditionCandidate(session, second, accepted));
+  assert(!stageAuditionCandidate(session, first, accepted));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 31);
+  assert(activateAuditionAtBar(session));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 77);
+  assert(!activateAuditionAtBar(session));
+  assert(!endAuditionSession(session + 1));
+  assert(audibleAuditionDrums(session)->voices[0].steps[0].velocity == 77);
+  assert(endAuditionSession(session));  // audio reader is quiescent in this test
+  assert(audibleAuditionDrums(session) == nullptr);
+  const uint32_t next = beginAuditionSession(context);
+  assert(next != 0 && next != session);
+  assert(!stageAuditionCandidate(session, first, accepted));
+  assert(!endAuditionSession(session));
+  assert(endAuditionSession(next));
+}
+
+void testAuditionRejectsChangedContext() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  MiniAcid engine;
+  AuditionContext context{};
+  context.owner = &engine;
+  context.target = captureTarget(engine.sceneManager());
+  context.revision = 100;
+  context.songMode = true;
+  context.songSlot = 1;
+  context.songRow = 3;
+  context.drumAddress = 2;
+  const uint32_t session = beginAuditionSession(context);
+  assert(session != 0);
+  DrumPatternSet drums{};
+  assert(stageAuditionCandidate(session, drums, drums));
+  assert(validateAuditionContext(session, context));
+  assert(activateAuditionAtBar(session));
+  auto changed = context;
+  changed.songRow = 4;
+  changed.target.synthSlot[0] = 1;
+  assert(validateAuditionContext(session, changed));
+  changed.drumAddress = 3;
+  changed.target.drumSlot = 3;
+  assert(validateAuditionContext(session, changed));
+  changed.drumAddress = -1;
+  assert(!validateAuditionContext(session, changed));
+  assert(audibleAuditionDrums(session) == nullptr);
+  assert(!stageAuditionCandidate(session, drums, drums));
+  assert(!validateAuditionContext(session, context));
+  assert(endAuditionSession(session));
+
+  for (int reason = 0; reason < 6; ++reason) {
+    const uint32_t attempt = beginAuditionSession(context);
+    assert(attempt != 0);
+    auto other = context;
+    MiniAcid anotherEngine;
+    switch (reason) {
+      case 0: other.owner = &anotherEngine; break;
+      case 1: ++other.revision; break;
+      case 2: ++other.target.page; break;
+      case 3: other.songRow = -1; break;
+      case 4: ++other.songSlot; break;
+      case 5: other.drumAddress = -1; break;
+    }
+    assert(!validateAuditionContext(attempt, other));
+    assert(endAuditionSession(attempt));
+  }
+  auto unsupported = context;
+  unsupported.drumAddress = -1;
+  assert(beginAuditionSession(unsupported) == 0);
+}
+
+void testAuditionConcurrentPublication() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+  MiniAcid engine;
+  AuditionContext context{};
+  context.owner = &engine;
+  context.target = captureTarget(engine.sceneManager());
+  context.revision = 100;
+  context.drumAddress = 0;
+  const uint32_t session = beginAuditionSession(context);
+  assert(session != 0);
+  constexpr int rounds = 5000;
+  std::atomic<bool> finished{false};
+  std::thread producer([&] {
+    for (int n = 0; n < rounds; ++n) {
+      DrumPatternSet pattern{};
+      const uint8_t velocity = static_cast<uint8_t>(n % 127 + 1);
+      for (auto& voice : pattern.voices)
+        for (auto& step : voice.steps) step.velocity = velocity;
+      while (!stageAuditionCandidate(session, pattern, pattern)) std::this_thread::yield();
+    }
+    finished.store(true, std::memory_order_release);
+  });
+  while (!finished.load(std::memory_order_acquire)) {
+    (void)activateAuditionAtBar(session);
+    const DrumPatternSet* pattern = audibleAuditionDrums(session);
+    if (!pattern) continue;
+    const uint8_t velocity = pattern->voices[0].steps[0].velocity;
+    for (const auto& voice : pattern->voices)
+      for (const auto& step : voice.steps) assert(step.velocity == velocity);
+  }
+  producer.join();
+  assert(endAuditionSession(session));
+}
+
 }  // namespace
 
 int main() {
   testBoundedActivationStorage();
+  testUncommittedAuditionIsNotGenerationActivation();
+  testAuditionReservationExcludesGeneration();
+  testAuditionCandidateBoundaryAndSession();
+  testAuditionConcurrentPublication();
+  testAuditionRejectsChangedContext();
 
   bool ok = true;
   ok &= expectResult(

@@ -5,12 +5,33 @@
 #include "mode_manager.h"
 #include "phrase_generator.h"
 #include "src/generation/migration/phrase_execution.h"
+#include "src/generation/harmony/phrase_graph_route_builder.h"
+#include "src/generation/migration/genre_harmony_selection.h"
 #include "src/state/generation_request_state.h"
 
 #include <array>
+#include <type_traits>
 #include <cstdint>
+#include <cstring>
 
 namespace GeneratedPhraseP1R {
+
+struct GraphRoutePlanningWorkspace {
+  GroovePuterHarmony::RouteScratch route{};
+  GroovePuterHarmony::RouteCandidateWorkspace candidates{};
+  GroovePuterHarmony::RecentHarmonyMemory recent{};
+};
+
+inline uint32_t stableProjectSeed(uint32_t projectSeed) {
+  return projectSeed == 0 ? 0x47505331u : projectSeed;
+}
+
+inline uint32_t stableSongIdentity(uint32_t projectSeed, int songSlot) {
+  projectSeed = stableProjectSeed(projectSeed);
+  const uint32_t identity = GroovePuterRhythm::deterministicValue(
+      projectSeed, 0x534F4E47u + static_cast<uint32_t>(songSlot));
+  return identity == 0 ? 1u : identity;
+}
 
 constexpr int kLogicalPhraseAttemptChannel = 0xFFFF;
 static_assert(kMaxGlobalPatterns < kLogicalPhraseAttemptChannel,
@@ -65,6 +86,105 @@ materializationSettingsFor(const Scene& scene,
   settings.scaleTypeValue =
       static_cast<GroovePuterRhythm::ScaleTypeValue>(scene.generatorParams.scale);
   return settings;
+}
+
+inline bool probeGraphEventCount(
+    const Scene& scene, const GenreSettings& genre, uint8_t bars,
+    uint32_t generationAttemptOrdinal, uint8_t& eventCount,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus) {
+  GenreSettings legacyProbeGenre = genre;
+  legacyProbeGenre.harmonicStrategy = static_cast<uint8_t>(
+      GroovePuterHarmony::HarmonicStrategy::Legacy);
+  GroovePuterRhythm::PreparedPhraseExecution probe{};
+  GroovePuterRhythm::PhraseExecutionScratch probeScratch{};
+  const uint16_t phraseIdentity = phraseIdentityForAttempt(
+      generationAttemptOrdinal);
+  const auto probeStatus = GroovePuterRhythm::preparePhraseExecution(
+      legacyProbeGenre,
+      materializationSettingsFor(scene, GroovePuterState::currentGenerationLevel(),
+                                 generationAttemptOrdinal),
+      phraseIdentity, bars, probeScratch, probe, nullptr);
+  if (probeStatus != GroovePuterRhythm::PhraseExecutionStatus::Ready ||
+      probe.semantic.harmonicTimeline.totalEventPositions == 0 ||
+      probe.semantic.harmonicTimeline.totalEventPositions >
+          GroovePuterHarmony::kMaxPreparedGraphEvents) {
+    failureStatus = probeStatus == GroovePuterRhythm::PhraseExecutionStatus::Ready
+        ? GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure
+        : probeStatus;
+    return false;
+  }
+  eventCount = probe.semantic.harmonicTimeline.totalEventPositions;
+  return true;
+}
+
+// Keep the graph planner's large workspace off the call stack while the
+// preliminary phrase probe is running. Both stages are synchronous and this
+// preserves the same seed, inputs and output publication order.
+#if defined(__GNUC__)
+__attribute__((noinline))
+#endif
+inline bool buildGraphRouteAfterProbe(
+    MiniAcid& engine, const Scene& scene, const GenreSettings& genre,
+    uint32_t generationAttemptOrdinal, uint8_t eventCount,
+    const GroovePuterHarmony::HarmonicState* current,
+    const GroovePuterHarmony::TonalContext* currentTonal,
+    const GroovePuterHarmony::RecentHarmonyMemory* recent,
+    GroovePuterHarmony::PreparedGraphHarmony& graphOut,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata& metadataOut,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus,
+    GroovePuterHarmony::SectionIntent section) {
+  GraphRoutePlanningWorkspace workspace{};
+  if (recent != nullptr) workspace.recent = *recent;
+  const uint32_t projectSeed = stableProjectSeed(
+      engine.modeManager().generationSeed());
+  const uint32_t songIdentity = stableSongIdentity(
+      projectSeed, std::clamp(scene.activeSongSlot, 0, 1));
+  const uint16_t phraseIdentity = phraseIdentityForAttempt(
+      generationAttemptOrdinal);
+  const uint32_t provisionalMaterialId =
+      static_cast<uint32_t>(phraseIdentity) + 1u;
+  const uint32_t provisionalGeneration =
+      static_cast<uint32_t>(phraseIdentity) + 1u;
+  const auto materialization = materializationSettingsFor(
+      scene, GroovePuterState::currentGenerationLevel(),
+      generationAttemptOrdinal);
+  GroovePuterHarmony::PreparedGraphHarmony graph{};
+  GroovePuterHarmony::PreparedPhraseGraphMetadata metadata{};
+  if (GroovePuterHarmony::buildPhraseGraphRoute(
+          genre, materialization.rootPitchClass,
+          static_cast<uint8_t>(materialization.scaleTypeValue), eventCount,
+          projectSeed, songIdentity, provisionalMaterialId,
+          provisionalGeneration, workspace.recent, workspace.route,
+          workspace.candidates, graph, metadata, current, currentTonal,
+          section) !=
+      GroovePuterHarmony::PhraseGraphRouteBuildStatus::Ready) {
+    failureStatus = GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+    return false;
+  }
+  graphOut = graph;
+  metadataOut = metadata;
+  return true;
+}
+
+inline bool prepareGraphRoute(
+    MiniAcid& engine, const Scene& scene, const GenreSettings& genre,
+    uint8_t bars, uint32_t generationAttemptOrdinal,
+    const GroovePuterHarmony::HarmonicState* current,
+    const GroovePuterHarmony::TonalContext* currentTonal,
+    const GroovePuterHarmony::RecentHarmonyMemory* recent,
+    GroovePuterHarmony::PreparedGraphHarmony& graphOut,
+    GroovePuterHarmony::PreparedPhraseGraphMetadata& metadataOut,
+    GroovePuterRhythm::PhraseExecutionStatus& failureStatus,
+    GroovePuterHarmony::SectionIntent section =
+        GroovePuterHarmony::SectionIntent::Develop) {
+  uint8_t eventCount = 0;
+  if (!probeGraphEventCount(scene, genre, bars, generationAttemptOrdinal,
+                            eventCount, failureStatus)) return false;
+
+  return buildGraphRouteAfterProbe(
+      engine, scene, genre, generationAttemptOrdinal, eventCount,
+      current, currentTonal, recent, graphOut, metadataOut, failureStatus,
+      section);
 }
 
 inline GenreBehavior synthBehaviorForVoice(GenreBehavior behavior,
@@ -124,6 +244,70 @@ inline bool prepareDestinationIndependentPitchSource(
   return true;
 }
 
+// P0 R1: fingerprint of everything prepareDestinationIndependentPitchSource reads from
+// the engine instead of from the PreparedPhraseExecution. The recipe stores this at
+// generation time; a later difference means the rebuilt sections would be produced in a
+// different context than the kept phrase. Field-wise (no struct bytes: padding is undefined).
+inline uint32_t pitchSourceFingerprint(MiniAcid& engine) {
+  uint64_t x = 1469598103934665603ull;
+  const auto mix = [&x](uint64_t v) {
+    x ^= v + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2);
+    x *= 1099511628211ull;
+  };
+  const auto mixF = [&mix](float f) {
+    uint32_t bits = 0;
+    static_assert(sizeof(bits) == sizeof(f), "float size");
+    std::memcpy(&bits, &f, sizeof(bits));
+    mix(bits);
+  };
+  auto& gm = engine.genreManager();
+  mix(static_cast<uint64_t>(gm.recipe()));
+  mix(static_cast<uint64_t>(gm.generativeMode()));
+  mix(static_cast<uint64_t>(engine.modeManager().flavor()));
+  mixF(engine.bpm());
+  const GenerativeParams p = gm.getCompiledGenerativeParams();
+  mix(static_cast<uint64_t>(p.minNotes)); mix(static_cast<uint64_t>(p.maxNotes));
+  mix(static_cast<uint64_t>(p.minOctave)); mix(static_cast<uint64_t>(p.maxOctave));
+  mixF(p.slideProbability); mixF(p.accentProbability); mixF(p.gateLengthMultiplier);
+  mixF(p.swingAmount); mixF(p.microTimingAmount);
+  mix(static_cast<uint64_t>(p.velocityMin)); mix(static_cast<uint64_t>(p.velocityMax));
+  mix(p.preferDownbeats); mix(p.allowRepeats);
+  mixF(p.rootNoteBias); mixF(p.ghostProbability); mixF(p.chromaticProbability);
+  mix(p.sparseKick); mix(p.sparseHats); mix(p.noAccents);
+  mixF(p.fillProbability); mixF(p.drumSyncopation);
+  mix(p.drumPreferOffbeat); mix(static_cast<uint64_t>(p.drumVoiceCount));
+  const GenreBehavior b = gm.getBehavior();
+  mix(b.stepMask); mix(b.motifLength); mix(b.preferredScale);
+  mix(b.useMotif); mix(b.allowChromatic); mix(b.forceOctaveJump); mix(b.avoidClusters);
+  return static_cast<uint32_t>(x ^ (x >> 32));
+}
+
+// P0 R0: canonical musical content of one bar (every lane), field-wise, so padding and
+// service bytes never take part. Same fields as the P0-B golden dump.
+inline uint64_t canonicalBarHash(const DrumPatternSet& drums,
+                                 const SynthPattern& synthA,
+                                 const SynthPattern& synthB) {
+  uint64_t x = 1469598103934665603ull;
+  const auto h = [&x](uint64_t v) {
+    x ^= v + 0x9e3779b97f4a7c15ull + (x << 6) + (x >> 2);
+    x *= 1099511628211ull;
+  };
+  for (int v = 0; v < DrumPatternSet::kVoices; ++v)
+    for (int st = 0; st < DrumPattern::kSteps; ++st) {
+      const DrumStep& d = drums.voices[v].steps[st];
+      h((uint64_t(d.hit) << 1) | d.accent); h(d.velocity); h(uint8_t(d.timing));
+      h(d.fx); h(d.fxParam); h(d.probability);
+    }
+  for (const SynthPattern* sp : {&synthA, &synthB})
+    for (int st = 0; st < SynthPattern::kSteps; ++st) {
+      const SynthStep& s = sp->steps[st];
+      h(uint8_t(s.note));
+      h((uint64_t(s.slide) << 2) | (uint64_t(s.accent) << 1) | s.ghost);
+      h(s.velocity); h(uint8_t(s.timing)); h(s.fx); h(s.fxParam); h(s.probability);
+    }
+  return x;
+}
+
 inline bool materializePreparedBars(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     const PhraseGenerator::PhraseBar& pitchSource,
@@ -161,6 +345,25 @@ inline bool materializePreparedBars(
   return true;
 }
 
+// D1-B: compact owner-derived evidence for one materialized Synth A bar. Valid
+// only when P1R materialization actually Applied AND the bass owner exported
+// its resolved plan; every other path leaves it default (valid == false).
+// Owns no Pattern bytes.
+struct MaterializedSynthABarEvidence {
+  bool valid = false;
+  uint8_t phraseBarOrdinal = 0;
+  GroovePuterRhythm::BassRhythmPlan bassRhythm{};
+  // D1-B1: pitch class at each bass attack, from the owner's tonal plan.
+  GroovePuterRhythm::BassPitchClassWitness bassPitchClasses{};
+  GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
+      GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // CALL/RESPONSE phase 8: template/level of an Idiom bar (0xFF = none).
+  uint8_t idiomTemplate = 0xFF;
+};
+
+static_assert(std::is_trivially_copyable<MaterializedSynthABarEvidence>::value,
+              "bar evidence must stay fixed-capacity");
+
 // PMB-P1 bounded materialization: rebuilds the destination-independent pitch
 // source fresh (PMB-A1 proved this is deterministic/idempotent) and
 // materializes exactly one bar into the caller's single reused scratch
@@ -175,31 +378,70 @@ inline bool materializeOneBar(
     const GroovePuterRhythm::PreparedPhraseExecution& execution,
     uint8_t phraseBarOrdinal,
     int16_t physicalPatternAddress,
-    PhraseGenerator::PhraseBar& scratch) {
+    PhraseGenerator::PhraseBar& scratch,
+    MaterializedSynthABarEvidence& evidence,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
+  evidence = MaterializedSynthABarEvidence{};
   scratch = PhraseGenerator::PhraseBar{};
   if (!prepareDestinationIndependentPitchSource(engine, execution, scratch)) {
     return false;
   }
   const auto result = GroovePuterRhythm::materializePreparedPhraseBar(
       execution, phraseBarOrdinal, physicalPatternAddress,
-      scratch.drums, scratch.synthA, scratch.synthB);
-  return result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+      scratch.drums, scratch.synthA, scratch.synthB, graphSource);
+  const bool applied =
+      result.status == GroovePuterRhythm::StrongRhythmMigrationStatus::Applied;
+  // Valid only when BOTH required owner results exist (fail closed).
+  if (applied && result.bassRhythmPlanAvailable &&
+      result.bassPitchClassWitnessAvailable) {
+    evidence.valid = true;
+    evidence.phraseBarOrdinal = phraseBarOrdinal;
+    evidence.bassRhythm = result.bassRhythmPlan;
+    evidence.bassPitchClasses = result.bassPitchClassWitness;
+    evidence.harmonicAuthority = result.harmonicAuthority;
+    evidence.idiomTemplate = result.idiomTemplate;
+  }
+  return applied;
+}
+
+inline bool materializeOneBar(
+    MiniAcid& engine,
+    const GroovePuterRhythm::PreparedPhraseExecution& execution,
+    uint8_t phraseBarOrdinal,
+    int16_t physicalPatternAddress,
+    PhraseGenerator::PhraseBar& scratch,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
+  MaterializedSynthABarEvidence ignored{};
+  return materializeOneBar(engine, execution, phraseBarOrdinal,
+                           physicalPatternAddress, scratch, ignored,
+                           graphSource);
 }
 
 inline PreparationDisposition prepare(
     MiniAcid& engine,
     const Scene& scene,
-    const GenreSettings& genre,
+    const GenreSettings& requestedGenre,
     uint8_t bars,
     int pageIndex,
     int firstLocalSlot,
     uint32_t generationAttemptOrdinal,
     bool attemptAvailable,
     GroovePuterRhythm::PreparedPhraseExecution& executionOut,
-    PreparationEvidence& evidence) {
+    PreparationEvidence& evidence,
+    const GroovePuterHarmony::PreparedGraphHarmony* graphSource = nullptr) {
+  const GenreSettings genre = GroovePuterRhythm::resolveGenreHarmony(
+      requestedGenre, static_cast<uint8_t>(scene.generatorParams.scale)).settings;
   evidence = PreparationEvidence{};
+  const bool graphRequested = genre.harmonicStrategy ==
+      static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph);
   if (GroovePuterRhythm::selectStrongRhythmRoute(genre) ==
       GroovePuterRhythm::StrongRhythmRoute::Legacy) {
+    if (graphRequested) {
+      evidence.usedP1r = true;
+      evidence.executionStatus =
+          GroovePuterRhythm::PhraseExecutionStatus::Rejected;
+      return PreparationDisposition::Failed;
+    }
     return PreparationDisposition::LegacyRoute;
   }
 
@@ -211,13 +453,20 @@ inline PreparationDisposition prepare(
   const auto level = GroovePuterState::currentGenerationLevel();
 
   GroovePuterRhythm::PhraseExecutionScratch scratch{};
+  if (graphRequested && graphSource == nullptr) {
+    evidence.executionStatus =
+        GroovePuterRhythm::PhraseExecutionStatus::GraphSourceFailure;
+    return PreparationDisposition::Failed;
+  }
+
   evidence.executionStatus = GroovePuterRhythm::preparePhraseExecution(
       genre,
       materializationSettingsFor(scene, level, generationAttemptOrdinal),
       evidence.phraseGenerationIdentity,
       bars,
       scratch,
-      executionOut);
+      executionOut,
+      graphSource);
   if (evidence.executionStatus !=
       GroovePuterRhythm::PhraseExecutionStatus::Ready) {
     return PreparationDisposition::Failed;
@@ -248,7 +497,7 @@ inline PreparationDisposition prepare(
         localSlot % Bank<SynthPattern>::kPatterns);
     if (!materializeOneBar(engine, executionOut, bar,
                            static_cast<int16_t>(globalPattern),
-                           preflightScratch)) {
+                           preflightScratch, graphSource)) {
       evidence.materializationStatus =
           GroovePuterRhythm::StrongRhythmMigrationStatus::MaterializationFailed;
       return PreparationDisposition::Failed;

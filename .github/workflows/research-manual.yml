@@ -1,0 +1,63 @@
+name: Research Manual
+
+on:
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Historical/research suite to reproduce"
+        required: true
+        default: "gf2"
+        type: choice
+        options:
+          - gf2
+          - phrase
+          - generation
+          - ui
+          - undo
+          - sampler
+          - stage15
+          - usb-acceptance
+          - all
+
+permissions:
+  contents: read
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - uses: arduino/setup-arduino-cli@v2
+        if: inputs.suite == 'usb-acceptance'
+        with:
+          version: "1.x"
+      - name: Install pinned Cardputer dependencies
+        if: inputs.suite == 'usb-acceptance'
+        run: bash scripts/install_arduino_deps.sh
+      - name: Prepare pinned ESP-IDF source
+        if: inputs.suite == 'usb-acceptance'
+        run: |
+          rm -rf "$HOME/esp-idf"
+          git init "$HOME/esp-idf"
+          git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
+          git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+          git -C "$HOME/esp-idf" checkout --detach FETCH_HEAD
+          test "$(git -C "$HOME/esp-idf" rev-parse HEAD)" = "858a988d6eb90f54661abe282c523879c6ad0116"
+      - name: Run selected research suite
+        run: bash scripts/ci/run_research.sh "${{ inputs.suite }}"
+      - name: Upload USB acceptance package
+        if: inputs.suite == 'usb-acceptance' && success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: usb-acceptance-${{ github.sha }}
+          path: build/usb-acceptance-package/
+          if-no-files-found: error
+          include-hidden-files: true
+          retention-days: 14

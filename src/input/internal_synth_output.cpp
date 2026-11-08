@@ -17,33 +17,103 @@ uint8_t clampInternalLiveNote(uint8_t note) {
 bool isPerformanceSource(MusicalEventSource source) {
     return source == MusicalEventSource::PerformanceKeyboard ||
            source == MusicalEventSource::PerformanceKeyboardPoly ||
+           source == MusicalEventSource::Arpeggiator ||
+           source == MusicalEventSource::MidiInput;
+}
+
+bool isInternalMonoPerformanceSource(MusicalEventSource source) {
+    return source == MusicalEventSource::PerformanceKeyboard ||
            source == MusicalEventSource::Arpeggiator;
 }
 
+#if GROOVEPUTER_ENABLE_SAMPLER
 float samplerVelocity(uint8_t velocity) {
     if (velocity < 1) velocity = 1;
     if (velocity > 127) velocity = 127;
     return static_cast<float>(velocity) / 127.0f;
 }
+#endif
 }  // namespace
 
 int InternalSynthOutput::synthIndex(MusicalEventTarget target) {
     return target == MusicalEventTarget::SynthB ? 1 : 0;
 }
 
+bool InternalSynthOutput::sameCandidate(
+    const MonoArbitrationState::Candidate& lhs,
+    const MonoArbitrationState::Candidate& rhs) {
+    if (lhs.active != rhs.active) return false;
+    if (!lhs.active) return true;
+    return lhs.source == rhs.source && lhs.note == rhs.note;
+}
+
+void InternalSynthOutput::reconcileLiveProjectionLocked(int voice) {
+    MonoArbitrationState& state = monoState_[voice];
+    const MonoArbitrationState::Candidate next = state.selectedCandidate();
+    const MonoArbitrationState::Candidate current =
+        state.currentlyProjectedLiveCandidate;
+
+    if (sameCandidate(current, next)) {
+        state.currentlyProjectedLiveCandidate = next;
+        return;
+    }
+
+    if (current.active) {
+        engine_.liveNoteOff(voice, clampInternalLiveNote(current.note));
+    }
+    if (next.active) {
+        engine_.liveNoteOn(
+            voice, clampInternalLiveNote(next.note), next.velocity);
+    }
+    state.currentlyProjectedLiveCandidate = next;
+}
+
+void InternalSynthOutput::applyPatternOwnershipLocked(int voice, bool owned) {
+    MonoArbitrationState& state = monoState_[voice];
+    if (state.patternOwned == owned) return;
+
+    state.setPatternOwned(owned);
+    if (owned) {
+        // Pattern has already started the physical voice in AudioTask. Clear
+        // only live projection identity: releasing here would release Pattern.
+        if (state.currentlyProjectedLiveCandidate.active) {
+            engine_.suspendLiveNoteProjection(voice);
+            state.currentlyProjectedLiveCandidate =
+                MonoArbitrationState::Candidate{};
+        }
+        return;
+    }
+
+    // Pattern already released the physical voice. Re-project only a candidate
+    // that is still logically active now; no displaced-note history exists.
+    reconcileLiveProjectionLocked(voice);
+}
+
+void InternalSynthOutput::syncPatternOwnership() {
+    const bool synthAOwned = engine_.patternOwnsInternalSynth(0);
+    const bool synthBOwned = engine_.patternOwnsInternalSynth(1);
+    if (monoState_[0].patternOwned == synthAOwned &&
+        monoState_[1].patternOwned == synthBOwned) {
+        return;
+    }
+
+    AudioMutationScope mutationScope(mutationGate_);
+    applyPatternOwnershipLocked(0, engine_.patternOwnsInternalSynth(0));
+    applyPatternOwnershipLocked(1, engine_.patternOwnsInternalSynth(1));
+}
+
 void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
-    // PatternPlayer already owns and renders internal voices inside AudioTask.
-    // Its router fan-out is additive output only; taking AudioMutationGate here
-    // would deadlock the realtime producer and double-trigger.
+    // PatternPlayer owns and renders internal voices inside AudioTask. Its
+    // normalized events are additive external-output data only; Pattern
+    // ownership reaches this arbiter through syncPatternOwnership().
     if (event.source == MusicalEventSource::PatternPlayer ||
         event.target == MusicalEventTarget::Dx) {
         return;
     }
 
     if (event.target == MusicalEventTarget::Drums) {
-        // Drums were external-only in <=0.9.5 PERFORM. Explicit INTERNAL/LAYER
-        // activates the already-existing local drum synth + optional sampler
-        // source layer. MidiInput is deliberately outside this 0.9.6 migration.
+        // Preserve the existing local drum/sampler path unchanged. This closure
+        // applies mono arbitration only to Synth A/B.
         if (!isPerformanceSource(event.source)) return;
         if (event.channel >= 8) return;
         if (event.type == MusicalEventType::NoteOn &&
@@ -53,11 +123,15 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
 
         AudioMutationScope mutationScope(mutationGate_);
         const uint8_t lane = event.channel;
+#if GROOVEPUTER_ENABLE_SAMPLER
         const uint8_t mask = static_cast<uint8_t>(1u << lane);
+#endif
 
         switch (event.type) {
             case MusicalEventType::NoteOn: {
                 triggerRegisteredLocalDrumVoice(lane, event.velocity);
+                engine_.pulseLedForDrumLane(lane);
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if (engine_.sampleStore && engine_.samplerTrack &&
                     engine_.samplerTrack->isEnabled() &&
                     engine_.samplerTrack->pad(lane).id.value != 0) {
@@ -67,20 +141,22 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                         *engine_.sampleStore);
                     liveDrumPadMask_ |= mask;
                 }
+#endif
                 break;
             }
             case MusicalEventType::NoteOff:
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if ((liveDrumPadMask_ & mask) != 0u) {
-                    // Drum one-shots keep their natural tail. A looping sample
-                    // follows key ownership and stops on the matching key-up.
                     if (engine_.samplerTrack &&
                         engine_.samplerTrack->pad(lane).loop) {
                         engine_.samplerTrack->stopPad(lane);
                     }
                     liveDrumPadMask_ &= static_cast<uint8_t>(~mask);
                 }
+#endif
                 break;
             case MusicalEventType::AllNotesOff:
+#if GROOVEPUTER_ENABLE_SAMPLER
                 if (engine_.samplerTrack) {
                     for (uint8_t pad = 0; pad < 8; ++pad) {
                         const uint8_t padMask =
@@ -90,42 +166,34 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
                         }
                     }
                 }
+#endif
                 liveDrumPadMask_ = 0;
+                break;
+            case MusicalEventType::PitchBend:
+                // Internal engines have no channel pitch-bend surface.
                 break;
         }
         return;
     }
 
-    // <=0.9.5 PERFORM remains MIDI-only while the track has no explicit output
-    // mode. Once a project/user selects INTERNAL or LAYER, direct keyboard and
-    // generated performance tools may drive the existing monophonic local
-    // engine. MIDI mode rejects only new local NoteOn; NoteOff/AllNotesOff stay
-    // cleanup-critical so a Layer -> MIDI transition cannot strand a local note.
-    if (isPerformanceSource(event.source) &&
+    // Manual POLY remains an external-MIDI concern. The internal Synth A/B
+    // engines receive one deterministic mono projection only.
+    if (event.source == MusicalEventSource::PerformanceKeyboardPoly) return;
+
+    // Legacy output mode suppresses only new local PERFORM NoteOn. Cleanup and
+    // OTHER LIVE retain the existing behavior.
+    if (isInternalMonoPerformanceSource(event.source) &&
         event.type == MusicalEventType::NoteOn &&
         !GroovePuterOutput::allowsInternalNoteOn(event)) {
         return;
     }
 
-    // Keep the existing internal live-input path for any non-PERFORM source
-    // that explicitly targets Synth A/B. Clamp NoteOn and NoteOff identically to
-    // avoid mismatched ownership.
     AudioMutationScope mutationScope(mutationGate_);
     const int voice = synthIndex(event.target);
-    const uint8_t internalNote = clampInternalLiveNote(event.note);
-    switch (event.type) {
-        case MusicalEventType::NoteOn:
-            engine_.liveNoteOn(voice, internalNote, event.velocity);
-            break;
-        case MusicalEventType::NoteOff:
-            engine_.liveNoteOff(voice, internalNote);
-            break;
-        case MusicalEventType::AllNotesOff: {
-            const int liveNote = engine_.liveNote(voice);
-            if (liveNote >= 0) {
-                engine_.liveNoteOff(voice, static_cast<uint8_t>(liveNote));
-            }
-            break;
-        }
-    }
+    applyPatternOwnershipLocked(
+        voice, engine_.patternOwnsInternalSynth(voice));
+
+    MonoArbitrationState& state = monoState_[voice];
+    state.applyLiveEvent(event);
+    reconcileLiveProjectionLocked(voice);
 }

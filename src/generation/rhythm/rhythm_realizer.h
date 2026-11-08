@@ -42,12 +42,21 @@ struct RhythmPhrasePlan {
   RhythmBarPlan bars[kMaxPhraseBars]{};
 };
 
+// Explicit absence is required so legacy callers remain byte-for-byte on the
+// archetype structuralPreferred path. 0..16 are concrete activity targets;
+// 0xFF means no profile-level density intent was supplied.
+constexpr uint8_t kNoStructuralDensityTarget = 0xFFu;
+
 struct RhythmRealizationRequest {
   const RhythmCatalogView* catalog = nullptr;
   RhythmArchetypeId archetypeId = kNoArchetypeId;
   uint8_t phraseBars = 0;
   RealizationLevel level = RealizationLevel::P1Canonical;
   GenerationContext generation{};
+
+  // Optional caller-resolved profile activity intent. The realizer remains the
+  // sole materialization owner; absence preserves structuralPreferred exactly.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
 
   // Reuse this identity for VARIATE semantics. nullptr establishes a new
   // deterministic identity. The realizer never mutates the supplied identity.
@@ -300,6 +309,11 @@ RhythmMutationProducerResult produceRhythmMutationCandidates(
     const RhythmMutationProducerRequest& request,
     RhythmMutationDelta* output,
     uint16_t capacity);
+
+// Pure GF2-I4 projection from the documented profile activity domain 0..16
+// into the selected archetype's legal structural density vocabulary.
+uint8_t projectStructuralDensityTarget(const RhythmArchetype& archetype,
+                                       uint8_t normalizedDensity);
 
 RhythmRealizationResult realizeRhythmPhrase(
     const RhythmRealizationRequest& request);

@@ -5,8 +5,29 @@
 using namespace GroovePuterState;
 
 int main() {
+    // Product themes: CLEAN (0) and CYBER (2). A fresh session starts in
+    // CLEAN; CYBER survives restore; AMBER (3), STAGE (1) and unknown bytes
+    // restore as CLEAN.
+    assert(defaultUiSessionState().visualStyle == kCleanVisualStyle);
+    assert(kCleanVisualStyle == 0);
+    assert(kCyberVisualStyle == 2);
+    for (int value = 0; value < 256; ++value) {
+        const uint8_t expected = value == 2 ? 2 : 0;
+        assert(sanitizeVisualStyle(static_cast<uint8_t>(value)) == expected);
+    }
+    {
+        UiSessionState saved = defaultUiSessionState();
+        saved.visualStyle = 2;  // a session saved under CYBER
+        sanitizeUiSessionState(saved);
+        assert(saved.visualStyle == kCyberVisualStyle);
+        saved.visualStyle = 3;  // a session saved under AMBER
+        sanitizeUiSessionState(saved);
+        assert(saved.visualStyle == kCleanVisualStyle);
+    }
+
     UiSessionState state = defaultUiSessionState();
     sanitizeUiSessionState(state);
+    assert(state.visualStyle == kCleanVisualStyle);
 
     assert(rememberedWorkflowPage(state, SessionWorkflow::Perform) ==
            SessionPages::kPerform);

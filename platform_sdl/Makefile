@@ -1,5 +1,5 @@
 CXX ?= clang++
-CXXFLAGS ?= -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME
+CXXFLAGS ?= -std=c++17 -I.. -I. -include arduino_compat.h -DUSE_RETRO_THEME -DUSE_AMBER_THEME -DGROOVEPUTER_FELUCCA_ANALOG=1
 
 # Depends on SDL2 and SDL2_gfx. Install via Homebrew with:
 # brew install sdl2 sdl2_gfx
@@ -47,7 +47,9 @@ SOURCES := \
 	../src/dsp/transient_shaper.cpp \
 	../src/dsp/groove_profile.cpp \
 	../src/dsp/advanced_pattern_generator.cpp \
+	../src/phrase/runtime_synth_events.cpp ../src/phrase/runtime_synth_playback.cpp \
 	../src/generation/generation_context.cpp \
+	../src/generation/rhythm_browser/rhythm_browser_catalog.cpp \
 	../src/generation/composition/rhythm_selection.cpp \
 	../src/generation/composition/generation_profile.cpp \
 	../src/generation/composition/phrase_length_request.cpp \
@@ -71,6 +73,18 @@ SOURCES := \
 	../src/generation/roles/melodic_pitch_intent.cpp \
 	../src/generation/tonal/tonal_projector.cpp \
 	../src/generation/tonal/tonal_materializer.cpp \
+	../src/generation/harmony/harmonic_source.cpp \
+	../src/generation/harmony/song_harmonic_state.cpp \
+	../src/generation/harmony/harmonic_source_codec.cpp \
+	../src/generation/harmony/harmonic_fingerprint.cpp \
+	../src/generation/harmony/song_variant_genome.cpp \
+	../src/generation/harmony/genre_harmonic_policy.cpp \
+	../src/generation/harmony/harmonic_relation.cpp \
+	../src/generation/harmony/pitch_set.cpp \
+	../src/generation/harmony/corpus_prior.cpp \
+	../src/generation/harmony/harmonic_candidate.cpp \
+	../src/generation/harmony/harmonic_route.cpp \
+	../src/generation/harmony/phrase_graph_route_builder.cpp \
 	../src/generation/phrase/phrase_evolution.cpp \
 	../src/generation/migration/tonal_pattern_adapter.cpp \
 	../src/generation/migration/strong_rhythm_migration.cpp \
@@ -79,6 +93,7 @@ SOURCES := \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
 	../src/ui/miniacid_display.cpp \
+	../src/ui/global_midi_sync_overlay.cpp \
 	../src/ui/cassette_skin.cpp \
 	../src/ui/led_manager.cpp \
 	../src/ui/ui_core.cpp \
@@ -89,6 +104,9 @@ SOURCES := \
 	../src/ui/ui_clipboard.cpp \
 	../src/ui/midi_file_manager.cpp \
 	../src/platform/cardputer_ui_session.cpp \
+	../src/platform/cardputer_material_publication_session.cpp \
+	../src/platform/cardputer_usb_role_runtime.cpp \
+	../src/platform/cardputer_usb_host_midi.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \
@@ -128,6 +146,7 @@ SOURCES := \
 	../src/sampler/drum_sampler_track.cpp \
 	../cardputer_display.cpp \
 	../scenes.cpp \
+	../src/dsp/felucca_analog_voice.cpp \
 	../json_evented.cpp \
 	sdl_main.cpp \
 	sdl_display.cpp \
@@ -147,7 +166,10 @@ SDL2_GFX_DYLIB := /opt/homebrew/opt/sdl2_gfx/lib/libSDL2_gfx-1.0.0.dylib
 
 all: $(TARGET)
 
-$(TARGET): $(SOURCES)
+felucca_analog_c.o: ../src/dsp/felucca_analog_c.c
+	$(CC) -std=c11 -O1 -I.. -c $< -o $@
+
+$(TARGET): $(SOURCES) felucca_analog_c.o
 	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
 
 $(E1_LIVE_BRIDGE_TARGET): $(E1_LIVE_BRIDGE_SOURCES)
@@ -193,3 +215,11 @@ clean:
 	rm -rf $(APP_BUNDLE)
 
 .PHONY: all clean wasm bundle e1-live-bridge-characterization
+
+TEMPO_SYNC_UI_TARGET := tempo_sync_ui_test
+TEMPO_SYNC_UI_SOURCES := $(filter-out sdl_main.cpp,$(SOURCES)) ../tests/test_tempo_sync_ui.cpp
+$(TEMPO_SYNC_UI_TARGET): $(TEMPO_SYNC_UI_SOURCES)
+	$(CXX) $(CXXFLAGS) $(SDL_CFLAGS) $(SDL_GFX_CFLAGS) $^ $(SDL_LIBS) $(SDL_GFX_LIBS) -o $@
+
+tempo-sync-ui-test: $(TEMPO_SYNC_UI_TARGET)
+	./$(TEMPO_SYNC_UI_TARGET)

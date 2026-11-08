@@ -60,8 +60,8 @@ constexpr int16_t kPatternAddress = 3;
 //
 // The counts are pinned so a vocabulary edit that silently flips a recipe
 // between classes has to be acknowledged.
-constexpr int kExpectedActiveRecipes = 16;
-constexpr int kExpectedStraightRecipes = 11;
+constexpr int kExpectedActiveRecipes = 17;
+constexpr int kExpectedStraightRecipes = 10;
 constexpr int kExpectedSwingCompatibleRecipes = 6;
 
 int g_failures = 0;
@@ -103,12 +103,26 @@ Material materialize(const GenreSettings& settings, FeelProfileId profile,
   context.rootPitchClass = 0;
   context.scaleTypeValue = kScaleDorian;
 
+  // GF2-I4 makes profile density intentionally causal upstream of FEEL. I2A is
+  // an inherited owner-specific magnitude regression whose named corpus was
+  // frozen against the pre-I4 structuralPreferred path. Resolve the same real
+  // production selection/FEEL arbitration, then explicitly remove only the new
+  // I4 density intent so this regression continues to test I2A rather than a
+  // cross-product of two checkpoints. I4 has its own density magnitude and
+  // density+phrase-law causality gates on the production density path.
+  StrongRhythmFrozenSelection selection{};
+  const StrongRhythmMigrationResult resolved =
+      resolveStrongRhythmFrozenSelection(
+          settings, context, static_cast<uint16_t>(kPatternAddress), selection);
+  if (resolved.status != StrongRhythmMigrationStatus::Applied) return {};
+  selection.structuralDensityTarget = kNoStructuralDensityTarget;
+
   DrumPatternSet drums{};
   SynthPattern synthA{};
   SynthPattern synthB{};
   Material material{};
-  const StrongRhythmMigrationResult result =
-      migrateStrongRhythmMaterial(settings, context, drums, synthA, synthB);
+  const StrongRhythmMigrationResult result = migrateStrongRhythmFrozenMaterial(
+      settings, selection, context, drums, synthA, synthB);
   if (result.status != StrongRhythmMigrationStatus::Applied) return material;
   material.applied = true;
   material.resolvedFeel = result.resolvedFeel;

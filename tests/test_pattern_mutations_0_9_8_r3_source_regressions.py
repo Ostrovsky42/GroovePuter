@@ -42,7 +42,7 @@ def main() -> None:
     # One canonical page helper must perform capture -> prepare -> full no-op ->
     # bounded commit. The owner, not the page, advances Scene revision.
     helper = between(HEADER, "template <typename PrepareFn>", "template <typename F>")
-    require("captureCurrentSynthPatternUndo" in helper,
+    require("captureSynthPatternUndoAt" in helper,
             "Pattern mutation helper must capture a stable before receipt")
     require("SynthPattern after = before.before" in helper,
             "Pattern mutation helper must build a detached after-state")
@@ -103,22 +103,30 @@ def main() -> None:
             "Paste must be prepared as one complete Pattern mutation")
     require("return handleEventLegacy(appEvent);" in wrapper,
             "Ctrl+V must re-enter the owned Paste path instead of unowned recursion")
-    require("Selection Cleared" in wrapper,
+    require("SELECTION CLEARED" in wrapper,
             "selection clear UX must stay reachable through the owned mutation path")
 
-    # R2 Reset remains in the retained legacy body. R9 deliberately upgrades
-    # the same authoritative Pattern receipt from one-shot restore to one-slot
-    # exchange; this is the accepted cumulative R3->R9 contract.
-    require("// Alt + Backspace = Reset Pattern. R2 routes this one destructive edit" in LEGACY and
-            "undoOwner().commitPrepared" in LEGACY,
-            "R3 must preserve the accepted R2 Reset Pattern vertical slice")
+    # R2 Reset remains in the retained legacy body. Bind the proof to executable
+    # code, not to the historical explanatory comment that used to precede it.
+    # R9 deliberately upgrades the same authoritative Pattern receipt from
+    # one-shot restore to one-slot exchange; this is the cumulative R3->R9 contract.
+    reset_block = between(
+        LEGACY,
+        "if (ui_event.ctrl && (key == '\\b' || key == 0x7F)) {",
+        "if (is_backspace && has_selection_)")
+    require("captureCurrentSynthPatternUndo" in reset_block and
+            "isCanonicalClearedSynthPattern" in reset_block and
+            "undoOwner().commitPrepared" in reset_block and
+            "UndoKind::Pattern" in reset_block and
+            "audio_guard_(clear_pattern)" in reset_block,
+            "R3 must preserve the accepted R2 Reset Pattern transaction")
     require("case GROOVEPUTER_APP_EVENT_UNDO:" in LEGACY and
             "undoOwner().togglePrepared<SynthPatternUndoPayload>" in LEGACY and
             "exchangeSynthPatternUndo" in LEGACY,
             "R3 ownership must remain authoritative after the R9 one-slot toggle upgrade")
-    require("if (ui_event.alt && isBackspace)" in wrapper and
+    require("if (ui_event.ctrl && isBackspace)" in wrapper and
             "handleEventLegacyUnowned(ui_event)" in wrapper,
-            "R3 wrapper must delegate Alt+Backspace to the R2 owner path")
+            "R3 wrapper must delegate Ctrl+Backspace to the R2 owner path")
 
     # Direct note entry is also persistent Pattern editing and may not bypass R3.
     note_write = between(
@@ -136,7 +144,7 @@ def main() -> None:
     public_generate = between(
         CPP,
         "// Outside NOTE ENTRY, plain G rerolls only this physical synth voice",
-        "// Global navigation, pattern rotation/FX editing")
+        "if (!note_entry_mode_ && ui_event.alt &&")
     require("regenerateSynthWithQuantizedCommit" in public_generate and
             "PendingNextBar" in public_generate,
             "R3 must preserve quantized generation / next-bar activation behavior")
@@ -152,7 +160,7 @@ def main() -> None:
     generated_legacy = between(
         wrapper,
         "// C keeps B2's legacy/fallback musical generator",
-        "if (keyF)")
+        "if (keyF && !ui_event.ctrl)")
     require("preparePatternEditorGeneration" in generated_legacy and
             "undoOwner().commitPrepared" in generated_legacy and
             "UndoKind::Generation" in generated_legacy and

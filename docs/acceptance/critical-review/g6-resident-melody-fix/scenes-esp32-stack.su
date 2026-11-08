@@ -1,0 +1,307 @@
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:44:8:virtual bool MelodyPromotion::SdFileSystem::available() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:42:7:constexpr MelodyPromotion::SdFileSystem::~SdFileSystem()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:46:6:void {anonymous}::clearDrumPattern(DrumPattern&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:59:6:void {anonymous}::clearSynthPattern(SynthPattern&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:74:6:void {anonymous}::clearSong(Song&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1476:6:virtual void SceneJsonObserver::onNull()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:288:7:) [with _Res = int; _Functor = SceneManager::loadScene(const std::string&, bool, const std::function<bool()>&)::<lambda()>; _ArgTypes = {}]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:42:7:virtual constexpr MelodyPromotion::SdFileSystem::~SdFileSystem()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:45:8:virtual bool MelodyPromotion::SdFileSystem::exists(const char*) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:89:8:virtual bool MelodyPromotion::SdFileSystem::remove(const char*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:86:8:virtual bool MelodyPromotion::SdFileSystem::rename(const char*, const char*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1517:6:virtual void SceneJsonObserver::onObjectValueEnd()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:267:7:), _Functor>::_M_manager(std::_Any_data&, const std::_Any_data&, std::_Manager_operation) [with _Res = int; _Functor = JsonVisitor::parse<SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar, bool, const std::function<bool()>&)::NextCharStream>(SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar, bool, const std::function<bool()>&)::NextCharStream&, JsonObserver&)::<lambda()>; _ArgTypes = {}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:267:7:), _Functor>::_M_manager(std::_Any_data&, const std::_Any_data&, std::_Manager_operation) [with _Res = int; _Functor = SceneManager::loadScene(const std::string&, bool, const std::function<bool()>&)::<lambda()>; _ArgTypes = {}]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:1552:5:T ArduinoJson::V742PB22::detail::pgm_ptr<T>::operator[](intptr_t) const [with T = double]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:288:7:) [with _Res = int; _Functor = JsonVisitor::parse<SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar, bool, const std::function<bool()>&)::NextCharStream>(SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar, bool, const std::function<bool()>&)::NextCharStream&, JsonObserver&)::<lambda()>; _ArgTypes = {}]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:138:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::pointer std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_create(size_type&, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:749:6:T* ArduinoJson::V742PB22::detail::MemoryPoolList<T>::getSlot(ArduinoJson::V742PB22::detail::SlotId) const [with T = ArduinoJson::V742PB22::detail::ResourceManager::SlotData]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5866:32:const ArduinoJson::V742PB22::detail::VariantExtension* ArduinoJson::V742PB22::detail::VariantData::getExtension(const ArduinoJson::V742PB22::detail::ResourceManager*) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4705:13:void ArduinoJson::V742PB22::detail::CollectionData::appendOne(ArduinoJson::V742PB22::detail::Slot<ArduinoJson::V742PB22::detail::VariantData>, const ArduinoJson::V742PB22::detail::ResourceManager*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4701:33:ArduinoJson::V742PB22::detail::CollectionData::iterator ArduinoJson::V742PB22::detail::CollectionData::createIterator(const ArduinoJson::V742PB22::detail::ResourceManager*) const	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/std_function.h:241:5:std::_Function_base::~_Function_base()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2369:14:ArduinoJson::V742PB22::JsonString ArduinoJson::V742PB22::detail::VariantData::asString() const	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2457:15:static bool ArduinoJson::V742PB22::detail::VariantData::isNull(const ArduinoJson::V742PB22::detail::VariantData*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2697:8:void ArduinoJson::V742PB22::detail::ResourceManager::clear()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3455:12:ArduinoJson::V742PB22::JsonArrayConst::iterator ArduinoJson::V742PB22::JsonArrayConst::begin() const	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4694:13:void ArduinoJson::V742PB22::detail::CollectionIterator::next(const ArduinoJson::V742PB22::detail::ResourceManager*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4826:21:ArduinoJson::V742PB22::detail::VariantData* ArduinoJson::V742PB22::detail::ObjectData::getMember(TAdaptedString, const ArduinoJson::V742PB22::detail::ResourceManager*) const [with TAdaptedString = ArduinoJson::V742PB22::detail::RamString]	80	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2030:23:static ArduinoJson::V742PB22::detail::VariantData* ArduinoJson::V742PB22::detail::ObjectData::getMember(const ArduinoJson::V742PB22::detail::ObjectData*, TAdaptedString, const ArduinoJson::V742PB22::detail::ResourceManager*) [with TAdaptedString = ArduinoJson::V742PB22::detail::RamString]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3494:10:size_t ArduinoJson::V742PB22::JsonArrayConst::size() const	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3441:27:ArduinoJson::V742PB22::JsonArrayConstIterator& ArduinoJson::V742PB22::JsonArrayConstIterator::operator++()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4948:19:ArduinoJson::V742PB22::detail::FloatParts ArduinoJson::V742PB22::detail::decomposeFloat(ArduinoJson::V742PB22::JsonFloat, int8_t)	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5853:13:void ArduinoJson::V742PB22::detail::VariantData::clear(ArduinoJson::V742PB22::detail::ResourceManager*)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6672:15:ArduinoJson::V742PB22::detail::Number ArduinoJson::V742PB22::detail::parseNumber(const char*)	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_types.h:212:13:void PhraseCore::clearSlotValue(PhraseSlot&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_types.h:221:13:void PhraseCore::reset(PhraseBank&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:90:6:void {anonymous}::clearSceneData(Scene&)	160	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_core.h:327:13:bool PhraseCore::sanitize(PhraseBank&)	96	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_persistence.h:17:16:int32_t PhraseCore::persistentValueAt(const PhraseBank&, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_persistence.h:50:16:uint8_t PhraseCore::persistentByte(int32_t)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/phrase/phrase_persistence.h:67:13:bool PhraseCore::applyPersistentValue(PhraseBank&, int, int32_t)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:252:12:int songPatternFromBank(int, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:434:13:void applyNewSceneMix(Scene&)	32	static
+/tmp/gp-g6-failed-load-64ae/src/phrase/runtime_phrase_edit.h:91:13:bool RuntimePhraseEdit::validLengthTicks(uint16_t)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:56:17:uint32_t MelodyStore::read32(const uint8_t*)	32	static
+/tmp/gp-g6-failed-load-64ae/src/state/melody_store.h:108:13:bool MelodyStore::decode(const uint8_t*, size_t, Buffer&, uint32_t*)	1344	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3772:5:constexpr bool std::operator==(const __cxx11::basic_string<_CharT, _Traits, _Allocator>&, const _CharT*) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:41:6:bool {anonymous}::isStableSynthEngineName(const std::string&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:570:6:bool DrumPattern::isEmpty() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:577:6:bool DrumPatternSet::isEmpty() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:584:6:bool SynthPattern::isEmpty() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:599:25:SceneJsonObserver::Path SceneJsonObserver::deduceArrayPath(const Context&) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:636:25:SceneJsonObserver::Path SceneJsonObserver::deduceObjectPath(const Context&) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:661:5:int SceneJsonObserver::currentIndexFor(Path) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:670:6:bool SceneJsonObserver::inSynthBankA() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:678:6:bool SceneJsonObserver::inSynthBankB() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:686:6:void SceneJsonObserver::pushContext(Context::Type, Path)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:771:6:virtual void SceneJsonObserver::onArrayStart()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:694:6:void SceneJsonObserver::popContext()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:752:6:virtual void SceneJsonObserver::onObjectEnd()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:839:6:virtual void SceneJsonObserver::onArrayEnd()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:267:7:constexpr bool std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_is_local() const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1180:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::size_type std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::capacity() const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1346:6:void SceneJsonObserver::handlePrimitiveBool(bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:847:6:void SceneJsonObserver::handlePrimitiveNumber(double, bool)	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1470:6:virtual void SceneJsonObserver::onNumber(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1472:6:virtual void SceneJsonObserver::onNumber(double)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1474:6:virtual void SceneJsonObserver::onBool(bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1524:6:bool SceneJsonObserver::hadError() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1526:5:int SceneJsonObserver::drumPatternIndex() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1528:5:int SceneJsonObserver::synthPatternIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1533:5:int SceneJsonObserver::drumBankIndex() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1535:5:int SceneJsonObserver::synthBankIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1540:6:bool SceneJsonObserver::drumMute(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1546:6:bool SceneJsonObserver::synthMute(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1551:6:bool SceneJsonObserver::synthDistortionEnabled(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1556:6:bool SceneJsonObserver::synthDelayEnabled(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1561:24:const SynthParameters& SceneJsonObserver::synthParameters(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1566:6:bool SceneJsonObserver::legacySynthParametersPresent(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1571:6:bool SceneJsonObserver::hasVersionedSynthState() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1575:28:const PersistedSynthPatch& SceneJsonObserver::synthPatch(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1580:7:float SceneJsonObserver::bpm() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1582:13:const Song& SceneJsonObserver::song() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1584:6:bool SceneJsonObserver::hasSong() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1586:6:bool SceneJsonObserver::songMode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1588:5:int SceneJsonObserver::songPosition() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1590:6:bool SceneJsonObserver::loopMode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1592:5:int SceneJsonObserver::loopStartRow() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1594:5:int SceneJsonObserver::loopEndRow() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1596:20:const std::string& SceneJsonObserver::drumEngineName() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1597:20:const std::string& SceneJsonObserver::synthEngineName(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1602:15:GrooveboxMode SceneJsonObserver::mode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:381:8:constexpr Scene::Scene()	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1885:8:Scene& SceneManager::currentScene()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1908:6:void SceneManager::setPage(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1927:6:bool SceneManager::saveCurrentPage() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1932:6:bool SceneManager::loadCurrentPage()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1937:14:const Scene& SceneManager::currentScene() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1939:23:const DrumPatternSet& SceneManager::getCurrentDrumPattern() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1944:17:DrumPatternSet& SceneManager::editCurrentDrumPattern()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1949:21:const SynthPattern& SceneManager::getCurrentSynthPattern(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1959:15:SynthPattern& SceneManager::editCurrentSynthPattern(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1969:21:const SynthPattern& SceneManager::getSynthPattern(int, int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1979:15:SynthPattern& SceneManager::editSynthPattern(int, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1989:23:const DrumPatternSet& SceneManager::getDrumPatternSet(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1887:5:int SceneManager::findFirstFreePattern(int, SongTrack, int) const	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1995:17:DrumPatternSet& SceneManager::editDrumPatternSet(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2001:6:void SceneManager::setCurrentDrumPatternIndex(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2005:6:void SceneManager::setCurrentSynthPatternIndex(int, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2010:5:int SceneManager::getCurrentDrumPatternIndex() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2012:5:int SceneManager::getCurrentSynthPatternIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2017:6:void SceneManager::setDrumMute(int, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2022:6:bool SceneManager::getDrumMute(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2027:6:void SceneManager::setSynthMute(int, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2032:6:bool SceneManager::getSynthMute(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2037:6:void SceneManager::setSynthDistortionEnabled(int, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2042:6:bool SceneManager::getSynthDistortionEnabled(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2047:6:void SceneManager::setSynthDelayEnabled(int, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2052:6:bool SceneManager::getSynthDelayEnabled(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2057:6:void SceneManager::setSynthParameters(int, const SynthParameters&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2062:24:const SynthParameters& SceneManager::getSynthParameters(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2067:6:void SceneManager::setLegacySynthParametersPresent(int, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2071:6:bool SceneManager::legacySynthParametersPresent(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2084:28:const PersistedSynthPatch& SceneManager::getSynthPatch(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2096:20:const std::string& SceneManager::getDrumEngineName() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2103:20:const std::string& SceneManager::getSynthEngineName(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2108:6:void SceneManager::setMode(GrooveboxMode)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2117:15:GrooveboxMode SceneManager::getMode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2121:6:void SceneManager::setGrooveFlavor(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2128:5:int SceneManager::getGrooveFlavor() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2133:6:void SceneManager::setBpm(float)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2139:7:float SceneManager::getBpm() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2141:13:const Song& SceneManager::song() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2142:7:Song& SceneManager::editSong()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2144:5:int SceneManager::activeSongSlot() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2145:6:void SceneManager::setActiveSongSlot(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2199:5:int SceneManager::songLengthAtSlot(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2216:5:int SceneManager::songLength() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2231:6:void SceneManager::setTrackVolume(int, float)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2238:7:float SceneManager::getTrackVolume(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2247:6:void SceneManager::setSongMode(bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2249:6:bool SceneManager::songMode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2258:6:bool SceneManager::loopMode() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2266:6:void SceneManager::setSongReverse(bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2270:6:bool SceneManager::isSongReverse() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2274:6:bool SceneManager::isSongReverseAtSlot(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2342:6:void SceneManager::insertSongRow(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2365:6:void SceneManager::deleteSongRow(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2388:5:int SceneManager::loopStartRow() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2390:5:int SceneManager::loopEndRow() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2392:6:void SceneManager::setCurrentBankIndex(int, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2402:5:int SceneManager::getCurrentBankIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2408:6:void SceneManager::setDrumStep(int, int, bool, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2416:6:void SceneManager::setSynthStep(int, int, int, bool, bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3079:8:Scene& sceneTransactionScratch()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3225:5:int SceneManager::clampPatternIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3229:5:int SceneManager::clampBankIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3233:5:int SceneManager::clampSynthIndex(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3239:5:int SceneManager::clampSongPosition(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2223:6:void SceneManager::setSongPosition(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2227:5:int SceneManager::getSongPosition() const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3248:5:int SceneManager::clampSongLength(int) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3254:5:int SceneManager::songTrackToIndex(SongTrack) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2151:6:void SceneManager::setSongPattern(int, SongTrack, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2171:6:void SceneManager::clearSongPattern(int, SongTrack)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2181:5:int SceneManager::songPattern(int, SongTrack) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2189:5:int SceneManager::songPatternAtSlot(int, int, SongTrack) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3286:6:void SceneManager::clearSongData(Song&) const	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3290:6:void SceneManager::clampLoopRange()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2208:6:void SceneManager::setSongLength(int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2251:6:void SceneManager::setLoopMode(bool)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2260:6:void SceneManager::setLoopRange(int, int)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3264:6:void SceneManager::trimSongLength()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2280:6:void SceneManager::mergeSongs()	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2306:6:void SceneManager::alternateSongs()	1088	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:682:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::basic_string(std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/shared_ptr_base.h:1066:7:std::__shared_count<_Lp>::~__shared_count() [with __gnu_cxx::_Lock_policy _Lp = __gnu_cxx::_S_atomic]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_vector.h:366:7:constexpr std::_Vector_base<_Tp, _Alloc>::~_Vector_base() [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3023:8:bool ArduinoJson::V742PB22::JsonVariantConst::is() const [with T = int; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3023:8:bool ArduinoJson::V742PB22::JsonVariantConst::is() const [with T = float; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = float; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:34:7:float {anonymous}::valueToFloat(ArduinoJson::V742PB22::JsonVariantConst, float)	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3023:8:bool ArduinoJson::V742PB22::JsonVariantConst::is() const [with T = bool; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = bool; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:224:6:bool {anonymous}::deserializeBoolArray(ArduinoJson::V742PB22::JsonArrayConst, bool*, int)	80	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = ArduinoJson::V742PB22::JsonObjectConst; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [4]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = ArduinoJson::V742PB22::JsonArrayConst; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [7]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [2]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [6]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [3]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [5]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [10]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [9]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [8]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [12]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [14]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [18]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [16]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3469:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonArrayConst::operator[](T) const [with T = int; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_integral<T>::value, int>::type <anonymous> = 0]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:430:7:static constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_S_copy(_CharT*, const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:221:7:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_construct(_InIterator, _InIterator, std::forward_iterator_tag) [with _FwdIterator = const char*; _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3208:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc> std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::substr(size_type, size_type) const [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:646:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::basic_string(const _CharT*, const _Alloc&) [with <template-parameter-2-1> = std::allocator<char>; _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:148:8:constexpr PersistedSynthPatch::PersistedSynthPatch()	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:858:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::operator=(std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:148:8:constexpr PersistedSynthPatch& PersistedSynthPatch::operator=(PersistedSynthPatch&&)	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:285:7:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_dispose() [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:497:7:constexpr SceneJsonObserver::~SceneJsonObserver()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:497:7:virtual constexpr SceneJsonObserver::~SceneJsonObserver()	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:702:6:virtual void SceneJsonObserver::onObjectStart()	96	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2088:6:void SceneManager::clearVersionedSynthState()	96	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:591:1:SceneJsonObserver::SceneJsonObserver(Scene&, float)	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1607:1:SceneManager::SceneManager()	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:277:5:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_assign(const std::__cxx11::basic_string<_CharT, _Traits, _Alloc>&) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1478:6:virtual void SceneJsonObserver::onString(const std::string&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1513:6:virtual void SceneJsonObserver::onObjectKey(const std::string&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2094:6:void SceneManager::setDrumEngineName(const std::string&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2098:6:void SceneManager::setSynthEngineName(int, const std::string&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2075:6:void SceneManager::setSynthPatch(int, const PersistedSynthPatch&)	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:61:8:virtual bool MelodyPromotion::SdFileSystem::write(const char*, const uint8_t*, size_t)	160	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [11]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/unique_ptr.h:392:7:std::unique_ptr<_Tp, _Dp>::~unique_ptr() [with _Tp = Scene; _Dp = std::default_delete<Scene>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3023:8:bool ArduinoJson::V742PB22::JsonVariantConst::is() const [with T = const char*; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = const char*; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [15]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3799:20:ArduinoJson::V742PB22::JsonVariantConst ArduinoJson::V742PB22::JsonObjectConst::operator[](const TString&) const [with TString = char [13]; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::IsString<TString>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:795:11:ArduinoJson::V742PB22::detail::Slot<T> ArduinoJson::V742PB22::detail::MemoryPoolList<T>::allocFromLastPool() [with T = ArduinoJson::V742PB22::detail::ResourceManager::SlotData]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4793:26:ArduinoJson::V742PB22::detail::Slot<ArduinoJson::V742PB22::detail::VariantData> ArduinoJson::V742PB22::detail::ResourceManager::allocVariant()	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3549:15:ArduinoJson::V742PB22::JsonVariant ArduinoJson::V742PB22::JsonArray::add() const [with T = ArduinoJson::V742PB22::JsonVariant; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<T, ArduinoJson::V742PB22::JsonVariant>::value, int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3544:5:T ArduinoJson::V742PB22::JsonArray::add() const [with T = ArduinoJson::V742PB22::JsonObject; typename ArduinoJson::V742PB22::detail::enable_if<(! ArduinoJson::V742PB22::detail::is_same<T, ArduinoJson::V742PB22::JsonVariant>::value), int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3544:5:T ArduinoJson::V742PB22::JsonArray::add() const [with T = ArduinoJson::V742PB22::JsonArray; typename ArduinoJson::V742PB22::detail::enable_if<(! ArduinoJson::V742PB22::detail::is_same<T, ArduinoJson::V742PB22::JsonVariant>::value), int>::type <anonymous> = 0]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3554:8:bool ArduinoJson::V742PB22::JsonArray::add(const T&) const [with T = float]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3554:8:bool ArduinoJson::V742PB22::JsonArray::add(const T&) const [with T = bool]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3554:8:bool ArduinoJson::V742PB22::JsonArray::add(const T&) const [with T = int]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3554:8:bool ArduinoJson::V742PB22::JsonArray::add(const T&) const [with T = unsigned char]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5833:13:bool ArduinoJson::V742PB22::detail::VariantData::setString(TAdaptedString, ArduinoJson::V742PB22::detail::ResourceManager*) [with TAdaptedString = ArduinoJson::V742PB22::detail::RamString]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:325:5:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_mutate(size_type, size_type, const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	64	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:413:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Allocator>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_append(const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1480:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::append(const _CharT*) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1466:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::append(const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:3616:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Allocator> std::operator+(const _CharT*, const __cxx11::basic_string<_CharT, _Traits, _Allocator>&) [with _CharT = char; _Traits = char_traits<char>; _Alloc = allocator<char>]	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:122:20:std::string MelodyPromotion::slotPath(const std::string&, GroovePuterMaterial::MaterialAddress, GroovePuterMaterial::PublicationSlot)	144	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:186:13:bool MelodyPromotion::loadMaterial(const FileSystem&, const std::string&, GroovePuterMaterial::MaterialAddress, Buffer&, uint32_t*)	2816	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3083:6:bool SceneManager::loadSceneEventedWithReader(JsonVisitor::NextChar, bool, const std::function<bool()>&)	2928	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3059:6:bool SceneManager::loadScene(const std::string&, bool, const std::function<bool()>&)	96	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:829:23:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const char*)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:835:20:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(bool)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:832:20:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(char)>	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:857:25:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const bool*, int)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:864:22:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const std::string&)>	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:838:19:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(int)>	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:890:27:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const DrumPattern&)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:1000:28:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const SynthPattern&)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:1034:26:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const Bank<SynthPattern>*)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:1053:20:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const Song&)>	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:851:21:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(float)>	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.h:949:24:SceneManager::writeSceneJson<std::__cxx11::basic_string<char>&>(std::__cxx11::basic_string<char>&) const::<lambda(const Bank<DrumPatternSet>&)>	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:1572:7:constexpr void std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::push_back(_CharT) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3053:13:std::string SceneManager::dumpCurrentScene() const	224	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.tcc:511:5:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Allocator>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::_M_replace(size_type, size_type, const _CharT*, size_type) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	48	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/basic_string.h:828:7:constexpr std::__cxx11::basic_string<_CharT, _Traits, _Alloc>& std::__cxx11::basic_string<_CharT, _Traits, _Alloc>::operator=(const _CharT*) [with _CharT = char; _Traits = std::char_traits<char>; _Alloc = std::allocator<char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1831:6:void SceneManager::wipeToZero()	80	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:1611:6:void SceneManager::loadDefaultScene()	240	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2312:5:T ArduinoJson::V742PB22::detail::VariantData::asIntegral(const ArduinoJson::V742PB22::detail::ResourceManager*) const [with T = int]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = int; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:27:5:int {anonymous}::valueToInt(ArduinoJson::V742PB22::JsonVariantConst, int)	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:450:6:bool {anonymous}::deserializeSynthBank(ArduinoJson::V742PB22::JsonVariantConst, Bank<SynthPattern>&)	208	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:461:6:bool {anonymous}::deserializeSynthBanks(ArduinoJson::V742PB22::JsonVariantConst, Bank<SynthPattern>*)	80	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:249:27:{anonymous}::deserializeDrumPattern(ArduinoJson::V742PB22::JsonVariantConst, DrumPattern&)::<lambda(const char*, int*, int)>	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:234:6:bool {anonymous}::deserializeDrumPattern(ArduinoJson::V742PB22::JsonVariantConst, DrumPattern&)	432	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:383:6:bool {anonymous}::deserializeDrumBank(ArduinoJson::V742PB22::JsonVariantConst, Bank<DrumPatternSet>&)	240	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3888:16:ArduinoJson::V742PB22::detail::VariantData* ArduinoJson::V742PB22::detail::MemberProxy< <template-parameter-1-1>, <template-parameter-1-2> >::getOrCreateData() const [with TUpstream = ArduinoJson::V742PB22::JsonObject; AdaptedString = ArduinoJson::V742PB22::detail::RamString]	112	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6015:20:ArduinoJson::V742PB22::JsonVariant ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::getOrCreateVariant() const [with TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = long unsigned int; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = short int; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = short unsigned int; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = bool; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = int; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = float; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = unsigned char; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:217:6:void {anonymous}::serializeSynthBanks(const Bank<SynthPattern>*, ArduinoJson::V742PB22::JsonArray)	144	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6057:18:ArduinoJson::V742PB22::JsonArray ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::to() const [with T = ArduinoJson::V742PB22::JsonArray; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<T, ArduinoJson::V742PB22::JsonArray>::value, int>::type <anonymous> = 0; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6064:12:ArduinoJson::V742PB22::JsonObject ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::to() const [with T = ArduinoJson::V742PB22::JsonObject; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<T, ArduinoJson::V742PB22::JsonObject>::value, int>::type <anonymous> = 0; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6782:10:T ArduinoJson::V742PB22::detail::parseNumber(const char*) [with T = unsigned char]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2312:5:T ArduinoJson::V742PB22::detail::VariantData::asIntegral(const ArduinoJson::V742PB22::detail::ResourceManager*) const [with T = unsigned char]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = unsigned char; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:6782:10:T ArduinoJson::V742PB22::detail::parseNumber(const char*) [with T = long unsigned int]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2312:5:T ArduinoJson::V742PB22::detail::VariantData::asIntegral(const ArduinoJson::V742PB22::detail::ResourceManager*) const [with T = long unsigned int]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3015:5:T ArduinoJson::V742PB22::JsonVariantConst::as() const [with T = long unsigned int; typename ArduinoJson::V742PB22::detail::enable_if<ArduinoJson::V742PB22::detail::is_same<typename ArduinoJson::V742PB22::detail::function_traits<decltype (& ArduinoJson::V742PB22::Converter<T>::fromJson)>::arg1_type, ArduinoJson::V742PB22::JsonVariantConst>::value, int>::type <anonymous> = 0]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/stl_uninitialized.h:660:9:static constexpr _ForwardIterator std::__uninitialized_default_n_1<true>::__uninit_default_n(_ForwardIterator, _Size) [with _ForwardIterator = unsigned char*; _Size = unsigned int]	32	static
+/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/xtensa-esp-elf/include/c++/14.2.0/bits/vector.tcc:805:5:constexpr void std::vector<_Tp, _Alloc>::_M_default_append(size_type) [with _Tp = unsigned char; _Alloc = std::allocator<unsigned char>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/src/state/melody_promotion.h:78:8:virtual bool MelodyPromotion::SdFileSystem::read(const char*, std::vector<unsigned char>&) const	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5629:56:ArduinoJson::V742PB22::detail::enable_if_t<((bool)ArduinoJson::V742PB22::detail::IsString<TString>::value)> ArduinoJson::V742PB22::convertToJson(const T&, JsonVariant) [with T = std::__cxx11::basic_string<char>]	64	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:3138:8:bool ArduinoJson::V742PB22::detail::VariantRefBase<TDerived>::set(const T&) const [with T = std::__cxx11::basic_string<char>; TDerived = ArduinoJson::V742PB22::detail::MemberProxy<ArduinoJson::V742PB22::JsonObject, ArduinoJson::V742PB22::detail::RamString>]	48	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2425:6:void SceneManager::buildSceneDocument(ArduinoJson::V742PB22::JsonDocument&) const	400	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4982:8:void ArduinoJson::V742PB22::detail::CountingDecorator<TWriter>::write(const uint8_t*, size_t) [with TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5096:8:void ArduinoJson::V742PB22::detail::TextFormatter<TWriter>::writeRaw(const char*) [with TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5075:38:ArduinoJson::V742PB22::detail::enable_if_t<((bool)ArduinoJson::V742PB22::detail::is_unsigned<TOut>::value)> ArduinoJson::V742PB22::detail::TextFormatter<TWriter>::writeInteger(T) [with T = long long unsigned int; TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	80	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:4979:8:void ArduinoJson::V742PB22::detail::CountingDecorator<TWriter>::write(uint8_t) [with TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5035:8:void ArduinoJson::V742PB22::detail::TextFormatter<TWriter>::writeFloat(ArduinoJson::V742PB22::JsonFloat, int8_t) [with TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	96	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5013:8:void ArduinoJson::V742PB22::detail::TextFormatter<TWriter>::writeString(const char*, size_t) [with TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:5063:36:ArduinoJson::V742PB22::detail::enable_if_t<((bool)ArduinoJson::V742PB22::detail::is_signed<TOut>::value)> ArduinoJson::V742PB22::detail::TextFormatter<TWriter>::writeInteger(T) [with T = long long int; TWriter = ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void>]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/ArduinoJson-v7.4.2.h:2153:34:typename TVisitor::result_type ArduinoJson::V742PB22::detail::VariantData::accept(TVisitor&, const ArduinoJson::V742PB22::detail::ResourceManager*) const [with TVisitor = ArduinoJson::V742PB22::detail::JsonSerializer<ArduinoJson::V742PB22::detail::Writer<std::__cxx11::basic_string<char>, void> >]	32	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:2580:6:bool SceneManager::applySceneDocument(const ArduinoJson::V742PB22::JsonDocument&)	2896	static
+/tmp/grooveputer-build.moOMUF/GroovePuter/scenes.cpp:3303:1:cpp)	32	static

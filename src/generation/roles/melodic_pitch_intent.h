@@ -29,6 +29,7 @@ enum class MelodicContourId : uint8_t {
   Neighbor,
   RepeatThenUp,
   RepeatThenDown,
+  MotifAnswer,
   Count,
 };
 
@@ -86,7 +87,8 @@ constexpr uint16_t kAllMelodicContours =
     melodicContourBit(MelodicContourId::LeapReturn) |
     melodicContourBit(MelodicContourId::Neighbor) |
     melodicContourBit(MelodicContourId::RepeatThenUp) |
-    melodicContourBit(MelodicContourId::RepeatThenDown);
+    melodicContourBit(MelodicContourId::RepeatThenDown) |
+    melodicContourBit(MelodicContourId::MotifAnswer);
 
 constexpr uint16_t kAllMelodicMotifOperations =
     melodicMotifOperationBit(MelodicMotifOperationId::None) |

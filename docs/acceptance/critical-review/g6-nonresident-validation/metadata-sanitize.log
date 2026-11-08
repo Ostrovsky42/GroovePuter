@@ -1,0 +1,6 @@
+G6 metadata v3: same descriptors, scratch/index untouched: PASS
+G6 metadata v4: same descriptors, scratch/index untouched: PASS
+G6 metadata v5: same descriptors, scratch/index untouched: PASS
+G6 metadata v6: same descriptors, scratch/index untouched: PASS
+G6 fallback reread failure: loaded=0 readsA=2
+G6 metadata generation/NVS/alternate/legacy/error preservation: PASS

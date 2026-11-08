@@ -311,15 +311,18 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm) con
         }
     }
 
+#if DEBUG_PATTERN_ENABLED && DEBUG_LEVEL >= 4
     const PatternMetrics m = GrooveProfile::analyzePattern(pattern);
     LOG_DEBUG_PATTERN("mode=%d flv=%d notes=%d rests=%d acc=%d sl=%d swing=%.2f",
                       (int)currentMode_, currentFlavor_, m.notes, m.rests, m.accents, m.slides, adaptedSwing);
+#endif
 }
 
 // ============================================================================
 // GENRE-BASED GENERATION (with structural behavior)
 // ============================================================================
 
+// Convention: bit = step (bit 0 = step 0). Drum templates use bit 15 = step 0.
 static inline bool stepAllowed(uint16_t mask, int step) {
     return (mask & (1u << step)) != 0;
 }
@@ -333,7 +336,8 @@ static inline int prob100(float p) {
 
 // Fallback: params-only delegates to behavior version
 void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm, const GenerativeParams& params) const {
-    GenreBehavior defaultBehavior = { 0xFFFF, 4, 0, true, true, false, false };
+    GenreBehavior defaultBehavior = {
+        0xFFFF, 4, 0, true, true, false, false, GenreTimbre{}};
     generatePattern(pattern, bpm, params, defaultBehavior);
 }
 
@@ -429,7 +433,6 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
     // 5. Place notes following stepMask (genre skeleton)
     int placed = 0;
     int lastStep = -10;
-    int lastNote = baseRoot;
 
     // === BASS ANCHOR: Force root notes on steps 0 and 8 FIRST ===
     if (isBass && targetNotes >= 2) {
@@ -437,7 +440,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         if (stepAllowed(behavior.stepMask, 0)) {
             pattern.steps[0].note = baseRoot;
             pattern.steps[0].velocity = 127;
-            pattern.steps[0].accent = true;
+            pattern.steps[0].accent = !params.noAccents;
             placed++;
             lastStep = 0;
         }
@@ -445,7 +448,7 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         if (stepAllowed(behavior.stepMask, 8) && targetNotes >= 2) {
             pattern.steps[8].note = baseRoot;
             pattern.steps[8].velocity = 120;
-            pattern.steps[8].accent = true;
+            pattern.steps[8].accent = !params.noAccents;
             placed++;
         }
     }
@@ -486,7 +489,6 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
 
         if (isBass) note = std::max(baseRoot, std::min(note, bassMaxNote));
         pattern.steps[step].note = note;
-        lastNote = note;
 
         int velRange = std::max(1, params.velocityMax - params.velocityMin + 1);
         pattern.steps[step].velocity = params.velocityMin + (boundedRandom(rng, velRange));
@@ -552,14 +554,17 @@ void GrooveboxModeManager::generatePattern(SynthPattern& pattern, float bpm,
         }
     }
 
+#if DEBUG_PATTERN_ENABLED && DEBUG_LEVEL >= 4
     const PatternMetrics m = GrooveProfile::analyzePattern(pattern);
     LOG_DEBUG_PATTERN("voice=%d notes=%d rests=%d acc=%d sl=%d swing=%.2f",
                       voiceIndex, m.notes, m.rests, m.accents, m.slides, params.swingAmount);
+#endif
 }
 
 // Drum pattern: params-only delegates to behavior version
 void GrooveboxModeManager::generateDrumPattern(DrumPatternSet& patternSet, const GenerativeParams& params) const {
-    GenreBehavior defaultBehavior = { 0xFFFF, 4, 0, true, true, false, false };
+    GenreBehavior defaultBehavior = {
+        0xFFFF, 4, 0, true, true, false, false, GenreTimbre{}};
     generateDrumPattern(patternSet, params, defaultBehavior);
 }
 

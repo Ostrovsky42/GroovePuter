@@ -8,7 +8,7 @@ instrument = (ROOT / "scripts/instrument_cardputer_memory_runtime.py").read_text
 report = (ROOT / "scripts/report_cardputer_memory_baseline.sh").read_text()
 tinyusb_report = (ROOT / "scripts/report_cardputer_tinyusb_class_buffers.sh").read_text()
 gate = (ROOT / "scripts/check_cardputer_dram_budget.sh").read_text()
-workflow = (ROOT / ".github/workflows/cardputer-memory-baseline.yml").read_text()
+workflow = (ROOT / ".github/workflows/memory.yml").read_text()
 baseline_doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_BASELINE.md").read_text()
 runtime_doc = (ROOT / "docs/stages/CARDPUTER_MEMORY_RUNTIME_TELEMETRY.md").read_text()
 doc = baseline_doc + "\n" + runtime_doc
@@ -93,6 +93,12 @@ for field in (
     "dispatchTaskPresent",
 ):
     require(field in instrument, f"runtime telemetry missing {field}")
+require("cardputerE0RecordSceneLoad" in instrument,
+        "scene-load telemetry must bracket the complete scene load")
+require("sceneLoadMaxUs" in instrument and "sceneSaveMaxUs" in instrument,
+        "E0-SD telemetry must report Scene read and write operation windows")
+require("readStartedAt = micros()" not in instrument,
+        "scene loading must not add a timer call for every JSON byte")
 require("loopStackWords" not in instrument and "audioStackWords" not in instrument,
         "ESP-IDF stack watermarks must not be labelled as words")
 require("xTaskGetHandle" not in instrument,

@@ -8,11 +8,11 @@ namespace GroovePuterMidi {
 
 inline constexpr uint8_t kUsbMidiCinSingleByte = 0x0f;
 
-inline constexpr bool parseUsbMidiRealtimeTransport(
-        uint8_t packetHeader,
+// One byte of a serial (DIN) MIDI stream. Realtime bytes may appear anywhere,
+// even between the data bytes of another message, so no parser state is needed.
+inline constexpr bool parseMidiRealtimeTransportByte(
         uint8_t status,
         ExternalMidiTransportEventType& type) {
-    if ((packetHeader & 0x0fu) != kUsbMidiCinSingleByte) return false;
     switch (status) {
         case 0xf8:
             type = ExternalMidiTransportEventType::Clock;
@@ -29,6 +29,14 @@ inline constexpr bool parseUsbMidiRealtimeTransport(
         default:
             return false;
     }
+}
+
+inline constexpr bool parseUsbMidiRealtimeTransport(
+        uint8_t packetHeader,
+        uint8_t status,
+        ExternalMidiTransportEventType& type) {
+    if ((packetHeader & 0x0fu) != kUsbMidiCinSingleByte) return false;
+    return parseMidiRealtimeTransportByte(status, type);
 }
 
 }  // namespace GroovePuterMidi

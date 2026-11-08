@@ -47,6 +47,8 @@ struct SongActivationMetadata {
 struct SongMutationLease {
   int slot = -1;
   bool boundaryRequired = false;
+  // Joined a boundary that was already published: an abort must keep it, not cancel it.
+  bool joined = false;
   SongLiveStatus status = SongLiveStatus::CommittedNow;
 
   bool ok() const {
@@ -169,6 +171,17 @@ inline const SongActivationMetadata* pendingSongMetadata(
   return &metadata;
 }
 
+// Target slot of a pending A/B switch on this row, or -1. Lets a second press
+// toggle from the switch already waiting, not from the slot still playing.
+inline int pendingPlaybackSwitchTarget(const MiniAcid& engine) {
+  int slot = -1;
+  const SongActivationMetadata* metadata = pendingSongMetadata(engine, &slot);
+  if (metadata == nullptr || metadata->kind != SongActivationKind::PlaybackSlotSwitch) {
+    return -1;
+  }
+  return metadata->targetPlaybackSlot;
+}
+
 inline const SynthPattern* pendingAudibleSongSynthPattern(
     const MiniAcid& engine,
     int voice) {
@@ -234,6 +247,31 @@ inline bool persistentSongMutationConflictsWithPending(
              std::memory_order_acquire) >= 0;
 }
 
+// Does an edit to editedSlot change what the pending boundary will make audible?
+// Edits to the playing slot (or, for a pending A/B switch, to the slot it is
+// switching to) do; edits to the other slot do not.
+inline bool songEditTouchesAudiblePending(const MiniAcid& engine, int editedSlot) {
+  const SongActivationMetadata* metadata = pendingSongMetadata(engine);
+  if (metadata == nullptr) return true;  // unknown state: stay conservative
+  if (metadata->kind == SongActivationKind::PlaybackSlotSwitch) {
+    return editedSlot == metadata->sourcePlaybackSlot ||
+           editedSlot == metadata->targetPlaybackSlot;
+  }
+  return editedSlot == metadata->sourcePlaybackSlot;
+}
+
+// After a committed Song edit that does not touch the audible slot, the pending
+// boundary only needs the new revision: the audible overlay is unchanged.
+inline void acknowledgeNonAudibleSongCommit(const MiniAcid& engine,
+                                            int editedSlot,
+                                            uint32_t committedRevision) {
+  int slot = -1;
+  if (pendingSongMetadata(engine, &slot) == nullptr) return;
+  if (songEditTouchesAudiblePending(engine, editedSlot)) return;
+  QuantizedGenerationDetail::g_slots[slot].committedRevision = committedRevision;
+  g_songActivation[slot].baseRevision = committedRevision;
+}
+
 inline SongMutationLease prepareSongMutationActivation(
     MiniAcid& engine,
     int editedSlot,
@@ -245,11 +283,50 @@ inline SongMutationLease prepareSongMutationActivation(
   result.boundaryRequired = boundaryRequired;
 
   if (!boundaryRequired) {
-    if (persistentSongMutationConflictsWithPending(engine)) {
+    if (persistentSongMutationConflictsWithPending(engine) &&
+        songEditTouchesAudiblePending(engine, editedSlot)) {
       result.status = SongLiveStatus::Busy;
     } else {
       result.status = SongLiveStatus::CommittedNow;
     }
+    return result;
+  }
+
+  // A second edit of the same row joins the pending boundary. The audible overlay
+  // stays the row-start snapshot; this edit is committed on top of it and the
+  // boundary applies the latest committed Song. Only the revision it is checked
+  // against moves forward.
+  int joinSlot = -1;
+  const SongActivationMetadata* joinable = pendingSongMetadata(engine, &joinSlot);
+  // A waiting A/B switch on this row also takes the edit: the switch applies at the
+  // same boundary and reads the committed Song of the slot it switches to.
+  if (joinable != nullptr &&
+      (joinable->kind == SongActivationKind::PlaybackSlotSwitch ||
+       (joinable->kind == SongActivationKind::PersistentMutation &&
+        joinable->editedSongSlot == editedSlot)) &&
+      joinable->sourcePlaybackSlot == engine.songPlaybackSlot() &&
+      joinable->sourceRow == engine.currentSongPosition()) {
+    // Armed keeps the BAR_START claim (Ready -> Reading) from taking the slot
+    // while this edit commits; completeSongMutationActivation sets Ready again.
+    const uint8_t joinState = QuantizedGenerationDetail::g_slotState[joinSlot].load(
+        std::memory_order_acquire);
+    if (joinState == static_cast<uint8_t>(SlotState::Ready)) {
+      uint8_t expected = static_cast<uint8_t>(SlotState::Ready);
+      if (!QuantizedGenerationDetail::g_slotState[joinSlot].compare_exchange_strong(
+              expected, static_cast<uint8_t>(SlotState::Armed),
+              std::memory_order_acq_rel, std::memory_order_acquire)) {
+        result.status = SongLiveStatus::Busy;
+        return result;
+      }
+    } else if (joinState != static_cast<uint8_t>(SlotState::Armed)) {
+      result.status = SongLiveStatus::Busy;
+      return result;
+    }
+    g_songActivation[joinSlot].baseRevision =
+        GroovePuterState::sceneRevisionSnapshot().currentRevision;
+    result.slot = joinSlot;
+    result.joined = true;
+    result.status = SongLiveStatus::PendingNextRow;
     return result;
   }
 
@@ -288,6 +365,8 @@ inline SongMutationLease prepareSongMutationActivation(
   metadata.active = true;
 
   pending.bpm = kSongActivationBpmSentinel;
+  // The boundary hook activates only a pending that names its engine owner.
+  pending.owner = &engine;
   pending.committedRevision = 0;
   g_songActivation[lease.slot] = metadata;
   QuantizedGenerationDetail::armActivationSlot(lease.slot);
@@ -333,6 +412,12 @@ inline void abortSongMutationActivation(
     QuantizedGenerationStatus status =
         QuantizedGenerationStatus::CancelledExplicit) {
   if (!lease.boundaryRequired || lease.slot < 0) return;
+  if (lease.joined) {
+    // Only this edit is dropped; the first edit's boundary stays published.
+    QuantizedGenerationDetail::g_slotState[lease.slot].store(
+        static_cast<uint8_t>(SlotState::Ready), std::memory_order_release);
+    return;
+  }
   cancelSongActivationSlot(lease.slot, status);
 }
 
@@ -340,6 +425,33 @@ inline SongLiveStatus requestSongPlaybackSwitch(MiniAcid& engine,
                                                 int targetSlot) {
   if (targetSlot < 0) targetSlot = 0;
   if (targetSlot > 1) targetSlot = 1;
+  // A switch already waiting on this row: retarget it. Going back to the slot
+  // that is playing cancels it, since nothing has changed yet.
+  int switchSlot = -1;
+  const SongActivationMetadata* waiting = pendingSongMetadata(engine, &switchSlot);
+  if (waiting != nullptr &&
+      waiting->kind == SongActivationKind::PlaybackSlotSwitch) {
+    if (waiting->sourcePlaybackSlot == targetSlot) {
+      cancelSongActivationSlot(switchSlot, QuantizedGenerationStatus::CancelledExplicit);
+      return SongLiveStatus::NoChange;
+    }
+    g_songActivation[switchSlot].targetPlaybackSlot = static_cast<int8_t>(targetSlot);
+    return SongLiveStatus::PendingNextRow;
+  }
+  if (waiting != nullptr &&
+      waiting->kind == SongActivationKind::PersistentMutation) {
+    // The waiting reverse is already committed; its audible snapshot is this row's.
+    // Adding the switch keeps that boundary and makes it switch slots as well.
+    if (waiting->sourcePlaybackSlot == targetSlot) return SongLiveStatus::NoChange;
+    const uint32_t revision = GroovePuterState::sceneRevisionSnapshot().currentRevision;
+    SongActivationMetadata& metadata = g_songActivation[switchSlot];
+    metadata.kind = SongActivationKind::PlaybackSlotSwitch;
+    metadata.targetPlaybackSlot = static_cast<int8_t>(targetSlot);
+    metadata.baseRevision = revision;
+    QuantizedGenerationDetail::g_slots[switchSlot].committedRevision = revision;
+    return SongLiveStatus::PendingNextRow;
+  }
+
   if (engine.songPlaybackSlot() == targetSlot) return SongLiveStatus::NoChange;
 
   if (!engine.isPlaying() || !engine.songModeEnabled()) {
@@ -381,6 +493,8 @@ inline SongLiveStatus requestSongPlaybackSwitch(MiniAcid& engine,
   metadata.active = true;
 
   pending.bpm = kSongActivationBpmSentinel;
+  // The boundary hook activates only a pending that names its engine owner.
+  pending.owner = &engine;
   pending.committedRevision = metadata.baseRevision;
   g_songActivation[lease.slot] = metadata;
 

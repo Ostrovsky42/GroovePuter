@@ -1,5 +1,10 @@
 #include "strong_rhythm_migration.h"
 
+#include "graph_harmony_pattern_projector.h"
+#include "../idiom/genre_idiom.h"
+#include "../../state/generation_shape_state.h"
+#include "../roles/bar_function_roles.h"
+
 #include "../generation_context.h"
 #include "../rhythm/rhythm_realizer.h"
 
@@ -12,6 +17,14 @@ StrongRhythmMelodicRequestProbe* g_melodicRequestProbe = nullptr;
 void setStrongRhythmMelodicRequestProbe(
     StrongRhythmMelodicRequestProbe* probe) {
   g_melodicRequestProbe = probe;
+}
+
+namespace {
+StrongRhythmBassTonalPlanProbe* g_bassTonalPlanProbe = nullptr;
+}
+
+void setStrongRhythmBassTonalPlanProbe(StrongRhythmBassTonalPlanProbe* probe) {
+  g_bassTonalPlanProbe = probe;
 }
 #endif
 namespace {
@@ -255,6 +268,25 @@ bool stage14BaseGenre(GenerativeMode mode) {
   }
 }
 
+uint8_t profileDensityIntentCenter(const GenerationCorridor& corridor) {
+  return static_cast<uint8_t>(
+      (static_cast<uint16_t>(corridor.densityMin) +
+       static_cast<uint16_t>(corridor.densityMax) + 1u) /
+      2u);
+}
+
+bool freezeStructuralDensityIntent(
+    const GenerationCompositionResult& composition,
+    const ReferenceVocabulary::Definition& definition,
+    StrongRhythmFrozenSelection& destination) {
+  const RhythmArchetype* archetype =
+      ReferenceVocabulary::archetypeFor(definition.key);
+  if (archetype == nullptr) return false;
+  destination.structuralDensityTarget = projectStructuralDensityTarget(
+      *archetype, profileDensityIntentCenter(composition.corridor));
+  return destination.structuralDensityTarget != kNoStructuralDensityTarget;
+}
+
 void copyCompositionToResult(const GenerationCompositionResult& composition,
                              StrongRhythmMigrationResult& result) {
   result.compositionStatus = composition.status;
@@ -354,6 +386,15 @@ StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings) {
       if (mode == GenerativeMode::HipHop)
         return StrongRhythmRoute::Stage7Composition;
       break;
+    case kDnbAtmosRecipeId:
+    case kDnbFunkRecipeId:
+    case kDnbDanceRecipeId:
+    case kDnbNeuroRecipeId:
+      // P02: the DnB poles run the Stage-7 composition route so the DnB idiom
+      // (bass, lead and drum grammar) is reached in migrateStrongRhythmMaterial.
+      if (mode == GenerativeMode::DrumAndBass)
+        return StrongRhythmRoute::Stage7Composition;
+      break;
     case kBaseRecipeId: break;
     default: return StrongRhythmRoute::Legacy;
   }
@@ -416,7 +457,9 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelection(
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
-  if (definition == nullptr) {
+  if (definition == nullptr ||
+      !freezeStructuralDensityIntent(
+          destination.composition, *definition, destination)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -471,7 +514,9 @@ StrongRhythmMigrationResult resolveStrongRhythmFrozenSelectionForPhraseBars(
   const ReferenceVocabulary::Definition* definition =
       ReferenceVocabulary::definitionForId(
           destination.composition.rhythmArchetypeId);
-  if (definition == nullptr) {
+  if (definition == nullptr ||
+      !freezeStructuralDensityIntent(
+          destination.composition, *definition, destination)) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
@@ -527,6 +572,7 @@ StrongRhythmMigrationResult migrateStrongRhythmDrums(
   request.phraseBars = 1;
   request.level = context.level;
   request.generation = selection->realizationGeneration;
+  request.structuralDensityTarget = selection->structuralDensityTarget;
 
   const RhythmRealizationResult realization = realizeRhythmPhrase(request);
   result.realizationStatus = realization.status;
@@ -599,6 +645,7 @@ TonalMaterializationResult materializeRole(
     const StrongRhythmMigrationContext& context,
     const TonalRegisterCorridor& corridor,
     const ChordProgressionPlan& progression,
+    GroovePuterHarmony::HarmonicStrategy harmonicStrategy,
     StepMask harmonicEventOnsets,
     StepMask onsets,
     StepMask continuations,
@@ -609,6 +656,7 @@ TonalMaterializationResult materializeRole(
   request.continuations = continuations;
   request.harmonicEventOnsets = harmonicEventOnsets;
   request.progression = progression;
+  request.harmonicStrategy = harmonicStrategy;
   request.semitoneOffsetOrdinals = semitoneOffsetOrdinals;
   for (uint8_t ordinal = 0; ordinal < kStepsPerBar; ++ordinal)
     request.tonalOffsets[ordinal] = tonalOffsets == nullptr ? 0 : tonalOffsets[ordinal];
@@ -634,6 +682,30 @@ uint8_t filteredMelodicOffsets(const MelodicPitchIntentPlan& plan,
 }  // namespace
 
 namespace {
+
+// Attacks, held steps (same pitch, slid into) and the pitch class at each
+// attack, read back from a committed bass pattern.
+void rebuildBassEvidenceFromPattern(const SynthPattern& bass,
+                                    StrongRhythmMigrationResult& result) {
+  StepMask onsets = 0;
+  StepMask continuations = 0;
+  BassPitchClassWitness witness{};
+  for (uint8_t step = 0; step < kStepsPerBar; ++step) {
+    const SynthStep& event = bass.steps[step];
+    if (event.note < 0) continue;
+    const bool held = step > 0 && event.slide && bass.steps[step - 1].note == event.note;
+    if (held) {
+      continuations = static_cast<StepMask>(continuations | stepBit(step));
+    } else {
+      onsets = static_cast<StepMask>(onsets | stepBit(step));
+      (void)witness.setPitchClass(step, static_cast<uint8_t>(event.note % 12));
+    }
+  }
+  result.bassRhythmPlan.onsets = onsets;
+  result.bassRhythmPlan.continuations = continuations;
+  result.bassPitchClassWitness = witness;
+  result.bassPitchClassWitnessAvailable = true;
+}
 
 StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     const GenreSettings& settings,
@@ -664,7 +736,10 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     return result;
   }
 
+  // A rest bar only makes sense inside a phrase; a single G on one slot that
+  // comes out empty reads as a broken generator (0.9.18, LoFi on odd slots).
   const bool allowSparse =
+      context.phraseBarOrdinal != kUnspecifiedPhraseBarOrdinal &&
       sparseSemanticBarsAllowed(settings, definition->family);
   const uint8_t barOrdinal = semanticBarOrdinal(settings, context);
   const TonalGenerationProfile tonalProfile =
@@ -694,7 +769,14 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   bassRequest.generation = materializationGeneration;
   bassRequest.barOrdinal = barOrdinal;
   bassRequest.allowEmptyBar = allowSparse;
-  const BassRhythmResult bass = realizeBassRhythm(bassRequest);
+  const BassRhythmResult bassBase = realizeBassRhythm(bassRequest);
+  // P0-B1: bass follows the phrase bar function. `bass` is the plan actually used to build
+  // Synth A (and exported as origin evidence); `bassBase` keeps the pre-function attacks so
+  // other roles are not given freed positions. Statement/Repeat/Return/Response: identical.
+  BassRhythmResult bassEffective = bassBase;
+  bassEffective.plan = BarFunctionRoles::applyToBassPlan(
+      result.phraseBarFunction, bassBase.plan, bassRequest.kickOnsets, bassRequest.protectedSpace);
+  const BassRhythmResult& bass = bassEffective;
   result.bassRhythmStatus = bass.status;
   result.bassRhythmId = bass.plan.id;
   if (bass.status != BassRhythmStatus::Ok &&
@@ -702,6 +784,8 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  result.bassRhythmPlan = bass.plan;
+  result.bassRhythmPlanAvailable = true;
 
   BassPitchBehaviorResult bassPitch{};
   if (context.tonalMaterializationEnabled) {
@@ -725,13 +809,17 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   chordRequest.requestedId = result.chordRhythmId;
   chordRequest.family = definition->family;
   chordRequest.archetypeId = definition->archetypeId;
-  chordRequest.bassOnsets = bass.plan.onsets;
+  chordRequest.bassOnsets = bassBase.plan.onsets;
   chordRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::ChordRhythm);
   chordRequest.generation = bassRequest.generation;
   chordRequest.barOrdinal = barOrdinal;
   chordRequest.allowEmptyBar = allowSparse;
-  const ChordRhythmResult chord = realizeChordRhythm(chordRequest);
+  const ChordRhythmResult chordBase = realizeChordRhythm(chordRequest);
+  ChordRhythmResult chordEffective = chordBase;
+  chordEffective.plan = BarFunctionRoles::applyToChordPlan(
+      result.phraseBarFunction, chordBase.plan, bassBase.plan.onsets, chordRequest.protectedSpace);
+  const ChordRhythmResult& chord = chordEffective;
   result.chordRhythmStatus = chord.status;
   result.chordRhythmId = chord.plan.id;
   result.chordOnsets = chord.plan.onsets;
@@ -743,6 +831,8 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
   HarmonicRhythmResult harmonic{};
   ChordProgressionResult progression{};
+  GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
+      GroovePuterHarmony::HarmonicStrategy::Legacy;
   if (context.phraseExecutionOverride == nullptr) {
     HarmonicRhythmRequest harmonicRequest{};
     harmonicRequest.progression = result.progressionId;
@@ -769,28 +859,60 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   } else {
     const StrongRhythmPhraseExecutionOverride& execution =
         *context.phraseExecutionOverride;
+    const bool hasLegacySource = execution.progressionSource != nullptr;
+    const bool hasTaggedSource = execution.harmonicSourceView != nullptr;
     if (execution.harmonicRhythm == nullptr ||
-        execution.progressionSource == nullptr ||
-        execution.progressionSource->period == 0 ||
+        hasLegacySource == hasTaggedSource ||
+        (hasLegacySource && execution.progressionSource->period == 0) ||
         execution.harmonicRhythm->eventCount == 0 ||
         execution.harmonicRhythm->eventCount > kMaxHarmonicEvents) {
       result.status = StrongRhythmMigrationStatus::InvalidContext;
       return result;
     }
-    harmonic.status = HarmonicRhythmStatus::Ok;
-    harmonic.plan = *execution.harmonicRhythm;
-    progression.plan.id = execution.progressionSource->id;
-    progression.plan.eventCount = harmonic.plan.eventCount;
-    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
-      if (!chordProgressionSourceEventAt(
-              *execution.progressionSource,
-              static_cast<uint16_t>(execution.firstGlobalHarmonicOrdinal + ordinal),
-              progression.plan.events[ordinal])) {
+    if (hasTaggedSource) {
+      const auto& view = *execution.harmonicSourceView;
+      harmonicStrategy = view.strategy;
+      if ((view.strategy == GroovePuterHarmony::HarmonicStrategy::Legacy &&
+           (view.legacySource == nullptr || view.graphSource != nullptr ||
+            view.legacySource->period == 0)) ||
+          (view.strategy == GroovePuterHarmony::HarmonicStrategy::Graph &&
+           (view.graphSource == nullptr || view.legacySource != nullptr)) ||
+          static_cast<uint8_t>(view.strategy) >
+              static_cast<uint8_t>(GroovePuterHarmony::HarmonicStrategy::Graph)) {
         result.status = StrongRhythmMigrationStatus::InvalidContext;
         return result;
       }
     }
-    progression.status = execution.progressionSource->period == 1
+    harmonic.status = HarmonicRhythmStatus::Ok;
+    harmonic.plan = *execution.harmonicRhythm;
+    progression.plan.id = hasLegacySource
+        ? execution.progressionSource->id
+        : harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+              ? execution.harmonicSourceView->legacySource->id
+              : ProgressionId::Auto;
+    progression.plan.eventCount = harmonic.plan.eventCount;
+    for (uint8_t ordinal = 0; ordinal < harmonic.plan.eventCount; ++ordinal) {
+      const uint32_t globalOrdinal =
+          static_cast<uint32_t>(execution.firstGlobalHarmonicOrdinal + ordinal);
+      const bool eventReady = hasTaggedSource
+          ? GroovePuterHarmony::harmonicEventAt(
+                *execution.harmonicSourceView, globalOrdinal,
+                progression.plan.events[ordinal]) ==
+                GroovePuterHarmony::HarmonyStatus::Ready
+          : chordProgressionSourceEventAt(
+                *execution.progressionSource, globalOrdinal,
+                progression.plan.events[ordinal]);
+      if (!eventReady) {
+        result.status = StrongRhythmMigrationStatus::InvalidContext;
+        return result;
+      }
+    }
+    const uint8_t legacyPeriod = hasLegacySource
+        ? execution.progressionSource->period
+        : harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+              ? execution.harmonicSourceView->legacySource->period
+              : 0;
+    progression.status = legacyPeriod == 1
         ? ChordProgressionStatus::ValidButStatic
         : ChordProgressionStatus::Ok;
   }
@@ -800,6 +922,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
   result.harmonicEventCount = harmonic.plan.eventCount;
   result.chordProgressionStatus = progression.status;
   result.progressionId = progression.plan.id;
+  result.harmonicStrategy = harmonicStrategy;
   if (progression.status != ChordProgressionStatus::Ok &&
       progression.status != ChordProgressionStatus::ValidButStatic) {
     result.status = StrongRhythmMigrationStatus::InvalidContext;
@@ -809,16 +932,20 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.status = StrongRhythmMigrationStatus::InvalidContext;
     return result;
   }
+  result.harmonicPlan = harmonic.plan;
+  result.harmonicProgression = progression.plan;
+  result.harmonicRootPitchClass = context.rootPitchClass;
+  result.harmonicScaleTypeValue = context.scaleTypeValue;
 
   MelodicMotifRequest melodicRequest{};
   melodicRequest.requestedRhythm = result.melodicRhythmId;
   melodicRequest.requestedShape = result.motifShapeId;
   melodicRequest.family = definition->family;
   melodicRequest.archetypeId = definition->archetypeId;
-  melodicRequest.bassOnsets = bass.plan.onsets;
+  melodicRequest.bassOnsets = bassBase.plan.onsets;
   melodicRequest.chordOnsets =
       result.synthBRole == SemanticSynthBRole::Melodic ? 0
-                                                       : chord.plan.onsets;
+                                                       : chordBase.plan.onsets;
   melodicRequest.protectedSpace =
       protectedSpaceFor(*archetype, RhythmRole::MelodicRhythm);
   melodicRequest.generation = bassRequest.generation;
@@ -966,7 +1093,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     }
   } else {
     const TonalMaterializationResult bassTonal = materializeRole(
-        context, tonalProfile.bassRegister, progression.plan,
+        context, tonalProfile.bassRegister, progression.plan, harmonicStrategy,
         harmonic.plan.onsets, bassPitch.plan.onsets,
         bassPitch.plan.continuations, bassPitch.plan.tonalOffsets,
         bassPitch.plan.semitoneOffsetOrdinals);
@@ -983,6 +1110,15 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       result.status = StrongRhythmMigrationStatus::CompatibilityBindingFailed;
       return result;
     }
+#ifdef GROOVEPUTER_M1_TEST_PROBE
+    if (g_bassTonalPlanProbe != nullptr) {
+      g_bassTonalPlanProbe->plan = bassTonal.plan;
+      g_bassTonalPlanProbe->captured = true;
+    }
+#endif
+    // D1-B1: origin witness from the exact plan adapted into Synth A above.
+    result.bassPitchClassWitnessAvailable = makeBassPitchClassWitness(
+        bassTonal.plan, bass.plan.onsets, result.bassPitchClassWitness);
     result.bassFeelStatus = applyFeelToSemanticPattern(
         RhythmRole::BassRhythm, bassPitch.plan.onsets, resolvedFeel,
         context.feelAmount, bassRequest.generation, nextSynthA);
@@ -994,6 +1130,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     if (result.synthBRole == SemanticSynthBRole::Chord) {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
@@ -1019,6 +1156,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, melodicPitch.plan.onsets,
           melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
@@ -1046,6 +1184,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     } else {
       const TonalMaterializationResult chordTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, chord.plan.onsets, chord.plan.continuations,
           nullptr, 0);
       result.chordTonalStatus = chordTonal.status;
@@ -1087,6 +1226,7 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
 
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
+          harmonicStrategy,
           harmonic.plan.onsets, admittedOnsets, admittedContinuations,
           admittedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
@@ -1127,6 +1267,54 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     result.tonalMaterializationApplied = true;
   }
 
+  bool idiomApplied = false;
+  // 0.9.18 genre idioms: for the genres that have one, bass and lead come from
+  // a paired template instead of the role vocabulary (drums, harmony and feel
+  // above are kept).
+  {
+    GenreIdiom::Request idiom{};
+    idiom.generativeMode = settings.generativeMode;
+    idiom.recipe = settings.recipe;
+    if (context.tonalMaterializationEnabled) {
+      idiom.rootPitchClass = context.rootPitchClass;
+      idiom.scale = context.scaleTypeValue;
+    }
+    idiom.level = context.level == RealizationLevel::P1Canonical ? 0 : 1;
+    const auto liveliness = GroovePuterState::generationLiveliness();
+    if (liveliness == GroovePuterState::GenerationLiveliness::Calm) idiom.level = 2;
+    if (liveliness == GroovePuterState::GenerationLiveliness::Lively) idiom.level = 1;
+    idiom.liveliness = static_cast<uint8_t>(liveliness);
+    idiom.barOrdinal = context.phraseBarOrdinal == kUnspecifiedPhraseBarOrdinal
+        ? GenreIdiom::kNoBarOrdinal
+        : context.phraseBarOrdinal;
+    idiom.phraseBars = context.ideaPhraseBars;
+    // A prepared phrase execution must not depend on where its bars are
+    // written (the cycle and the kept phrase rebuild bars from the recipe), so
+    // its deck follows the phrase identity, never the pattern address.
+    const bool phraseExecution =
+        context.ideaPress == 0 &&
+        context.phraseGenerationIdentity != kUnspecifiedPhraseGenerationIdentity;
+    const uint32_t place = phraseExecution
+        ? static_cast<uint32_t>(context.phraseGenerationIdentity)
+        : static_cast<uint32_t>(context.patternAddress);
+    idiom.salt = place * 131u +
+                 context.generationAttemptOrdinal * 977u +
+                 context.ideaPress * 0x2545F491u;
+    // Successive presses walk one idea deck: steps G counts attempts on its
+    // slot, Melody G / TAKE bring their own press.
+    idiom.press = context.ideaPress != 0 ? context.ideaPress : context.generationAttemptOrdinal;
+    idiom.deckSeed = context.ideaPress != 0 ? 0u : place;
+    // DnB writes its drum grammar too, but only when this G replaces drums.
+    idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
+                                     replaceDrums ? &nextDrums : nullptr);
+    // CALL/RESPONSE phase 8: which template and level wrote this bar, so the
+    // partner can read the chord of a step from the template's stabs.
+    if (idiomApplied) {
+      result.idiomTemplate = GenreIdiom::packIdiomTemplate(
+          GenreIdiom::idiomVariantIndex(GenreIdiom::variantForRequest(idiom)), idiom.level);
+    }
+  }
+
   if (replaceDrums) {
     const bool unchanged =
         sameDrumMaterial(nextDrums, drums) &&
@@ -1136,7 +1324,6 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       applyFullMaterialRerollArticulation(
           context.generationAttemptOrdinal, nextDrums);
     }
-    drums = nextDrums;
   } else {
     if (sameSynthMaterial(nextSynthA, synthA)) {
       applySynthRerollArticulation(
@@ -1147,6 +1334,44 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
           context.generationAttemptOrdinal, nextSynthB);
     }
   }
+  // The idiom wrote Synth A after the role plan was exported: the origin
+  // evidence (bass rhythm plan + pitch-class witness, read by DEVELOP's P0
+  // preservation) must describe the bass that was actually committed.
+  if (idiomApplied && harmonicStrategy ==
+          GroovePuterHarmony::HarmonicStrategy::Graph) {
+    const StrongRhythmPhraseExecutionOverride* execution =
+        context.phraseExecutionOverride;
+    if (execution == nullptr || execution->harmonicRhythm == nullptr ||
+        execution->harmonicSourceView == nullptr ||
+        execution->harmonicSourceView->graphSource == nullptr ||
+        projectPatternToGraphHarmony(
+            nextSynthA, *execution->harmonicRhythm,
+            *execution->harmonicSourceView->graphSource,
+            execution->firstGlobalHarmonicOrdinal,
+            GroovePuterHarmony::HarmonicRole::Bass) !=
+            GroovePuterHarmony::HarmonyStatus::Ready ||
+        projectPatternToGraphHarmony(
+            nextSynthB, *execution->harmonicRhythm,
+            *execution->harmonicSourceView->graphSource,
+            execution->firstGlobalHarmonicOrdinal,
+            GroovePuterHarmony::HarmonicRole::Lead) !=
+            GroovePuterHarmony::HarmonyStatus::Ready) {
+      result.status = StrongRhythmMigrationStatus::GraphHarmonyProjectionFailed;
+      return result;
+    }
+  }
+  if (idiomApplied) rebuildBassEvidenceFromPattern(nextSynthA, result);
+  result.harmonicAuthority = harmonicStrategy ==
+          GroovePuterHarmony::HarmonicStrategy::Graph
+      ? GroovePuterHarmony::HarmonicAuthority::Graph
+      : idiomApplied
+      ? GroovePuterHarmony::HarmonicAuthority::Idiom
+      : result.tonalMaterializationApplied
+          ? GroovePuterHarmony::HarmonicAuthority::Generic
+          : GroovePuterHarmony::HarmonicAuthority::Unknown;
+  // Publish only after every graph/idiom check. A late projection failure
+  // must leave drums and both synth destinations as one unchanged transaction.
+  if (replaceDrums) drums = nextDrums;
   synthA = nextSynthA;
   synthB = nextSynthB;
   return result;

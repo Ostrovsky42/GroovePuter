@@ -14,6 +14,7 @@
 #include "../scenes.h"
 #include "../src/generation/composition/generation_profile.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
+#include "../src/phrase/runtime_pattern_event_bank.h"
 #include "../src/state/generation_request_state.h"
 #include "../src/state/scene_revision.h"
 #include "../src/state/undo_owner.h"
@@ -102,6 +103,14 @@ class MiniAcid {
   // tempo; the I1 contract is asserted on the production owner below.
   void regeneratePatternsWithGenre() {}
 
+  bool rebuildPatternRuntimeEventBank() { return true; }
+  bool refreshPatternRuntimeEvents(int, int, int) { return true; }
+  const PhraseRuntime::RuntimePatternEventBuffer& activePatternRuntimeEvents(
+      int voice) const {
+    return runtime_[voice == 0 ? 0 : 1];
+  }
+  void barrierPatternRuntimeSourceTransition() { ++runtimeBarrierCount_; }
+
  private:
   TestSceneManager scenes_{};
   bool playing_ = false;
@@ -109,6 +118,8 @@ class MiniAcid {
   GrooveboxMode mode_ = GrooveboxMode::Minimal;
   GrooveboxModeManager modeManager_;
   TestGenreManager genreManager_{};
+  PhraseRuntime::RuntimePatternEventBuffer runtime_[2]{};
+  int runtimeBarrierCount_ = 0;
 };
 
 namespace GenreCatalog {
@@ -435,8 +446,10 @@ void testBusyRequestDoesNotMutateTempo() {
       GroovePuterRhythm::regenerateWithQuantizedCommit(
           engine, requested, GrooveboxMode::Minimal, true, requestedBpm);
 
-  expectTrue("BUSY: request is rejected",
-             result == QuantizedGenerationResult::Failed);
+  expectTrue("BUSY: request is distinguishable from generation failure",
+             result == QuantizedGenerationResult::Busy &&
+             GroovePuterRhythm::quantizedGenerationStatus() ==
+                 GroovePuterRhythm::QuantizedGenerationStatus::Busy);
   expectBpm("BUSY request leaves the live tempo untouched",
             engine.bpm(), kInitialBpm);
   abortArmedActivation(companion, GroovePuterRhythm::QuantizedGenerationStatus::CancelledExplicit);
@@ -483,6 +496,29 @@ void testSynthRerollDoesNotMutateTempo() {
             engine.bpm(), kInitialBpm);
   expectBpm("SYNTH REROLL keeps the persistent tempo",
             engine.sceneManager().getBpm(), kInitialBpm);
+}
+
+void testSynthRerollReportsBusyDistinctly() {
+  using namespace GroovePuterRhythm::QuantizedGenerationDetail;
+  resetQuantizedState();
+
+  MiniAcid engine;
+  engine.setPlaying(true);
+  engine.sceneManager().currentScene().genre = minimalSpaceRequest();
+  const WriteLease held = acquireWriteLease();
+  const int companion = acquireCompanionActivationSlot(held.slot);
+  armActivationSlot(companion);
+
+  const QuantizedGenerationResult result =
+      GroovePuterRhythm::regenerateSynthWithQuantizedCommit(engine, 1);
+  expectTrue("SYNTH BUSY: request is distinguishable from generation failure",
+             result == QuantizedGenerationResult::Busy &&
+             GroovePuterRhythm::quantizedGenerationStatus() ==
+                 GroovePuterRhythm::QuantizedGenerationStatus::Busy);
+
+  abortArmedActivation(
+      companion, GroovePuterRhythm::QuantizedGenerationStatus::CancelledExplicit);
+  releaseWriteSlot(held.slot);
 }
 
 // ---------------------------------------------------------------------------
@@ -634,6 +670,7 @@ int main() {
   testBusyRequestDoesNotMutateTempo();
   testTargetChangedDoesNotMutateTempo();
   testSynthRerollDoesNotMutateTempo();
+  testSynthRerollReportsBusyDistinctly();
   testEveryProductionCorridorIsWellFormed();
   testAtlasProvenanceRemainsSeparateFromCorridor();
   testEveryAtlasRecipeMaterializesAtItsCorridorTempo();

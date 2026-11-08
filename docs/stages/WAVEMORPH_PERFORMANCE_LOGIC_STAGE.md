@@ -41,7 +41,7 @@ Open **PERFORM**. Normal note controls remain unchanged.
 - `Fn+S`: strum 0/8/16/24/36 ms.
 - `Fn+R`: ratchet x1..x4.
 - `Fn+E`: Euclidean pulses 0/3/5/7/9/11/13/16 over 16 steps.
-- `Shift+Fn+E`: rotate the Euclidean pattern.
+- `Fn+E`: rotate the Euclidean pattern.
 - `X`: scoped panic for the selected target.
 
 Select **WAVEMORPH** from Synth A or Synth B settings. Parameters are Wave, Morph, Sub, Cutoff, Reso, and Decay.

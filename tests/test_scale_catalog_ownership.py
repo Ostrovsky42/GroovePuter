@@ -29,11 +29,12 @@ assert "static const int intervals[][" not in ADVANCED
 assert "static const uint8_t intervalCounts[]" not in ADVANCED
 assert "scaleDefinitionFor(" in ADVANCED
 
-# PerformanceKeyboard remains an explicitly separate live-input compatibility
-# context in this Stage 15 PR. It is not a generated-pitch owner and is kept out
-# of the production tonal path rather than accepting a broad input-controller
-# rewrite during the musical integration gate.
-assert "PerformanceKeyboard::intervalForDegree" in KEYBOARD
+# PerformanceKeyboard remains a separate live-input compatibility context. It
+# may consume the shared data-only ScaleCatalog, but it must not become a
+# generated-pitch materialization/projector owner.
+assert '#include "src/generation/tonal/scale_catalog.h"' in KEYBOARD
+assert "GroovePuterRhythm::scaleDefinitionFor(" in KEYBOARD
+assert "GroovePuterRhythm::scaleDegreeToSemitone(" in KEYBOARD
 assert "materializeTonalIntent(" not in KEYBOARD
 assert "projectTonalIntent(" not in KEYBOARD
 

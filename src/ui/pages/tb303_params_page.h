@@ -1,6 +1,7 @@
 #pragma once
 
 #include "../ui_core.h"
+#include "../selection_popup.h"
 #include "../pages/help_dialog.h"
 #include "../ui_colors.h"
 #include "../ui_utils.h"
@@ -33,6 +34,15 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   }
 
   bool isTb303Engine() const;
+  bool hasSoundPresets() const;
+  bool isDualOsc() const;
+  int presetCount() const;
+  int currentPresetIndex() const;
+  void openPresetPopup();
+  void openEnginePopup();
+  void applyPreset(int index);
+  void applyEngine(const std::string& name);
+  UI::SelectionPopup preset_popup_;
   void cycleEngine(int direction);
   void adjustGenericParameter(int parameterIndex, int direction, bool fine);
   void adjustFocusedElement(int direction, bool fine = false);
@@ -52,10 +62,13 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   int voice_index_;
   int current_preset_index_ = -1;
   bool initialized_ = false;
+  bool engine_popup_ = false;
   std::shared_ptr<KnobComponent> cutoff_knob_;
   std::shared_ptr<KnobComponent> resonance_knob_;
   std::shared_ptr<KnobComponent> env_amount_knob_;
   std::shared_ptr<KnobComponent> env_decay_knob_;
+  std::shared_ptr<LabelValueComponent> preset_control_;
+  std::shared_ptr<LabelValueComponent> make_phrase_control_;
   std::shared_ptr<LabelValueComponent> engine_type_control_;
   std::shared_ptr<LabelValueComponent> osc_control_;
   std::shared_ptr<LabelValueComponent> filter_control_;

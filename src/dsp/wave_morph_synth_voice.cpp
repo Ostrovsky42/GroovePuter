@@ -173,7 +173,8 @@ void WaveMorphSynthVoice::startNote(float freqHz,
     slide_ = slideFlag && alreadyActive;
     if (!slide_) {
         currentFreqHz_ = freqHz;
-        ampEnv_ = 0.0f;
+        // Retrigger the attack without discontinuously muting a sounding note.
+        if (!alreadyActive) ampEnv_ = 0.0f;
         attack_ = true;
     }
     gate_ = true;

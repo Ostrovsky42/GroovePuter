@@ -26,8 +26,8 @@ require("bool handleEventLegacy(UIEvent& ui_event);" in SYNTH_HEADER,
         "synth legacy handler must be declared explicitly")
 require("gridArrow && !ui_event.alt && !ui_event.meta" in SYNTH,
         "plain and selection arrows must be owned by the synth grid")
-require("row = std::max(0, row - 1)" in SYNTH and
-        "row = std::min(kPatternStepRows - 1, row + 1)" in SYNTH,
+require("row = std::max(0, std::min(rows - 1, row))" in SYNTH and
+        "return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, extendSelection)" in SYNTH,
         "synth vertical arrows must clamp at the note-grid boundaries")
 require("focus_ = Focus::Steps" in SYNTH,
         "synth pattern and bank shortcuts must restore step focus")
@@ -86,9 +86,9 @@ require("kMaxPages" in alt_bracket_block and "kPageCount" not in alt_bracket_blo
         "Alt+[ / ] must use kMaxPages for pattern-page wraparound, not kPageCount")
 
 # Plain [/] (no modifier) remains UI-page navigation
-require("if (event.key == ']') { nextPage(); return true; }" in DISPLAY and
-        "if (event.key == '[') { previousPage(); return true; }" in DISPLAY,
-        "plain [ / ] must remain UI-page navigation")
+require("if (event.key == ']') { nextPage(event.meta); return true; }" in DISPLAY and
+        "if (event.key == '[') { previousPage(event.meta); return true; }" in DISPLAY,
+        "plain [ / ] must remain UI-page navigation through the modifier-aware page seam")
 
 # Fn+[/] (meta modifier) remains workflow switching
 require("event.meta && (event.key == '[' || event.key == '{')" in DISPLAY and

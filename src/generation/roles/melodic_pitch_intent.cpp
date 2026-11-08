@@ -366,6 +366,14 @@ void buildContour(MelodicContourId contour, uint8_t count,
         values[index] = phase == 1u ? step : phase == 3u ? -step : 0;
       }
       break;
+    case MelodicContourId::MotifAnswer: {
+      // A four-note gesture followed by a changed answer. Scale degrees only;
+      // the tonal materializer retains ownership of key, harmony and register.
+      constexpr int8_t cell[] = {0, 1, 3, 1, 0, 1, 2, 0};
+      for (uint8_t index = 0; index < count; ++index)
+        values[index] = static_cast<int8_t>(cell[index % 8u] * step);
+      break;
+    }
     case MelodicContourId::RepeatThenUp:
       for (uint8_t index = 2; index < count; ++index)
         values[index] = static_cast<int8_t>((index - 1u) * step);
@@ -580,6 +588,7 @@ const char* melodicContourName(MelodicContourId id) {
     case MelodicContourId::Neighbor: return "NEIGHBOR";
     case MelodicContourId::RepeatThenUp: return "REPEAT THEN UP";
     case MelodicContourId::RepeatThenDown: return "REPEAT THEN DOWN";
+    case MelodicContourId::MotifAnswer: return "MOTIF ANSWER";
     case MelodicContourId::Count: break;
   }
   return "INVALID";

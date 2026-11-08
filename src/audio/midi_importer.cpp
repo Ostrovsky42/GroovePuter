@@ -133,6 +133,11 @@ MidiImporter::ScanResult MidiImporter::scanFile(const std::string& path) {
                     ci.noteCount++;
                     if (note < ci.minNote) ci.minNote = note;
                     if (note > ci.maxNote) ci.maxNote = note;
+                    {
+                        const uint32_t barIdx =
+                            absoluteTicks / (static_cast<uint32_t>(result.division) * 4u);
+                        if (barIdx < 32u) ci.barMask |= (1u << barIdx);
+                    }
                     result.totalNotes++;
                     if (absoluteTicks > maxAbsoluteTicks) maxAbsoluteTicks = absoluteTicks;
                     if (currentTrackChannel < 0) currentTrackChannel = channel;
@@ -260,6 +265,16 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
     if (ticksPerStep < 1.0) ticksPerStep = 1.0;
 
     int tracksParsed = 0;
+    // Pass 0 finds the global first routed step over all tracks (tracks are
+    // not bar-aligned); pass 1 imports with that start floored to a bar.
+    const uint32_t firstTrackPos = file.position();
+    for (int pass = 0; pass < 2; ++pass) {
+    if (pass == 1) {
+        if (firstRoutedStep < 0) return Error::NoNotesFound;
+        firstRoutedStep -= firstRoutedStep % 16;
+        file.seek(firstTrackPos);
+        tracksParsed = 0;
+    }
     while (file.position() + 8 <= fileSize) {
         if (file.readBytes(magic, 4) != 4) return Error::ReadError;
 
@@ -324,8 +339,11 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
 
                     if (!toA && !toB && !toD) continue; // Skip if not routed
 
-                    if (firstRoutedStep < 0) {
-                        firstRoutedStep = stepIdx;
+                    if (pass == 0) {
+                        if (firstRoutedStep < 0 || stepIdx < firstRoutedStep) {
+                            firstRoutedStep = stepIdx;
+                        }
+                        continue;
                     }
 
                     int adjustedStep = stepIdx - firstRoutedStep - settings.startStepOffset - sourceStartSteps;
@@ -391,6 +409,12 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
                         while (safeNote < MiniAcid::kMin303Note) safeNote += 12;
                         while (safeNote > MiniAcid::kMax303Note) safeNote -= 12;
                         if (safeNote < MiniAcid::kMin303Note) safeNote = MiniAcid::kMin303Note;
+
+                        // Monophonic synth: a chord keeps only its top note.
+                        if (pat.steps[stepInPattern].note >= 0 &&
+                            safeNote <= pat.steps[stepInPattern].note) {
+                            return true;
+                        }
 
                         uint8_t safeVel = normalizeSynthVelocity(velocity, settings.loudMode);
                         pat.steps[stepInPattern].note = static_cast<int8_t>(safeNote);
@@ -489,6 +513,7 @@ MidiImporter::Error MidiImporter::parseFile(File& file, const MidiImporter::Impo
         if (file.position() != trackEnd) {
             file.seek(trackEnd);
         }
+    }
     }
     if (tracksParsed == 0) return Error::InvalidFormat;
 

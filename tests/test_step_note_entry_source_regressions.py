@@ -18,8 +18,18 @@ require("lowerKey == 'n'" in CPP and "NOTE ENTRY: ON" in CPP,
         "N must toggle local NOTE ENTRY mode")
 require('"asdfghjkl"' in CPP and '"qwertyuiop"' in CPP,
         "NOTE ENTRY must expose both Cardputer letter rows")
-require("kEntryLowerBaseNote = 48" in CPP and "kEntryUpperBaseNote = 60" in CPP,
-        "direct note rows must have stable C3/C4 bases")
+require("kEntryBaseNote = 48" in CPP and "kEntryOctaveSpan = 12" in CPP,
+        "direct note rows must keep the C3 default with the upper row one octave up")
+require("entryBaseNote() + kEntryOctaveSpan + upperIndex" in CPP,
+        "upper row must sit exactly one octave above the lower row")
+require("kEntryNoteMin = 24" in CPP and "kEntryNoteMax = 96" in CPP and
+        "NOTE OUT OF RANGE" in CPP,
+        "entry must refuse notes outside the Pattern range (C1..C7) instead of clipping")
+require("if (key == '-' || key == '=')" in CPP and
+        "shiftEntryOctave(key == '-' ? -1 : 1);" in CPP,
+        "-/= must move the NOTE ENTRY octave")
+require(CPP.index("shiftEntryOctave(key == '-'") < CPP.index("if (handleNoteEntryKey(key)) return true;"),
+        "octave keys must be handled before the note handler")
 
 handler_start = CPP.index("bool PatternEditPage::handleNoteEntryKey")
 handler_end = CPP.index("bool PatternEditPage::handleEvent", handler_start)
@@ -43,11 +53,11 @@ require("mini_acid_.clear303Step" not in backspace_block and
         "editCurrentSynthPattern" not in backspace_block,
         "NOTE ENTRY Backspace must not bypass R3 through a live Pattern mutator")
 
-repeat_start = CPP.index("if (key == ';' || key == ':')")
+repeat_start = CPP.index("if (lowerKey == 'c')")
 repeat_end = CPP.index("if (handleNoteEntryKey(key))", repeat_start)
 repeat_block = CPP[repeat_start:repeat_end]
 require("last_entered_note_" in repeat_block,
-        "semicolon must recall the last entered note")
+        "C must recall the last entered note on Cardputer")
 require("advanceNoteEntryCursor();" not in repeat_block,
         "repeat-last must not move the cursor before Enter")
 

@@ -9,9 +9,12 @@
 #include "../composition/rhythm_selection.h"
 #include "../composition/tonal_profile.h"
 #include "../feel/feel_pattern_adapter.h"
+#include "../harmony/harmonic_types.h"
+#include "../harmony/harmonic_source.h"
 #include "../materialization/pattern_materializer.h"
 #include "../rhythm/reference_vocabulary.h"
 #include "../roles/bass_pitch_behavior.h"
+#include "../tonal/bass_pitch_class_witness.h"
 #include "../roles/bass_rhythm.h"
 #include "../roles/chord_progression.h"
 #include "../roles/chord_rhythm.h"
@@ -67,6 +70,7 @@ enum class StrongRhythmMigrationStatus : uint8_t {
   MaterializationFailed,
   CompatibilityBindingFailed,
   FeelApplyFailed,
+  GraphHarmonyProjectionFailed,
   Count,
 };
 
@@ -103,6 +107,7 @@ inline bool chordProgressionSourceEventAt(
 struct StrongRhythmPhraseExecutionOverride {
   const HarmonicRhythmPlan* harmonicRhythm = nullptr;
   const ChordProgressionSource* progressionSource = nullptr;
+  const GroovePuterHarmony::HarmonicSourceView* harmonicSourceView = nullptr;
   uint16_t firstGlobalHarmonicOrdinal = 0;
   // GF2-I3: the already-evolved rhythm plan for this bar of the phrase. The
   // phrase owner realizes the whole bar-function programme; the shared
@@ -120,6 +125,12 @@ struct StrongRhythmMigrationContext {
   // compatibility path; non-zero ordinals may vary realization while the
   // selected rhythm archetype remains attempt-invariant.
   uint32_t generationAttemptOrdinal = 0;
+  // 0.9.18 genre idioms only: the press count of a Melody G / the TAKE seed,
+  // which picks the phrase idea. Zero falls back to generationAttemptOrdinal.
+  // Nothing else reads it, so non-idiom material is unchanged.
+  uint32_t ideaPress = 0;
+  // Idioms only: bars in the phrase being built (0 = unknown, read as 4).
+  uint8_t ideaPhraseBars = 0;
 
   // E0a: PREPARE-owned semantic coordinates for one physical Phrase bar.
   // Unspecified keeps non-Phrase callers on the exact compatibility path.
@@ -152,6 +163,10 @@ struct StrongRhythmMigrationContext {
 // second composition model. It is caller-owned and ephemeral.
 struct StrongRhythmFrozenSelection {
   StrongRhythmRoute route = StrongRhythmRoute::Legacy;
+  // GF2-I4: projected exactly once from the profile corridor against the
+  // selected archetype. Phrase/bar execution only forwards this value. Keep
+  // it beside the byte-sized route so it occupies existing aggregate padding.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   GenerationCompositionResult composition{};
   GenerationContext selectionGeneration{};
   GenerationContext realizationGeneration{};
@@ -186,6 +201,16 @@ struct StrongRhythmMigrationResult {
   GenerationCorridor corridor{};
   BassRhythmStatus bassRhythmStatus = BassRhythmStatus::InvalidRequest;
   BassRhythmId bassRhythmId = BassRhythmId::Auto;
+  // D1-B: the exact resolved plan that constructed this bar's Synth A (the
+  // same object whose onsets/continuations feed the semantic projection), not
+  // a regenerated look-alike. Valid only when bassRhythmPlanAvailable.
+  BassRhythmPlan bassRhythmPlan{};
+  bool bassRhythmPlanAvailable = false;
+  // D1-B1: exact pitch class of each bass attack, taken from the very
+  // TonalMaterializationPlan that constructed this bar's Synth A. Meaningful
+  // only for steps in bassRhythmPlan.onsets; valid only when Available.
+  BassPitchClassWitness bassPitchClassWitness{};
+  bool bassPitchClassWitnessAvailable = false;
   BassPitchBehaviorStatus bassPitchBehaviorStatus =
       BassPitchBehaviorStatus::InvalidRequest;
   BassPitchContourId bassPitchContour = BassPitchContourId::Auto;
@@ -203,6 +228,12 @@ struct StrongRhythmMigrationResult {
   HarmonicRhythmStatus harmonicRhythmStatus = HarmonicRhythmStatus::InvalidRequest;
   StepMask harmonicEventOnsets = 0;
   uint8_t harmonicEventCount = 0;
+  // Exact one-bar harmony consumed by tonal materialization. The Pattern
+  // publication owner may retain it only when harmonicAuthority is Generic.
+  HarmonicRhythmPlan harmonicPlan{};
+  ChordProgressionPlan harmonicProgression{};
+  uint8_t harmonicRootPitchClass = 0;
+  ScaleTypeValue harmonicScaleTypeValue = kDefaultScaleTypeValue;
   ChordProgressionStatus chordProgressionStatus =
       ChordProgressionStatus::InvalidRequest;
   ProgressionId progressionId = ProgressionId::Auto;
@@ -241,6 +272,14 @@ struct StrongRhythmMigrationResult {
   bool chordRhythmApplied = false;
   bool melodicRhythmApplied = false;
   bool tonalMaterializationApplied = false;
+  GroovePuterHarmony::HarmonicAuthority harmonicAuthority =
+      GroovePuterHarmony::HarmonicAuthority::Unknown;
+  GroovePuterHarmony::HarmonicStrategy harmonicStrategy =
+      GroovePuterHarmony::HarmonicStrategy::Legacy;
+  // CALL/RESPONSE phase 8: the template that wrote the bar and its level,
+  // GenreIdiom::packIdiomTemplate() (0xFF = none). Read only when
+  // harmonicAuthority is Idiom.
+  uint8_t idiomTemplate = 0xFF;
 };
 
 #ifdef GROOVEPUTER_M1_TEST_PROBE
@@ -253,6 +292,15 @@ struct StrongRhythmMelodicRequestProbe {
 
 void setStrongRhythmMelodicRequestProbe(
     StrongRhythmMelodicRequestProbe* probe);
+
+// D1-B1 focused host-test observation: the exact bass TonalMaterializationPlan
+// that was adapted into Synth A (same probe discipline as above).
+struct StrongRhythmBassTonalPlanProbe {
+  bool captured = false;
+  TonalMaterializationPlan plan{};
+};
+
+void setStrongRhythmBassTonalPlanProbe(StrongRhythmBassTonalPlanProbe* probe);
 #endif
 
 StrongRhythmRoute selectStrongRhythmRoute(const GenreSettings& settings);

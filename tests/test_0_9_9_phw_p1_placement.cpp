@@ -497,14 +497,24 @@ void testCoreModeIsSeparateInstance() {
   PhrasePage product(gfx, engine, AudioGuard{}, false);
   PhrasePage core(gfx, engine, AudioGuard{}, true);
 
+  // Header pixels are shell-owned in the current UI, so direct page rendering
+  // must prove instance identity through IPage title and body semantics.
+  assert(product.getTitle() == "PHRASE");
+  assert(core.getTitle() == "PHRASE CORE");
+  assert(product.getTitle() != core.getTitle());
+
   product.onEnter(0);
   gfx.texts.clear();
   product.draw(gfx);
-  assert(has(gfx, "PHRASE") && !has(gfx, "PHRASE CORE"));
+  assert(has(gfx, "LENGTH"));
+  assert(has(gfx, "DEPTH"));
+  assert(has(gfx, "APPEND"));
 
   gfx.texts.clear();
   core.draw(gfx);
-  assert(has(gfx, "PHRASE CORE"));
+  assert(has(gfx, "EMPTY SLOT"));
+  assert(has(gfx, "FROM"));
+  assert(has(gfx, "BARS"));
   assert(!has(gfx, "APPEND") && !has(gfx, "EXPLICIT"));  // no product placement UI at all
   std::puts("PHW-P1 T11 PHRASE and PHRASE CORE are separate page instances: OK");
 }

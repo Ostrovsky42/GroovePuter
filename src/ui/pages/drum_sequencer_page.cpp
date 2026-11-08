@@ -9,11 +9,13 @@
 #include "src/state/undo_receipts.h"
 #include "src/generation/migration/strong_rhythm_live_bridge.h"
 #include "src/output/output_mode_runtime.h"
+#include "src/midi/transport_clock_runtime.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
 #include <cstring>
+#include <new>
 #include <utility>
 #include <vector>
 
@@ -48,6 +50,7 @@ inline void drawDrumInputLockedFooter(IGfx& gfx,
                 std::strstr(right, "1..8:Edit"))) {
     safeRight = fixedRight;
   }
+  if (right && std::strstr(right, "DRUM Alt[]:PG")) safeRight = "Alt+R RHYTHMS";
   drawStandardFooter(gfx, safeLeft, safeRight);
 }
 }  // namespace UI
@@ -64,6 +67,14 @@ bool isDrumOutputCycleKey(const UIEvent& event) {
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(event.key)))
       : 0;
   return key == 'o' || event.scancode == GROOVEPUTER_O;
+}
+
+// Alt+E (no Ctrl/Meta) opens DRUMS STEP SETTINGS on the grid tab.
+bool isDrumStepSettingsChord(const UIEvent& event) {
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (!event.alt || event.ctrl || event.meta) return false;
+  return event.key == 'e' || event.key == 'E' ||
+         event.scancode == GROOVEPUTER_E;
 }
 }
 
@@ -100,7 +111,452 @@ class PatternLockedDrumContainer : public Container {
 #undef Container
 #undef drawStandardFooter
 
+void DrumSequencerPage::snapshotBrowserMutes_() {
+  auto main = getPagePtr(0);
+  if (!main) return;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  for (int i = 0; i < 10; ++i)
+    browserMuteSnapshot_[i] = !page->mini_acid_.isTrackActive(i);
+  browserMuteSnapshotValid_ = true;
+}
+
+// Mutes are audition-only: whatever 1..0 changed while hearing goes back to
+// the state before HEAR. Not a scene edit, so the scene is not marked dirty.
+void DrumSequencerPage::restoreBrowserMutes_() {
+  if (!browserMuteSnapshotValid_) return;
+  browserMuteSnapshotValid_ = false;
+  auto main = getPagePtr(0);
+  if (!main) return;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  page->audio_guard_([&]() {
+    for (int i = 0; i < 10; ++i)
+      page->mini_acid_.setTrackMuted(i, browserMuteSnapshot_[i]);
+  });
+}
+
+// 1/2 mute SYN-A/SYN-B, 3..0 the drum voices (the candidate replaces the drum
+// track while hearing), with the same map as the global 1..0 and the grid
+// lane labels, SP12 swap included.
+bool DrumSequencerPage::toggleBrowserMute_(char key) {
+  if (key < '0' || key > '9') return false;
+  auto main = getPagePtr(0);
+  if (!main) return true;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (!browserSession_) {
+    UI::showToast("TAB HEAR, THEN 1-0 MUTE", 1000);
+    return true;
+  }
+  const bool sp12 = page->mini_acid_.currentDrumEngineName() == "SP12";
+  int track = key == '0' ? 9 : key - '1';
+  if (key == '9' && sp12) track = 9;
+  else if (key == '0' && sp12) track = 8;
+  if (!browserMuteSnapshotValid_) snapshotBrowserMutes_();
+  page->audio_guard_([&]() {
+    page->mini_acid_.setTrackMuted(track, page->mini_acid_.isTrackActive(track));
+  });
+  return true;
+}
+
+void DrumSequencerPage::stopBrowserPreview_() {
+  restoreBrowserMutes_();
+  if (!browserSession_) {
+    browserStartedTransport_ = browserPending_ = browserSolo_ = false;
+    return;
+  }
+  if (auto main = getPagePtr(0)) {
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    page->audio_guard_([&]() {
+      const bool valid = browserSession_ &&
+          page->mini_acid_.rhythmAuditionContextValid(browserSession_);
+      if (browserSession_) (void)page->mini_acid_.endRhythmAudition(browserSession_);
+      if (browserStartedTransport_ && valid && page->mini_acid_.isPlaying())
+        page->mini_acid_.stop();
+    });
+  }
+  browserSession_ = 0;
+  browserStartedTransport_ = browserPending_ = browserSolo_ = false;
+}
+
+void DrumSequencerPage::closeBrowser_() {
+  stopBrowserPreview_();
+  browserOpen_ = false;
+  browserBuffers_.reset();
+}
+
+// Control side only. Hearing and APPLY materialize the same identity (same
+// fixed seed), so what is applied is exactly what was heard.
+bool DrumSequencerPage::materializeBrowserCandidate_() {
+  if (!browserBuffers_) return false;
+  RhythmBrowser::Descriptor descriptor{};
+  if (!RhythmBrowser::descriptorAt(browserIndex_, descriptor)) return false;
+  const RhythmBrowser::Identity identity{
+      descriptor.source, descriptor.stableId, browserVariant_, 0x52485954u,
+      GroovePuterState::sceneRevisionSnapshot().currentRevision};
+  return RhythmBrowser::materialize(identity, browserBuffers_->workspace,
+                                    browserBuffers_->candidate) == RhythmBrowser::Status::Ok;
+}
+
+// Draw-side cache for the miniature. Materializes the candidate only when the
+// key (selection, variant, scene revision) differs from the last build; a
+// failed materialization is cached as an empty miniature, so it is not retried
+// every frame. Same identity as APPLY and hearing, so it shows what they write.
+void DrumSequencerPage::refreshBrowserMiniature_() {
+  if (!browserBuffers_) return;
+  auto& mini = browserBuffers_->miniature;
+  const uint32_t revision = GroovePuterState::sceneRevisionSnapshot().currentRevision;
+  if (mini.valid && mini.index == browserIndex_ && mini.variant == browserVariant_ &&
+      mini.revision == revision) {
+    return;
+  }
+  mini.valid = true;
+  mini.index = browserIndex_;
+  mini.variant = browserVariant_;
+  mini.revision = revision;
+  std::memset(mini.hit, 0, sizeof(mini.hit));
+  std::memset(mini.soft, 0, sizeof(mini.soft));
+  if (!materializeBrowserCandidate_()) return;
+  constexpr uint8_t kGhostVelocity = 64;
+  const DrumPatternSet& drums = browserBuffers_->candidate.drums;
+  for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+    for (int step = 0; step < DrumPattern::kSteps; ++step) {
+      const DrumStep& cell = drums.voices[voice].steps[step];
+      if (!cell.hit) continue;
+      const uint16_t bit = static_cast<uint16_t>(1u << step);
+      mini.hit[voice] |= bit;
+      if (cell.velocity < kGhostVelocity) mini.soft[voice] |= bit;
+    }
+  }
+}
+
+bool DrumSequencerPage::stageBrowserCandidate_() {
+  auto main = getPagePtr(0);
+  if (!main || !browserBuffers_ || !browserSession_) return false;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (!materializeBrowserCandidate_()) {
+    UI::showToast("RHYTHM UNAVAILABLE", 1000);
+    stopBrowserPreview_();
+    return false;
+  }
+  bool staged = false;
+  page->audio_guard_([&]() {
+    staged = page->mini_acid_.stageRhythmAudition(browserSession_,
+                                                  browserBuffers_->candidate.drums);
+  });
+  browserPending_ = !staged;
+  return staged;
+}
+
+// APPLY: the selected rhythm replaces the 8 drum voices of the current drum
+// pattern slot (the same slot the grid edits). Automation lanes and groove stay,
+// exactly as the audition overlay keeps them, so the result sounds as heard.
+// One canonical Pattern Undo step, through the same commitDrumPatternMutation
+// path as grid edits. The audition overlay ends first; transport keeps running
+// so the applied rhythm continues from the real track.
+bool DrumSequencerPage::applyBrowserCandidate_() {
+  auto main = getPagePtr(0);
+  if (!main || !browserBuffers_) return false;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (!browserSelectionInGroup_()) {
+    UI::showToast("EMPTY GROUP: NOTHING TO APPLY", 1000);
+    return false;
+  }
+  if (!materializeBrowserCandidate_()) {
+    UI::showToast("RHYTHM UNAVAILABLE", 1000);
+    return false;
+  }
+  // Mutes are audition-only; APPLY writes the full candidate, all 8 voices.
+  restoreBrowserMutes_();
+  if (browserSession_) {
+    page->audio_guard_([&]() {
+      (void)page->mini_acid_.endRhythmAudition(browserSession_);
+    });
+  }
+  browserSession_ = 0;
+  browserStartedTransport_ = browserPending_ = browserSolo_ = false;
+
+  SceneManager& manager = page->mini_acid_.sceneManager();
+  const int bank = manager.getCurrentBankIndex(0);
+  const int slot = manager.getCurrentDrumPatternIndex();
+  const DrumPatternSet& candidate = browserBuffers_->candidate.drums;
+  bool sameAlready = false;
+  const bool changed = page->commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+    sameAlready = std::memcmp(pattern.voices, candidate.voices,
+                              sizeof(pattern.voices)) == 0;
+    std::memcpy(pattern.voices, candidate.voices, sizeof(pattern.voices));
+  });
+  char toast[40];
+  if (changed) {
+    std::snprintf(toast, sizeof(toast), "ALL 8 VOICES -> %c%d CTRL+Z",
+                  bank == 1 ? 'B' : 'A', slot + 1);
+  } else {
+    std::snprintf(toast, sizeof(toast), "%s",
+                  sameAlready ? "RHYTHM ALREADY ON DRUMS" : "APPLY: NO TARGET");
+  }
+  UI::showToast(toast, 1200);
+  return changed || sameAlready;
+}
+
+// True when the selected rhythm belongs to the selected group. False means the
+// group is empty (the browser shows EMPTY); nothing may be heard or applied.
+bool DrumSequencerPage::browserSelectionInGroup_() const {
+  RhythmBrowser::Descriptor descriptor{};
+  return RhythmBrowser::descriptorAt(browserIndex_, descriptor) &&
+         RhythmBrowser::matchesGroup(descriptor, static_cast<RhythmBrowser::Group>(browserGroup_));
+}
+
+// keepCurrent (entering a group with G): stay on the current rhythm when it is
+// in the group, with its variant, instead of skipping it.
+void DrumSequencerPage::selectBrowserStep_(int direction, bool keepCurrent) {
+  if (keepCurrent && browserSelectionInGroup_()) {
+    if (browserSession_) (void)stageBrowserCandidate_();
+    return;
+  }
+  const int count = RhythmBrowser::count();
+  for (int n = 0; n < count; ++n) {
+    browserIndex_ = static_cast<uint8_t>((browserIndex_ + count + direction) % count);
+    RhythmBrowser::Descriptor descriptor{};
+    if (RhythmBrowser::descriptorAt(browserIndex_, descriptor) &&
+        RhythmBrowser::matchesGroup(descriptor, static_cast<RhythmBrowser::Group>(browserGroup_))) {
+      browserVariant_ = 0;
+      if (browserSession_) (void)stageBrowserCandidate_();
+      return;
+    }
+  }
+  // Empty group: the selection stays foreign; stop hearing it.
+  if (browserSession_) stopBrowserPreview_();
+}
+
+void DrumSequencerPage::tick() {
+  if (!browserOpen_ || !browserSession_) return;
+  auto main = getPagePtr(0);
+  if (!main) return;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (!page->mini_acid_.rhythmAuditionSessionValid(browserSession_)) {
+    restoreBrowserMutes_();
+    page->audio_guard_([&]() { (void)page->mini_acid_.endRhythmAudition(browserSession_); });
+    browserSession_ = 0;
+    browserStartedTransport_ = browserPending_ = false;
+    UI::showToast("RHYTHM STOPPED", 900);
+  } else if (browserPending_ && page->mini_acid_.rhythmAuditionCanStage(browserSession_)) {
+    bool staged = false;
+    page->audio_guard_([&]() {
+      staged = page->mini_acid_.stageRhythmAudition(browserSession_,
+                                                    browserBuffers_->candidate.drums);
+    });
+    browserPending_ = !staged;
+  }
+}
+
+bool DrumSequencerPage::handleBrowserEvent_(UIEvent& event) {
+  // Opt alone toggles the browser: the same tap that opened it closes it.
+  if (event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
+    closeBrowser_();
+    return true;
+  }
+  // Alt+G = previous group (G = next group). Every other chord is not ours.
+  const bool altGroupBack =
+      event.event_type == GROOVEPUTER_KEY_DOWN && event.alt && !event.ctrl &&
+      !event.meta &&
+      (event.key == 'g' || event.key == 'G' || event.scancode == GROOVEPUTER_G);
+  if (altGroupBack) {
+    const uint8_t count = static_cast<uint8_t>(RhythmBrowser::Group::Count);
+    browserGroup_ = static_cast<uint8_t>((browserGroup_ + count - 1) % count);
+    selectBrowserStep_(1, true);
+    return true;
+  }
+  if (event.meta || event.alt || event.ctrl) return false;
+  if (event.event_type != GROOVEPUTER_KEY_DOWN) return true;
+  if (UIInput::isBack(event) || event.scancode == GROOVEPUTER_ESCAPE) {
+    closeBrowser_();
+    return true;
+  }
+  auto main = getPagePtr(0);
+  if (!main) return true;
+  auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+  if (UIInput::isTab(event) || event.key == ' ') {
+    if (browserSession_) {
+      stopBrowserPreview_();
+    } else {
+      if (!browserSelectionInGroup_()) {
+        UI::showToast("EMPTY GROUP", 900);
+        return true;
+      }
+      if (!page->mini_acid_.isPlaying() && GroovePuterMidi::externalClockOwnsTransport()) {
+        UI::showToast("START EXTERNAL CLOCK", 1000);
+        return true;
+      }
+      page->audio_guard_([&]() {
+        browserStartedTransport_ = !page->mini_acid_.isPlaying();
+        if (browserStartedTransport_) page->mini_acid_.start();
+        browserSession_ = page->mini_acid_.beginRhythmAudition();
+        if (!browserSession_ && browserStartedTransport_) page->mini_acid_.stop();
+      });
+      if (!browserSession_) {
+        browserStartedTransport_ = false;
+        UI::showToast("RHYTHM BUSY / NO TARGET", 1200);
+      } else {
+        (void)stageBrowserCandidate_();
+      }
+    }
+    return true;
+  }
+  if (UIInput::isUp(event) || UIInput::isDown(event)) {
+    selectBrowserStep_(UIInput::isUp(event) ? -1 : 1);
+    return true;
+  }
+  if (event.key == 'g' || event.key == 'G') {
+    browserGroup_ = static_cast<uint8_t>((browserGroup_ + 1) %
+        static_cast<uint8_t>(RhythmBrowser::Group::Count));
+    selectBrowserStep_(1, true);
+    return true;
+  }
+  if (UIInput::isLeft(event) || UIInput::isRight(event)) {
+    RhythmBrowser::Descriptor descriptor{};
+    if (browserSelectionInGroup_() && RhythmBrowser::descriptorAt(browserIndex_, descriptor) &&
+        descriptor.variantCount > 1) {
+      const int delta = UIInput::isLeft(event) ? -1 : 1;
+      browserVariant_ = static_cast<uint8_t>((browserVariant_ + descriptor.variantCount + delta) % descriptor.variantCount);
+      if (browserSession_) (void)stageBrowserCandidate_();
+    }
+    return true;
+  }
+  // Enter writes the selected rhythm into the drum track and returns to the
+  // grid, where the result is visible and Ctrl+Z undoes it.
+  if (UIInput::isConfirm(event)) {
+    if (applyBrowserCandidate_()) closeBrowser_();
+    return true;
+  }
+  if (toggleBrowserMute_(event.key)) return true;
+  if ((event.key == 'm' || event.key == 'M') && browserSession_) {
+    browserSolo_ = !browserSolo_;
+    page->audio_guard_([&]() { (void)page->mini_acid_.setRhythmAuditionSolo(browserSession_, browserSolo_); });
+    return true;
+  }
+  return true;
+}
+
+void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
+  static const char* groups[] = {"ALL", "HOUSE", "TECHNO", "UKG", "BREAKS", "HIP-HOP", "ACID", "DUB", "ELECTRO"};
+  const Rect b{Layout::CONTENT.x, Layout::CONTENT.y, Layout::CONTENT.w, Layout::CONTENT.h};
+  gfx.fillRect(b.x, b.y, b.w, b.h, COLOR_BG);
+  gfx.setTextColor(COLOR_ACCENT);
+  char title[32];
+  std::snprintf(title, sizeof(title), "RHYTHMS [%s]", groups[browserGroup_]);
+  gfx.drawText(b.x + 3, b.y + 1, title);
+  const auto neighbor = [&](int direction) {
+    const int count = RhythmBrowser::count();
+    int index = browserIndex_;
+    for (int n = 0; n < count; ++n) {
+      index = (index + count + direction) % count;
+      RhythmBrowser::Descriptor item{};
+      if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(index), item) &&
+          RhythmBrowser::matchesGroup(item, static_cast<RhythmBrowser::Group>(browserGroup_))) return index;
+    }
+    return static_cast<int>(browserIndex_);
+  };
+  RhythmBrowser::Descriptor adjacent{};
+  gfx.setTextColor(COLOR_MUTED);
+  const bool inGroup = browserSelectionInGroup_();
+  if (inGroup && RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(-1)), adjacent))
+    gfx.drawText(b.x + 12, b.y + 11, adjacent.name);
+  RhythmBrowser::Descriptor descriptor{};
+  if (!inGroup) {
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(b.x + 3, b.y + 21, ">");
+    gfx.drawText(b.x + 12, b.y + 21, "EMPTY");
+  } else if (RhythmBrowser::descriptorAt(browserIndex_, descriptor)) {
+    gfx.setTextColor(COLOR_ACCENT);
+    gfx.drawText(b.x + 3, b.y + 21, ">");
+    gfx.drawText(b.x + 12, b.y + 21, descriptor.name);
+    gfx.setTextColor(COLOR_MUTED);
+    if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(1)), adjacent))
+      gfx.drawText(b.x + 12, b.y + 31, adjacent.name);
+    // VAR, not P: P is the STYLE level elsewhere on DRUMS.
+    char info[40];
+    if (descriptor.bpmMin && descriptor.bpmMax > descriptor.bpmMin)
+      std::snprintf(info, sizeof(info), "VAR %u/%u  %u-%u BPM",
+                    unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount),
+                    unsigned(descriptor.bpmMin), unsigned(descriptor.bpmMax));
+    else if (descriptor.bpmMin)
+      std::snprintf(info, sizeof(info), "VAR %u/%u  %u BPM",
+                    unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount),
+                    unsigned(descriptor.bpmMin));
+    else
+      std::snprintf(info, sizeof(info), "VAR %u/%u",
+                    unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount));
+    gfx.setTextColor(COLOR_TEXT);
+    gfx.drawText(b.x + 3, b.y + 41, info);
+  }
+  bool actualSolo = false;
+  bool pending = browserPending_;
+  if (auto main = getPagePtr(0)) {
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    actualSolo = page->mini_acid_.rhythmAuditionSolo(browserSession_);
+    pending = pending || page->mini_acid_.rhythmAuditionPending(browserSession_);
+  }
+  const char* hear = !browserSession_ ? "BROWSING" :
+      (pending ? "PENDING NEXT BAR" : browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
+       (actualSolo ? "SOLO" : "WITH SONG"));
+  gfx.drawText(b.x + 3, b.y + 51, hear);
+  gfx.setTextColor(COLOR_MUTED);
+  gfx.drawText(b.x + 3, b.y + 61, "UP/DN RHYTHM L/R VAR G/Alt+G GRP");
+  // Miniature of the selected rhythm at the right: 16 steps x 8 drum voices,
+  // 3 px per step and 5 px per voice, x 186..233, y 13..51 (text in this band
+  // ends before x 184, the hint at y 61 sits below). Mutes are not drawn here;
+  // they show on the track screens. Soft hits are a dim dot, the rest solid.
+  refreshBrowserMiniature_();
+  if (browserBuffers_) {
+    const auto& mini = browserBuffers_->miniature;
+    const int mx = b.x + 186;
+    const int my = b.y + 13;
+    for (int voice = 0; voice < NUM_DRUM_VOICES; ++voice) {
+      const int rowY = my + voice * 5;
+      for (int step = 0; step < DrumPattern::kSteps; ++step) {
+        const uint16_t bit = static_cast<uint16_t>(1u << step);
+        if (!(mini.hit[voice] & bit)) continue;
+        const int cellX = mx + step * 3;
+        if (mini.soft[voice] & bit) {
+          gfx.fillRect(cellX, rowY + 1, 2, 1, COLOR_MUTED);
+        } else {
+          gfx.fillRect(cellX, rowY, 2, 3, COLOR_TEXT);
+        }
+      }
+    }
+  }
+  // The APPLY target is the slot the grid edits: the current drum pattern.
+  char apply[40];
+  int bank = 0;
+  int slot = 0;
+  if (auto main = getPagePtr(0)) {
+    auto* page = static_cast<DrumSequencerMainPage*>(main.get());
+    bank = page->mini_acid_.sceneManager().getCurrentBankIndex(0);
+    slot = page->mini_acid_.sceneManager().getCurrentDrumPatternIndex();
+  }
+  std::snprintf(apply, sizeof(apply), "ENTER: ALL 8 VOICES -> DRUMS %c%d",
+                bank == 1 ? 'B' : 'A', slot + 1);
+  gfx.setTextColor(COLOR_ACCENT);
+  gfx.drawText(b.x + 3, b.y + 81, apply);
+  const char* info = browserSession_ ? "1-0 MUTE  M SOLO" : "TAB HEAR  G GROUP";
+  char infoText[24];
+  std::snprintf(infoText, sizeof(infoText), "%s%s",
+                GroovePuterState::sceneDirty() ? "* " : "", info);
+  UI::publishShellInfo(infoText, "Alt+H HELP");
+  UI::publishShellFooter("ENTER APPLY", "ESC CLOSE");
+}
+
+void DrumSequencerPage::onExit() {
+  closeBrowser_();
+  // STEP SETTINGS is an input mode of the grid; leaving DRUMS ends it.
+  std::shared_ptr<Container> main = getPagePtr(0);
+  if (main) static_cast<DrumSequencerMainPage*>(main.get())->step_settings_open_ = false;
+}
+
 void DrumSequencerPage::draw(IGfx& gfx) {
+  if (browserOpen_) {
+    drawBrowser_(gfx);
+    return;
+  }
   // The retained Minimal draw path renders grid_component_ explicitly and then
   // calls Container::draw(), which would render the same child a second time.
   // Suppress only that inherited child pass while the main grid tab is active.
@@ -108,9 +564,32 @@ void DrumSequencerPage::draw(IGfx& gfx) {
   g_suppressPatternLockedChildDraw = (activePageIndex() == 0);
   DrumSequencerLegacyMultiPage::draw(gfx);
   g_suppressPatternLockedChildDraw = previous;
+  if (activePageIndex() == 0) {
+    UI::publishShellInfo(GroovePuterState::sceneDirty() ? "* Alt+R RHYTHMS" : "Alt+R RHYTHMS", "Alt+H HELP");
+    UI::publishShellFooter("Alt+R RHYTHMS", "Alt+H HELP");
+  }
+}
+
+void DrumSequencerPage::openRhythmBrowser_() {
+  browserBuffers_.reset(new (std::nothrow) BrowserBuffers{});
+  if (!browserBuffers_) { UI::showToast("RHYTHM: NO MEMORY", 1200); return; }
+  browserOpen_ = true;
+  // The last position (rhythm, group, variant) is kept between openings; only
+  // an out-of-range value (catalog changed) falls back to the start.
+  if (browserGroup_ >= static_cast<uint8_t>(RhythmBrowser::Group::Count)) browserGroup_ = 0;
+  RhythmBrowser::Descriptor remembered{};
+  if (browserIndex_ >= RhythmBrowser::count() ||
+      !RhythmBrowser::descriptorAt(browserIndex_, remembered)) {
+    browserIndex_ = browserVariant_ = 0;
+  } else if (browserVariant_ >= remembered.variantCount) {
+    browserVariant_ = 0;
+  }
+  browserPending_ = browserSolo_ = false;
 }
 
 bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
+  if (browserOpen_) return handleBrowserEvent_(ui_event);
+#if GROOVEPUTER_ENABLE_SAMPLER
   // Product sampler controls belong to the DRUMS workflow. Keep the retained
   // three-tab legacy constructor untouched and attach SAMPLES lazily before the
   // first Drum event; components inside SamplerPage remain lazy until displayed.
@@ -123,8 +602,48 @@ bool DrumSequencerPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+#endif
+  // STEP SETTINGS is modal: Opt is ignored while the window is open.
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE &&
+      activePageIndex() == 0) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    auto* mainPage =
+        main ? static_cast<DrumSequencerMainPage*>(main.get()) : nullptr;
+    if (mainPage && mainPage->step_settings_open_) return true;
+  }
+  // Opt alone (firmware sends TOGGLE_SOURCE for a bare Opt tap) opens the
+  // rhythm browser on the DRUMS grid, the same as Alt+R.
+  if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
+      ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE &&
+      activePageIndex() == 0) {
+    openRhythmBrowser_();
+    return true;
+  }
+  // STEP SETTINGS is modal for keys and owns them before every other DRUMS
+  // binding (Alt+O, G, Q-I, arrows). Undo/Paste are application events, not
+  // keys, and still reach their handlers below.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && activePageIndex() == 0) {
+    std::shared_ptr<Container> main = getPagePtr(0);
+    auto* mainPage =
+        main ? static_cast<DrumSequencerMainPage*>(main.get()) : nullptr;
+    if (mainPage && mainPage->step_settings_open_) {
+      return mainPage->handleStepSettingsKey(ui_event);
+    }
+    if (mainPage && ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+        (ui_event.key == 'r' || ui_event.key == 'R' ||
+         ui_event.scancode == GROOVEPUTER_R)) {
+      openRhythmBrowser_();
+      return true;
+    }
+    if (mainPage && isDrumStepSettingsChord(ui_event)) {
+      mainPage->openStepSettings();
+      return true;
+    }
+  }
+
   // Output ownership belongs to the logical DRUMS track, not to one sub-page.
-  // Alt+O therefore works from GRID/FEEL/AUTO/SAMPLES. A legacy project has no
+  // Alt+O therefore works from GRID/SOUND/AUTO/SAMPLES. A legacy project has no
   // fourth visible mode: the first explicit press canonicalizes it to LAYER.
   if (isDrumOutputCycleKey(ui_event)) {
     std::shared_ptr<Container> main = getPagePtr(0);
@@ -228,10 +747,10 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
 
   // Single-cell Backspace is a manual persistent Drum edit. Intercept it before
   // the retained legacy handler so deletion uses the same bounded before-state
-  // receipt as tap/Enter toggles. Selection delete and Alt+Backspace keep their
+  // receipt as tap/Enter toggles. Selection delete and Ctrl+Backspace keep their
   // existing paths; this hardware follow-up is intentionally one-cell only.
   const bool singleCellBackspace = ui_event.key == '\b' || ui_event.key == 0x7F;
-  if (singleCellBackspace && !ui_event.alt && !page->has_selection_ &&
+  if (singleCellBackspace && !ui_event.alt && !ui_event.ctrl && !page->has_selection_ &&
       !page->patternRowFocused() && !page->bankRowFocused()) {
     const int voice = page->activeDrumVoice();
     const int step = page->activeDrumStep();
@@ -247,7 +766,7 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
       nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT ||
       nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN;
   if (gridArrow && !ui_event.alt && !ui_event.meta) {
-    const bool extendSelection = ui_event.shift || ui_event.ctrl;
+    const bool extendSelection = ui_event.ctrl;
     if (extendSelection && page->selection_locked_) {
       page->selection_locked_ = false;
     }
@@ -432,11 +951,13 @@ owner.togglePrepared<GroovePuterUndo::DrumPatternUndoPayload>(
     return true;
   }
 
-  // P owns the single P1/P2/P3 request selector. O remains blocked from the old
-  // sketch-level Synth B generator; I remains a valid Q-I pattern-slot key.
+  // P cycles the shared internal realization selector. The runtime keeps its
+  // stable P1/P2/P3 contract, while the musician-facing projection is STYLE.
+  // O remains blocked from the old sketch-level Synth B generator; I remains a
+  // valid Q-I pattern-slot key.
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
     return true;
   }
   if (!ui_event.ctrl && !ui_event.alt && !ui_event.meta && lowerKey == 'o') {

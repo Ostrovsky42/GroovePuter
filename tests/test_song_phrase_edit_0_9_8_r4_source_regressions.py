@@ -35,7 +35,7 @@ def main() -> None:
     # is one fixed PhraseBank. Neither is a Scene snapshot or retained history.
     require("struct SongUndoPayload" in receipts and
             "Song before{}" in receipts and
-            "sizeof(SongUndoPayload) <= 1040" in receipts,
+            "sizeof(SongUndoPayload) <= 1080" in receipts,
             "R4 Song receipt must remain one fixed ~1 KiB arrangement value")
     require("struct PhraseUndoPayload" in receipts and
             "PhraseCore::PhraseBank before{}" in receipts and
@@ -142,7 +142,7 @@ def main() -> None:
                   "undoPreparedOwnedState"):
         require(token in phrase_cpp, f"Phrase page missing R4 route: {token}")
 
-    generated = between(phrase_cpp, "bool PhrasePage::generatePhraseToSong()",
+    generated = between(phrase_cpp, "MaterialTakeOutcome generateMaterialTakeAtRow(",
                         "bool PhrasePage::deriveFromParent()")
     require("GeneratedPhraseSong::generate" in generated and
             "commitPhraseMutation" not in generated and

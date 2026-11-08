@@ -33,6 +33,9 @@ struct PhraseEvolutionRequest {
   uint8_t phraseBars = 0;
   RealizationLevel level = RealizationLevel::P1Canonical;
   GenerationContext generation{};
+  // GF2-I4: resolved upstream once; PhraseEvolution forwards the value and
+  // remains solely an orchestration layer over authoritative BarEvolution.
+  uint8_t structuralDensityTarget = kNoStructuralDensityTarget;
   TrajectoryId requestedTrajectoryId = kNoTrajectoryId;
   const PhraseRhythmIdentity* reuseIdentity = nullptr;
   PhraseRoleIdentity roleIdentity{};

@@ -45,7 +45,8 @@ public:
                               float sampleRate,
                               bool transportPlaying,
                               bool publishOutboundTransport = true,
-                              bool restartFromBeginning = true) {
+                              bool restartFromBeginning = true,
+                              float startedAtPhaseSteps = 0.0f) {
         renderBlockSequence_ = blockSequence;
         renderBlockFrames_ = blockFrames;
         renderBpm_ = bpm > 0.0f ? bpm : 120.0f;
@@ -55,10 +56,15 @@ public:
         // MiniAcid::start() deliberately places currentTick_ at tick 383 and
         // forces the first tick on sample zero. Treat that rising-edge state as
         // the exact end of the bar, otherwise phase arithmetic would place the
-        // first step roughly one PPQN tick late.
+        // first step roughly one PPQN tick late. A start advanced into the bar
+        // (MiniAcid::advanceStartPhase) begins at that phase instead: its
+        // skipped ticks run on sample zero, so they belong to frame zero.
+        catchUpStartBlock_ = false;
         if (transportPlaying && !previousTransportPlaying_ &&
             restartFromBeginning && normalizedStart > 15.0f) {
-            renderStartPhaseSteps_ = 16.0f;
+            catchUpStartBlock_ = startedAtPhaseSteps > 0.0f;
+            renderStartPhaseSteps_ =
+                catchUpStartBlock_ ? startedAtPhaseSteps : 16.0f;
         } else {
             renderStartPhaseSteps_ = normalizedStart;
         }
@@ -92,6 +98,7 @@ public:
 
     void endMidiRenderBlock() {
         renderBlockActive_ = false;
+        catchUpStartBlock_ = false;
     }
 
     bool tryPush(const MusicalEvent& event) {
@@ -121,6 +128,10 @@ public:
         const float currentPhase = normalizePhase(
             phaseReader_(phaseReaderContext_));
         float deltaSteps = currentPhase - renderStartPhaseSteps_;
+        // In an advanced start block the ticks before the start phase are the
+        // skipped ones running on sample zero (the downbeat among them), not a
+        // bar wrap: they belong to frame zero.
+        if (deltaSteps < 0.0f && catchUpStartBlock_) deltaSteps = 0.0f;
         if (deltaSteps < 0.0f) deltaSteps += 16.0f;
 
         const float samplesPerStep =
@@ -167,6 +178,7 @@ private:
     float renderSampleRate_{44100.0f};
     bool renderBlockActive_{false};
     bool previousTransportPlaying_{false};
+    bool catchUpStartBlock_{false};
     ScheduledMidiTransportEventQueue transportQueue_;
     MidiTransportClockPublisher transportClockPublisher_;
 };

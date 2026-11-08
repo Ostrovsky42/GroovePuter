@@ -1,5 +1,6 @@
 #include "../src/dsp/atlas_runtime.h"
 #include "../src/dsp/phrase_generator.h"
+#include "../src/generated/atlas_runtime.generated.h"
 
 #include <cassert>
 #include <cstring>
@@ -251,6 +252,46 @@ int main() {
       validateRanges(synthA);
       validateRanges(synthB);
       validateRanges(drums);
+
+      DrumPatternSet drumsOnly{};
+      drumsOnly.voices[0].steps[15].fx = DRUM_FX_ROLL;
+      AtlasRuntimeMetadata drumMetadata{};
+      assert(AtlasRuntime::materializeDrums(expected.id, variation, drumsOnly,
+                                            &drumMetadata));
+      assert(std::strcmp(drumMetadata.atlasPatternId, metadata.atlasPatternId) == 0);
+      for (int voice = 0; voice < DrumPatternSet::kVoices; ++voice) {
+        for (int step = 0; step < DrumPattern::kSteps; ++step) {
+          const DrumStep& a = drums.voices[voice].steps[step];
+          const DrumStep& b = drumsOnly.voices[voice].steps[step];
+          assert(a.hit == b.hit && a.accent == b.accent);
+          assert(a.velocity == b.velocity && a.timing == b.timing);
+          assert(a.fx == b.fx && a.fxParam == b.fxParam);
+          assert(a.probability == b.probability);
+        }
+      }
+      assert(drumsOnly.groove.swing == drums.groove.swing);
+      assert(drumsOnly.groove.humanize == drums.groove.humanize);
+      const AtlasGenerated::Recipe* source = nullptr;
+      for (size_t i = 0; i < AtlasGenerated::kRecipeCount; ++i) {
+        if (AtlasGenerated::kRecipes[i].runtimeRecipeId == expected.id)
+          source = &AtlasGenerated::kRecipes[i];
+      }
+      assert(source != nullptr);
+      const auto& sourcePattern = source->patterns[variation];
+      bool seen[DrumPatternSet::kVoices][DrumPattern::kSteps]{};
+      int expectedHits = 0;
+      for (uint16_t i = 0; i < sourcePattern.eventCount; ++i) {
+        const auto& event = sourcePattern.events[i];
+        if (event.target >= DrumPatternSet::kVoices) continue;
+        assert(!seen[event.target][event.step]);
+        seen[event.target][event.step] = true;
+        ++expectedHits;
+        const auto& actual = drumsOnly.voices[event.target].steps[event.step];
+        assert(actual.hit && actual.velocity == event.velocity);
+        assert(actual.timing == event.timing && actual.probability == event.probability);
+        assert(actual.accent == ((event.flags & AtlasGenerated::kAccent) != 0));
+      }
+      assert(countDrumHits(drumsOnly) == expectedHits);
     }
   }
 
@@ -261,6 +302,15 @@ int main() {
   assert(!AtlasRuntime::applyRecipe(
       250, 0, sentinelA, sentinelB, sentinelDrums, nullptr));
   assert(sentinelA.steps[0].note == 55);
+  sentinelDrums.voices[0].steps[0].hit = true;
+  sentinelDrums.groove.swing = 0.25f;
+  AtlasRuntimeMetadata sentinelMetadata{};
+  sentinelMetadata.bpm = 177;
+  assert(!AtlasRuntime::materializeDrums(250, 0, sentinelDrums, &sentinelMetadata));
+  assert(!AtlasRuntime::materializeDrums(6, 3, sentinelDrums, &sentinelMetadata));
+  assert(sentinelDrums.voices[0].steps[0].hit);
+  assert(sentinelDrums.groove.swing == 0.25f);
+  assert(sentinelMetadata.bpm == 177);
 
   testPhrasePlanningAndCommit();
   testPhrasePreflightAndRollback();

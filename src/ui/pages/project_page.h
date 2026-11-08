@@ -6,6 +6,8 @@
 #include "../ui_colors.h"
 #include "../ui_utils.h"
 #include "../midi_file_manager.h"
+#include "../midi_import_screen.h"
+#include <memory>
 #include "help_dialog.h"
 #include "src/audio/pattern_paging.h"
 #include "src/state/scene_revision.h"
@@ -28,11 +30,11 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   std::unique_ptr<MultiPageHelpDialog> getHelpDialog() override;
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
-  enum class ProjectSection { Scenes = 0, Groove, Led, Midi };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, GrooveMode, GrooveFlavor, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, MidiDevice };
+  enum class ProjectSection { Scenes = 0, Device, Led, Midi };
+  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
 
  private:
-  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiAdvance, ConfirmClear };
+  enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiImportTracks, MidiAdvance, ConfirmClear, Rename };
   enum class DialogFocus { List = 0, Cancel };
   enum class SaveDialogFocus { Input = 0, Randomize, Save, Cancel };
   enum class MidiImportProfile { Clean = 0, Loud };
@@ -65,17 +67,20 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void returnToMidiBrowser();
   bool importMidiAtSelection();
   void drawMidiAdvanceDialog(IGfx& gfx);
+  void drawMidiImportTracks(IGfx& gfx);
+  bool handleMidiImportTracks(UIEvent& ui_event);
+  void applyMidiImportScreen();
   void openConfirmClearDialog();
   void drawConfirmClearDialog(IGfx& gfx);
   bool clearProject();
   bool deleteSelectionInDialog();
+  void openRenameDialog();
+  bool renameSelectedScene();
+  bool saveOwnName();
   bool handleSaveDialogInput(char key);
   void ensureMainFocusVisible(int visibleRows);
   template <typename F>
   void withAudioGuard(F&& fn) {
-      const bool clearCurrentProject =
-          main_focus_ == MainFocus::ClearProject &&
-          dialog_type_ == DialogType::ConfirmClear;
       const bool creatingNewProject = main_focus_ == MainFocus::New;
       const std::string sceneNameBefore = creatingNewProject
           ? mini_acid_.currentSceneName()
@@ -91,41 +96,28 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
       const std::string sceneNameAfter = creatingNewProject
           ? mini_acid_.currentSceneName()
           : std::string();
-      const bool createdDifferentProject =
-          creatingNewProject && sceneNameAfter != sceneNameBefore;
       const bool newProjectRolledBack =
           creatingNewProject &&
           sceneNameAfter == sceneNameBefore &&
           !requestedNewProject.empty() &&
           requestedNewProject != sceneNameBefore;
 
+      // Core New/Clear already commits the empty project's page and JSON.
+      // Only an abandoned failed New still needs namespace cleanup here.
       bool lifecycleOk = true;
-      if (clearCurrentProject || createdDifferentProject) {
-        lifecycleOk = PatternPagingService::clearProjectPages();
-      } else if (newProjectRolledBack) {
-        // setCurrentSceneName() copies pages before the scene JSON is written.
+      if (newProjectRolledBack) {
+        // A failed New may have created pages before its scene JSON is written.
         // A failed write returns to the original project; remove only the
         // abandoned target namespace without switching active project state.
         lifecycleOk = PatternPagingService::clearProjectPages(
             requestedNewProject);
       }
 
-      // Clear must be durable immediately: rewrite the zeroed scene JSON and
-      // remove its autosave recovery before the confirmation dialog closes.
-      // Otherwise a reboot before the next autosave can restore page 1.
-      if (clearCurrentProject && lifecycleOk) {
-        lifecycleOk = mini_acid_.saveSceneAs(mini_acid_.currentSceneName());
-      }
-
-      if (!lifecycleOk) {
-        UI::showToast(clearCurrentProject
-                          ? "Project clear not saved"
-                          : "Pattern cleanup failed",
-                      1400);
-      }
+      if (!lifecycleOk) UI::showToast("Project cleanup failed", 1400);
   }
 
   void autoRouteMidi();
+  bool adjustMidiInput(int delta);
 
   IGfx& gfx_;
   MiniAcid& mini_acid_;
@@ -140,6 +132,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int scroll_offset_;
   int main_scroll_ = 0;
   bool loadError_;
+  bool delete_pending_ = false;  // X pressed in Load: waiting for Enter
+  uint8_t name_caret_ = 0;       // caret inside save_name_ (0..32)
   std::vector<std::string> scenes_;
   std::string midi_selected_path_;
   int midi_import_start_pattern_ = 0;
@@ -148,6 +142,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   MidiImportProfile midi_import_profile_ = MidiImportProfile::Loud;
 
   // Matrix Routing Masks
+  // Heap while the IMPORT track list is open (page must stay <= 256 bytes).
+  std::unique_ptr<MidiImportScreen::State> midi_import_screen_;
   uint16_t midi_mask_a_ = 0;
   uint16_t midi_mask_b_ = 0;
   uint16_t midi_mask_d_ = 0;
@@ -156,6 +152,8 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   uint8_t midi_profile_preview_ = 0xFF;
+  uint8_t usb_role_preview_ = 0xFF;  // unset; otherwise the UsbBootRole being previewed
+  bool activateUsbRole();
   std::string save_name_;
 };
 

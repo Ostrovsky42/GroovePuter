@@ -1,0 +1,885 @@
+{
+  "size_tool": "/home/gg/.arduino15/packages/m5stack/tools/esp-x32/2411/bin/xtensa-esp-elf-size",
+  "images": {
+    "baseline": {
+      "build": "build/memory-prune-a-baseline-normal",
+      "elf_sha256": "818b07c3fd56c2b59b8c8d694e5d2938b62e46cb57e9e6e336930b6f46044be7",
+      "bin_sha256": "72c45c0e2a7b766bb7d76887da9cb90f42615a8e5fc626cf875ca40a56cbb39b",
+      "image_bytes": 1627552,
+      "data": 41996,
+      "bss": 147008,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71111,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 147008,
+        ".flash.text": 1155788,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 357216,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 53,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 120320,
+        ".debug_info": 20907556,
+        ".debug_abbrev": 1165915,
+        ".debug_line": 6128772,
+        ".debug_frame": 323484,
+        ".debug_str": 2878654,
+        ".debug_loc": 3454162,
+        ".debug_ranges": 585400,
+        ".debug_line_str": 19160,
+        ".debug_loclists": 148952,
+        ".debug_rnglists": 11680,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 115356,
+        ".xt.lit": 3288
+      },
+      "optional_runtime_symbols": [
+        "SampleIndex::",
+        "RamSampleStore::",
+        "SamplerPool::",
+        "SamplerVoice::",
+        "DrumSamplerTrack::",
+        "SamplerPage::",
+        "TapeLooper::"
+      ],
+      "fixed_dram": 189004,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "5ed4b051d2a8247241369200b45dcb19ab5d8523332613e46ba5df77b7169e91",
+      "arduino_flash_bytes": 1627394,
+      "runtime": {
+        "log": "/tmp/gp-mpa-baseline-product-monitor.log",
+        "log_sha256": "771099f310f403129509b1d0caf1c1e8c55f67025d9db8f0f369a6da192e027f",
+        "samples": [
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          },
+          {
+            "free": 15188,
+            "largest": 7668,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 15188,
+          "largest": 7668,
+          "underruns": 0
+        },
+        "free_min": 15188,
+        "largest_min": 7668,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "sampler": {
+      "build": "build/memory-prune-a-sampler-normal",
+      "elf_sha256": "f9f2a3fccc6c0bf7993b8f84dfce0fa49efde18c936d6d298384d6272fd3fe00",
+      "bin_sha256": "1594ec4a987df8e8aada74db25bc9ffde61e6d963647bdd90168f6059ee501ed",
+      "image_bytes": 1595872,
+      "data": 41996,
+      "bss": 144864,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71007,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 144864,
+        ".flash.text": 1132492,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 348940,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 118160,
+        ".debug_info": 19489814,
+        ".debug_abbrev": 1133274,
+        ".debug_line": 5982544,
+        ".debug_frame": 317516,
+        ".debug_str": 2667451,
+        ".debug_loc": 3317935,
+        ".debug_ranges": 563616,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111660,
+        ".xt.lit": 3144
+      },
+      "optional_runtime_symbols": [
+        "TapeLooper::"
+      ],
+      "fixed_dram": 186860,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "c3028198d546acee7fb0e53c23d26adfe37a5f2b3b66ad003f7a37d4882124ba",
+      "arduino_flash_bytes": 1595718,
+      "runtime": {
+        "log": "/tmp/gp-mpa-sampler-monitor.log",
+        "log_sha256": "f71abbcf58e24fdd56e0a6c06483fb714d6b3896a19061252fc416a39451be04",
+        "samples": [
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          },
+          {
+            "free": 18508,
+            "largest": 9716,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 18508,
+          "largest": 9716,
+          "underruns": 0
+        },
+        "free_min": 18508,
+        "largest_min": 9716,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "tape": {
+      "build": "build/memory-prune-a-tape-normal",
+      "elf_sha256": "34da55c1790e1e6e642691405317f12129fb52e767eb3e7d901e9a5fe93bc69a",
+      "bin_sha256": "5a8c0f872878c708c2fb8d5427930f3384038e6777d5f425ac5a345fc2dcb184",
+      "image_bytes": 1592544,
+      "data": 41996,
+      "bss": 144848,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71007,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 144848,
+        ".flash.text": 1130336,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 347772,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 117096,
+        ".debug_info": 18905016,
+        ".debug_abbrev": 1122128,
+        ".debug_line": 5921905,
+        ".debug_frame": 314436,
+        ".debug_str": 2603884,
+        ".debug_loc": 3265931,
+        ".debug_ranges": 552112,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111612,
+        ".xt.lit": 3152
+      },
+      "optional_runtime_symbols": [],
+      "fixed_dram": 186844,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "227f68667a20dc50c72e81086a969392db7f95f0cbf31828b7caac66bca66e8e",
+      "arduino_flash_bytes": 1592394,
+      "runtime": {
+        "log": "/tmp/gp-mpa-tape-monitor.log",
+        "log_sha256": "2b17d56f8fe67eed40118bc3475d1d126c0c8e9c8ac43c1e615f3ccc7200c39a",
+        "samples": [
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          },
+          {
+            "free": 18604,
+            "largest": 9204,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 18604,
+          "largest": 9204,
+          "underruns": 0
+        },
+        "free_min": 18604,
+        "largest_min": 9204,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "waveform": {
+      "build": "build/memory-prune-a-wave-normal",
+      "elf_sha256": "d215ebe8c386d51cb8f5d822bc1c7733744ae20ac049b44febcbaea6c8644c73",
+      "bin_sha256": "fab9f30d5dcfd20d448cd3e5e28a88efc5f554f4c3b13e1b02c1e094371e4b18",
+      "image_bytes": 1591936,
+      "data": 41996,
+      "bss": 142272,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71007,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 142272,
+        ".flash.text": 1129736,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 347760,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 117112,
+        ".debug_info": 18888643,
+        ".debug_abbrev": 1121495,
+        ".debug_line": 5920205,
+        ".debug_frame": 314484,
+        ".debug_str": 2603728,
+        ".debug_loc": 3264795,
+        ".debug_ranges": 552024,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111576,
+        ".xt.lit": 3136
+      },
+      "optional_runtime_symbols": [],
+      "fixed_dram": 184268,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "2b3aee0a3b558bc7776c66bcf6e29c7b5b16f9f3383ddd2556c54c0058617344",
+      "arduino_flash_bytes": 1591782,
+      "runtime": {
+        "log": "/tmp/gp-mpa-wave-monitor.log",
+        "log_sha256": "97ff715e69070209648abf9e6ef41c41457702b9fcebac66d9e2f99351f9f1cf",
+        "samples": [
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21164,
+            "largest": 12276,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 21164,
+          "largest": 12276,
+          "underruns": 0
+        },
+        "free_min": 21164,
+        "largest_min": 12276,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "no-delay": {
+      "build": "build/memory-prune-a-experiment-no-delay",
+      "elf_sha256": "77dd19c7b32b2f196fbcd8dc4d02b9a4b7a67f1eab5e7214b581adc7744f58fd",
+      "bin_sha256": "eec8297226b746772d13d3868fb0963a241a2f1e93f1d9f1f4988bb291dad918",
+      "image_bytes": 1591152,
+      "data": 41996,
+      "bss": 142272,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71007,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 142272,
+        ".flash.text": 1129240,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 347464,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 117112,
+        ".debug_info": 18887567,
+        ".debug_abbrev": 1121495,
+        ".debug_line": 5920852,
+        ".debug_frame": 314484,
+        ".debug_str": 2604774,
+        ".debug_loc": 3263912,
+        ".debug_ranges": 552008,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111384,
+        ".xt.lit": 3128
+      },
+      "optional_runtime_symbols": [],
+      "fixed_dram": 184268,
+      "feature_flags": [
+        "-DGROOVEPUTER_EXPERIMENT_NO_TEMPO_DELAY=1"
+      ],
+      "normalized_staged_source_sha256": "2b3aee0a3b558bc7776c66bcf6e29c7b5b16f9f3383ddd2556c54c0058617344",
+      "arduino_flash_bytes": 1590990,
+      "runtime": {
+        "log": "/tmp/gp-mpa-no-delay-monitor.log",
+        "log_sha256": "d35baa7dfbb248ff8c974d7e3e52f0b5f99529d6453a6b8fd2351476571ffeaf",
+        "samples": [
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          },
+          {
+            "free": 39604,
+            "largest": 30708,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 39604,
+          "largest": 30708,
+          "underruns": 0
+        },
+        "free_min": 39604,
+        "largest_min": 30708,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "final": {
+      "build": "build/memory-prune-a-release-normal",
+      "elf_sha256": "26b01a8ce1e05c67d9aad38b38124d9a659f4ed181bd30c42f10c8e574dd149c",
+      "bin_sha256": "b5a6a0e3dc8ea6604a20f7022ff548cbca2209d59bf4797ec8ac3c4fe45841e3",
+      "image_bytes": 1591808,
+      "data": 41996,
+      "bss": 142256,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 71007,
+        ".dram0.dummy": 55808,
+        ".dram0.data": 41996,
+        ".noinit": 0,
+        ".dram0.bss": 142256,
+        ".flash.text": 1129612,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 347760,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 117128,
+        ".debug_info": 18887126,
+        ".debug_abbrev": 1121527,
+        ".debug_line": 5920623,
+        ".debug_frame": 314532,
+        ".debug_str": 2604238,
+        ".debug_loc": 3264552,
+        ".debug_ranges": 551968,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111576,
+        ".xt.lit": 3136
+      },
+      "optional_runtime_symbols": [],
+      "fixed_dram": 184252,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "c84712d712a0068143097df974553636f854142300029d8ac2b35ef83519ac12",
+      "arduino_flash_bytes": 1591658,
+      "runtime": {
+        "log": "/tmp/gp-mpa-release-monitor.log",
+        "log_sha256": "e42ffe9f51301ff5bb8efd3c3cdc2afe9f0d5f5b13c271902e0d9a2889fa29f2",
+        "samples": [
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          },
+          {
+            "free": 21184,
+            "largest": 12276,
+            "underruns": 0
+          }
+        ],
+        "last": {
+          "free": 21184,
+          "largest": 12276,
+          "underruns": 0
+        },
+        "free_min": 21184,
+        "largest_min": 12276,
+        "fatal_markers": [],
+        "key_presses": 0
+      }
+    },
+    "baseline-midi": {
+      "build": "build/memory-prune-a-baseline-midi",
+      "elf_sha256": "5b94ca6995708c744e4174d671e811a173dd4856696f90a0a0a9e98c3ae33267",
+      "bin_sha256": "a3af7b41dd82deb2039b7d9637cb8baf81154438a13a73c066a005d7354f87bf",
+      "image_bytes": 1676304,
+      "data": 42076,
+      "bss": 147368,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 72135,
+        ".dram0.dummy": 56832,
+        ".dram0.data": 42076,
+        ".noinit": 0,
+        ".dram0.bss": 147368,
+        ".flash.text": 1190016,
+        ".flash_rodata_dummy": 1245184,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 370640,
+        ".ext_ram.dummy": 1638368,
+        ".iram0.text_end": 53,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 122064,
+        ".debug_info": 21058683,
+        ".debug_abbrev": 1176040,
+        ".debug_line": 6254099,
+        ".debug_frame": 328212,
+        ".debug_str": 2904712,
+        ".debug_loc": 3519588,
+        ".debug_ranges": 594592,
+        ".debug_line_str": 19160,
+        ".debug_loclists": 148952,
+        ".debug_rnglists": 11680,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 115368,
+        ".xt.lit": 3304
+      },
+      "optional_runtime_symbols": [
+        "SampleIndex::",
+        "RamSampleStore::",
+        "SamplerPool::",
+        "SamplerVoice::",
+        "DrumSamplerTrack::",
+        "SamplerPage::",
+        "TapeLooper::"
+      ],
+      "fixed_dram": 189444,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "5ed4b051d2a8247241369200b45dcb19ab5d8523332613e46ba5df77b7169e91",
+      "arduino_flash_bytes": 1676150,
+      "runtime": "OPEN \u2014 no hardware serial capture for this image"
+    },
+    "final-midi": {
+      "build": "build/memory-prune-a-release-midi",
+      "elf_sha256": "5c1d8cb8190406da7b6ad135719324b8ff7b0f521373e1af82fdc114d440ae66",
+      "bin_sha256": "bba4145cddd917ad06e30b3acc7bc499ff9aa83cb8f372edb62e1706c6952297",
+      "image_bytes": 1640512,
+      "data": 42076,
+      "bss": 142616,
+      "sections": {
+        ".rtc.text": 0,
+        ".rtc.force_fast": 28,
+        ".rtc.data": 4,
+        ".rtc_noinit": 24,
+        ".rtc.force_slow": 0,
+        ".rtc_reserved": 40,
+        ".iram0.vectors": 1027,
+        ".iram0.text": 72031,
+        ".dram0.dummy": 56832,
+        ".dram0.data": 42076,
+        ".noinit": 0,
+        ".dram0.bss": 142616,
+        ".flash.text": 1163796,
+        ".flash_rodata_dummy": 1179648,
+        ".flash.appdesc": 256,
+        ".flash.rodata": 361168,
+        ".ext_ram.dummy": 1572832,
+        ".iram0.text_end": 157,
+        ".iram0.data": 0,
+        ".iram0.bss": 0,
+        ".dram0.heap_start": 0,
+        ".debug_aranges": 118872,
+        ".debug_info": 19038275,
+        ".debug_abbrev": 1131680,
+        ".debug_line": 6045966,
+        ".debug_frame": 319260,
+        ".debug_str": 2630323,
+        ".debug_loc": 3329984,
+        ".debug_ranges": 561160,
+        ".debug_line_str": 18803,
+        ".debug_loclists": 144510,
+        ".debug_rnglists": 11521,
+        ".comment": 143,
+        ".xtensa.info": 56,
+        ".xt.prop": 111624,
+        ".xt.lit": 3176
+      },
+      "optional_runtime_symbols": [],
+      "fixed_dram": 184692,
+      "feature_flags": [],
+      "normalized_staged_source_sha256": "c84712d712a0068143097df974553636f854142300029d8ac2b35ef83519ac12",
+      "arduino_flash_bytes": 1640354,
+      "runtime": "OPEN \u2014 no hardware serial capture for this image"
+    }
+  }
+}

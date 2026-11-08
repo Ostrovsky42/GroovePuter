@@ -1,0 +1,5 @@
+G6_SD_READ size=1301 accepted=0 capacity=3
+G6_SD_READ size=65536 accepted=0 capacity=3
+G6_SD_READ size=0 accepted=0 capacity=3
+G6_SD_READ size=15 accepted=0 capacity=3
+G6 bounded SD Melody reads: PASS (max v2 and legacy v1)

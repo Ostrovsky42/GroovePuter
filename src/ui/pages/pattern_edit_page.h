@@ -20,7 +20,50 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
  public:
   PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voice_index);
   void draw(IGfx& gfx) override;
+  // STEP SETTINGS is modal: the owner page ignores Opt while it is open.
+  bool stepSettingsOpen() const { return step_settings_open_; }
+  // Leaving the STEPS page ends its input modes; they are not remembered.
+  void resetInputModes() {
+    note_entry_mode_ = false;
+    chaining_mode_ = false;
+    cursor_next_ = false;
+    step_settings_open_ = false;
+  }
+  // The pair view is not an input mode: it outlives the page while the pair
+  // plays. Page entry sets it from the engine.
+  void syncPairViewFromEngine() {
+    pair_view_ = mini_acid_.pairPlayActive(voice_index_);
+    if (!pair_view_) cursor_next_ = false;
+  }
+  // PAIR VIEW (L): rows 3-4 show slot N+1 of the same synth. The cursor and
+  // every edit follow the row; slot N+1 plays only in Song mode.
+  bool pairView() const { return pair_view_; }
+  int pairRowCount() const { return pair_view_ ? 4 : 2; }
+  bool nextSlotAvailable() const;
+  // Pair row group (0 = rows 1-2, 1 = rows 3-4) that holds the playhead. It
+  // follows the sounding slot only while pair play runs in the pair view.
+  int playheadPair() const;
+  // Source slot of a pair row group (0 = rows 1-2, 1 = rows 3-4): N for the
+  // first, N+1 for the second. The pair play phase moves only the playhead,
+  // never the content, so `phase` is deliberately not used.
+  static int gridSourceSlot(int rowGroup, bool pairOn, int phase, int base) {
+    (void)phase;
+    return (pairOn && rowGroup == 1) ? base + 1 : base;
+  }
+  // Slot N as the grid draws it. During pair play the engine's audible pattern
+  // follows the phase (N, then N+1), so slot N is read from the scene instead.
+  const SynthPattern& slotNPattern() const;
+  bool cursorOnNextSlot() const { return pair_view_ && cursor_next_ && nextSlotAvailable(); }
+  int editPatternIndex() const;
+  bool togglePairView();
+  // PAIR PLAY loops slot N, N+1 on the bar line (Song off, STEPS only).
+  bool togglePairPlay();
+  // Plain L: pair view and pair play together.
+  bool togglePairViewAndPlay();
+  bool moveGridRow(int delta, bool extendSelection);
   bool handleEvent(UIEvent& ui_event) override;
+  // NOTE ENTRY on: plain letters are pitches on the STEPS (they beat commands such as Develop).
+  bool noteEntryActive() const { return note_entry_mode_; }
   void tick() override;
   const std::string & getTitle() const override;
   void setContext(int context) override; // context = step index to focus
@@ -77,11 +120,22 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   void ensureStepFocus();
+  int entryBaseNote() const;
   int noteForEntryKey(char key) const;
+  void shiftEntryOctave(int delta);
   void resetNoteHoldTracking();
   void advanceNoteEntryCursor();
   void writeNoteEntryStep(int step, int note, bool continuation);
   bool handleNoteEntryKey(char key);
+  // STEP SETTINGS window (Alt+E): PROB / TIMING / VEL / GHOST of the cursor
+  // step or the selected area. State is page-local; every change is one
+  // commitPatternMutation (one Undo step).
+  void openStepSettings();
+  bool handleStepSettingsKey(const UIEvent& ui_event);
+  void adjustStepSetting(int field, int direction);
+  // Backspace in the window: field to its default; field -1 = all fields.
+  void resetStepSetting(int field);
+  void drawStepSettings(IGfx& gfx) const;
 
   template <typename PrepareFn>
   PatternMutationResult commitPatternMutation(PrepareFn&& prepare) {
@@ -90,8 +144,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
 
     SceneManager& manager = mini_acid_.sceneManager();
     SynthPatternUndoPayload before{};
-    if (!GroovePuterUndo::captureCurrentSynthPatternUndo(
-            manager, voice_index_, before)) {
+    if (!GroovePuterUndo::captureSynthPatternUndoAt(
+            manager, voice_index_, editPatternIndex(), before)) {
       return PatternMutationResult::Invalid;
     }
 
@@ -113,6 +167,8 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
         UndoKind::Pattern, before, [&]() {
           const auto apply = [&]() {
             GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                prepared.synthIndex, prepared.bankIndex, prepared.patternIndex);
           };
           if (audio_guard_) audio_guard_(apply);
           else apply();
@@ -177,4 +233,12 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
   int last_entered_step_ = -1;
   unsigned long last_note_key_ms_ = 0;
   bool note_hold_active_ = false;
+  // NOTE ENTRY octave shift per voice (Synth A, Synth B), in octaves from the
+  // default. Session-only: leaving the page does not persist it.
+  int entry_octave_shift_[2] = {0, 0};
+  bool step_settings_open_ = false;
+  uint8_t step_settings_field_ = 0;
+
+  bool pair_view_ = false;
+  bool cursor_next_ = false;  // cursor is on rows 3-4 (slot N+1)
 };

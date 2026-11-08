@@ -1,11 +1,17 @@
 #include "src/state/scene_revision.h"
+#include "src/state/undo_receipts.h"
+#include "src/state/undo_owner.h"
 #if defined(ARDUINO)
 #include <Arduino.h>
 #else
 #include "../../../platform_sdl/arduino_compat.h"
 #endif
 #include "tb303_params_page.h"
+#include "src/dsp/sound_quality_presets.h"
+#include "src/dsp/dual_osc_presets.h"
 #include "../ui_common.h"
+#include "../ui_theme.h"
+#include "../phrase_source_toggle.h"
 #include "../ui_utils.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
@@ -31,9 +37,9 @@ constexpr int kMainKeyHintY = 72;
 constexpr int kMainSummaryY = 81;
 constexpr int kMainSummaryH = 11;
 constexpr int kMoreRowY = 20;
-constexpr int kMoreRowHeight = 13;
+constexpr int kMoreRowHeight = 9;
 constexpr int kMoreRowGap = 1;
-constexpr int kMoreRowCount = 5;
+constexpr int kMoreRowCount = 7;
 
 static_assert(Layout::CONTENT.y + kMainSummaryY + kMainSummaryH <=
                   Layout::PERFORMANCE_HUD.y,
@@ -48,8 +54,10 @@ inline constexpr IGfxColor kDimText = IGfxColor(0x808080);
 inline constexpr int kKnobStepCoarse = 5;
 inline constexpr int kKnobStepFine = 1;
 
+// Voice identity comes from the theme: CLEAN identifies A/B by label and
+// position, so focus is the inverted warm-white block, not a cyan/magenta fill.
 inline IGfxColor voiceColor(int voiceIndex) {
-  return (voiceIndex == 0) ? IGfxColor(0x33C8FF) : IGfxColor(0xFF4FCB);
+  return UI::themePalette().voice(voiceIndex);
 }
 
 inline std::string upperCopy(const std::string& s) {
@@ -365,17 +373,21 @@ void TB303ParamsPage::setBoundaries(const Rect& rect) {
 
 void TB303ParamsPage::initComponents() {
   const IGfxColor focusColor = voiceColor(voice_index_);
+  // CLEAN: knobs are told apart by label and position, not by four hues.
+  const IGfxColor knobColor = UI::themePalette().text;
 
-  cutoff_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 0, COLOR_KNOB_1, COLOR_KNOB_1, focusColor);
-  resonance_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 1, COLOR_KNOB_2, COLOR_KNOB_2, focusColor);
-  env_amount_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 2, COLOR_KNOB_3, COLOR_KNOB_3, focusColor);
-  env_decay_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 3, COLOR_KNOB_4, COLOR_KNOB_4, focusColor);
+  cutoff_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 0, knobColor, knobColor, focusColor);
+  resonance_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 1, knobColor, knobColor, focusColor);
+  env_amount_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 2, knobColor, knobColor, focusColor);
+  env_decay_knob_ = std::make_shared<KnobComponent>(mini_acid_, voice_index_, 3, knobColor, knobColor, focusColor);
 
   engine_type_control_ = std::make_shared<LabelValueComponent>("TYPE", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   osc_control_ = std::make_shared<LabelValueComponent>("OSC", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   filter_control_ = std::make_shared<LabelValueComponent>("FLT", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   distortion_control_ = std::make_shared<LabelValueComponent>("DST", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
+  preset_control_ = std::make_shared<LabelValueComponent>("PRESET", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE MELODY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -386,6 +398,8 @@ void TB303ParamsPage::initComponents() {
   addChild(filter_control_);
   addChild(distortion_control_);
   addChild(delay_control_);
+  addChild(preset_control_);
+  addChild(make_phrase_control_);
 
   initialized_ = true;
 }
@@ -404,6 +418,11 @@ void TB303ParamsPage::cycleEngine(int direction) {
   if (index < 0) index += static_cast<int>(options.size());
 
   const std::string selected = options[index];
+  applyEngine(selected);
+}
+
+void TB303ParamsPage::applyEngine(const std::string& selected) {
+  if (selected == mini_acid_.currentSynthEngineName(voice_index_)) return;
   withAudioGuard([&]() { mini_acid_.setSynthEngine(voice_index_, selected); });
 
   char toast[32];
@@ -501,6 +520,19 @@ void TB303ParamsPage::layoutComponents() {
 
   // Both effects are per-voice post-engine stages in MiniAcid, so they are
   // available for every currently selectable synth engine.
+  const bool onPhrase = mini_acid_.currentSequencedSource(voice_index_) ==
+                        MiniAcid::SequencedSource::Phrase;
+  preset_control_->setLabel("PRESET");
+  const int preset = currentPresetIndex();
+  preset_control_->setValue(!hasSoundPresets() ? "--" : preset < 0 ? "CUSTOM" :
+      isDualOsc() ? kDualOscPresetNames[preset] :
+      isTb303Engine() ? SoundQualityPresets::tb303[preset].name :
+                       SoundQualityPresets::waveMorph[preset].name);
+  preset_control_->setEnabled(hasSoundPresets());
+  make_phrase_control_->setLabel("MAKE MELODY");
+  make_phrase_control_->setValue(">");
+  make_phrase_control_->setEnabled(!onPhrase);
+
   distortion_control_->setEnabled(true);
   delay_control_->setEnabled(true);
 
@@ -528,14 +560,16 @@ void TB303ParamsPage::layoutComponents() {
                                         kMainKnobRadius * 2,
                                         kMainKnobRadius * 2});
   } else {
-    LabelValueComponent* rows[5] = {
+    LabelValueComponent* rows[kMoreRowCount] = {
         engine_type_control_.get(),
         osc_control_.get(),
         filter_control_.get(),
         distortion_control_.get(),
         delay_control_.get(),
+        preset_control_.get(),
+        make_phrase_control_.get(),
     };
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < kMoreRowCount; ++i) {
       rows[i]->setBoundaries(Rect{x0 + 4,
                                   content.y + kMoreRowY + i * (kMoreRowHeight + kMoreRowGap),
                                   width - 8,
@@ -566,12 +600,14 @@ void TB303ParamsPage::rememberFocusedSlot() {
       env_amount_knob_.get(),
       env_decay_knob_.get(),
   };
-  Component* moreControls[5] = {
+  Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
       osc_control_.get(),
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
+      preset_control_.get(),
+      make_phrase_control_.get(),
   };
 
   if (!more_tab_) {
@@ -584,7 +620,7 @@ void TB303ParamsPage::rememberFocusedSlot() {
     return;
   }
 
-  for (uint8_t i = 0; i < 5; ++i) {
+  for (uint8_t i = 0; i < kMoreRowCount; ++i) {
     if (focused == moreControls[i]) {
       more_focus_slot_ = i;
       return;
@@ -599,12 +635,14 @@ void TB303ParamsPage::restoreFocusedSlot() {
       env_amount_knob_.get(),
       env_decay_knob_.get(),
   };
-  Component* moreControls[5] = {
+  Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
       osc_control_.get(),
       filter_control_.get(),
       distortion_control_.get(),
       delay_control_.get(),
+      preset_control_.get(),
+      make_phrase_control_.get(),
   };
 
   if (!more_tab_) {
@@ -613,7 +651,7 @@ void TB303ParamsPage::restoreFocusedSlot() {
     return;
   }
 
-  const uint8_t slot = std::min<uint8_t>(more_focus_slot_, 4);
+  const uint8_t slot = std::min<uint8_t>(more_focus_slot_, kMoreRowCount - 1);
   Component* target = moreControls[slot];
   if (!target->isFocusable()) {
     target = nullptr;
@@ -628,6 +666,9 @@ void TB303ParamsPage::restoreFocusedSlot() {
 }
 
 void TB303ParamsPage::updateTabFocusability() {
+  // Components exist only after setBoundaries() -> initComponents();
+  // layoutComponents() applies the tab on every draw after that.
+  if (!initialized_) return;
   const bool main = !more_tab_;
   cutoff_knob_->setFocusable(main);
   resonance_knob_->setFocusable(main);
@@ -639,10 +680,20 @@ void TB303ParamsPage::updateTabFocusability() {
   filter_control_->setFocusable(more_tab_ && filter_control_->enabled());
   distortion_control_->setFocusable(more_tab_ && distortion_control_->enabled());
   delay_control_->setFocusable(more_tab_ && delay_control_->enabled());
+  preset_control_->setFocusable(more_tab_ && preset_control_->enabled());
+  make_phrase_control_->setFocusable(more_tab_ &&
+                                     make_phrase_control_->enabled());
 }
 
 void TB303ParamsPage::setActiveTab(bool more) {
   if (more_tab_ == more) return;
+  // 0.9.19 S1 (coredump 2026-10-10, StoreProhibited at 0x18): a recreated
+  // Synth page restores its remembered MORE tab in restoreViewContinuity(),
+  // before setBoundaries() has created any component. Only remember the tab.
+  if (!initialized_) {
+    more_tab_ = more;
+    return;
+  }
   rememberFocusedSlot();
   more_tab_ = more;
   updateTabFocusability();
@@ -708,7 +759,8 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   const int step = fine ? kKnobStepFine : kKnobStepCoarse;
 
   if (cutoff_knob_ && cutoff_knob_->isFocused()) {
-    cutoff_knob_->setValue(direction * step);
+    // DUAL OSC: this knob is its Preset (a list of 13): one preset per key, not a coarse step of 5
+    cutoff_knob_->setValue(direction * (isDualOsc() ? 1 : step));
     return;
   }
   if (resonance_knob_ && resonance_knob_->isFocused()) {
@@ -721,6 +773,20 @@ void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   }
   if (env_decay_knob_ && env_decay_knob_->isFocused()) {
     env_decay_knob_->setValue(direction * step);
+    return;
+  }
+  if (preset_control_ && preset_control_->isFocused()) {
+    const int current = currentPresetIndex();
+    const int n = presetCount();
+    applyPreset(current < 0 ? (direction > 0 ? 0 : n - 1) : (current + direction + n) % n);
+    return;
+  }
+  if (make_phrase_control_ && make_phrase_control_->isFocused()) {
+    const bool made = PhraseSourceToggle::makePhrase(
+        mini_acid_,
+        [&](const std::function<void()>& body) { withAudioGuard(body); },
+        voice_index_);
+    UI::showToast(made ? "MELODY MADE" : "MAKE MELODY FAILED", 1000);
     return;
   }
   if (engine_type_control_ && engine_type_control_->isFocused()) {
@@ -791,16 +857,36 @@ void TB303ParamsPage::draw(IGfx& gfx) {
     const int width = content.w - Layout::CONTENT_PAD_X * 2;
     const int spacing = width / 5;
     const char* keyHints[4] = {"A/Z", "S/X", "D/C", "F/V"};
-    const int keyY = content.y + kMainKeyHintY;
-    gfx.setTextColor(kDimText);
-    for (int i = 0; i < 4; ++i) {
-      const int cx = x0 + spacing * (i + 1);
-      gfx.drawText(cx - gfx.textWidth(keyHints[i]) / 2, keyY, keyHints[i]);
+    if (UI::isHintOverlayActive()) {
+      const UI::ThemePalette p = UI::themePalette();
+      const int keyY = content.y + kMainKeyHintY;
+      for (int i = 0; i < 4; ++i) {
+        const int cx = x0 + spacing * (i + 1);
+        const int tw = gfx.textWidth(keyHints[i]);
+        const int badgeW = tw + 4;
+        const int badgeH = 9;
+        const int bx = cx - badgeW / 2;
+        const int by = keyY - 1;
+        gfx.fillRect(bx, by, badgeW, badgeH, p.accent);
+        gfx.setTextColor(COLOR_BLACK);
+        gfx.drawText(cx - tw / 2, keyY, keyHints[i]);
+      }
     }
     drawMainSummary(gfx, contentRect);
   }
 
   Container::draw(gfx_);
+
+  char synthInfo[64];
+  const std::string engineName = mini_acid_.currentSynthEngineName(voice_index_);
+  std::snprintf(synthInfo, sizeof(synthInfo), "%s: %s",
+                voice_index_ == 0 ? "SYNTH-A" : "SYNTH-B",
+                engineName.c_str());
+  char fxStatus[32];
+  std::snprintf(fxStatus, sizeof(fxStatus), "DST:%s DLY:%s",
+                mini_acid_.is303DistortionEnabled(voice_index_) ? "ON" : "OFF",
+                mini_acid_.is303DelayEnabled(voice_index_) ? "ON" : "OFF");
+  UI::publishShellInfo(synthInfo, fxStatus);
 
   if (!more_tab_) {
     UI::drawStandardFooter(gfx,
@@ -809,7 +895,20 @@ void TB303ParamsPage::draw(IGfx& gfx) {
   } else {
     UI::drawStandardFooter(gfx,
                            "[TAB]N [U/D]ROW [L/R]CHANGE",
-                           "TYPE OSC FLT DST DLY");
+                           "[ENTER]LIST [ALT+R]SOURCE");
+  }
+  if (engine_popup_ && preset_popup_.isOpen()) {
+    const auto options = availableSynthEngines(mini_acid_);
+    std::vector<const char*> labels;
+    labels.reserve(options.size());
+    for (const auto& option : options) labels.push_back(option.c_str());
+    preset_popup_.draw(gfx, labels.data());
+  } else {
+    const int n = presetCount();
+    const char* labels[kDualOscPresetCount];
+    for (int i = 0; i < n; ++i) labels[i] = isDualOsc() ? kDualOscPresetNames[i]
+        : isTb303Engine() ? SoundQualityPresets::tb303[i].name : SoundQualityPresets::waveMorph[i].name;
+    preset_popup_.draw(gfx, labels);
   }
 }
 
@@ -822,11 +921,47 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     return Container::handleEvent(ui_event);
   }
 
+  if (preset_popup_.isOpen()) {
+    const auto result = preset_popup_.handleEvent(ui_event);
+    if (result == UI::SelectionPopupResult::Confirmed) {
+      const int index = preset_popup_.selectedIndex();
+      if (engine_popup_) {
+        const auto options = availableSynthEngines(mini_acid_);
+        if (index < static_cast<int>(options.size())) applyEngine(options[index]);
+      } else {
+        applyPreset(index);
+      }
+    }
+    return true;
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == '\n' || ui_event.key == '\r') &&
+      engine_type_control_ && engine_type_control_->isFocused()) {
+    openEnginePopup(); return true;
+  }
+  if (ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == 'r' || ui_event.key == 'R' || ui_event.scancode == GROOVEPUTER_R)) {
+    const auto result = PhraseSourceToggle::switchSource(mini_acid_,
+        [&](const std::function<void()>& body) { withAudioGuard(body); }, voice_index_);
+    if (result == PhraseSourceToggle::Result::Rejected) UI::showToast("MELODY FAILED", 1200);
+    else if (result == PhraseSourceToggle::Result::MadePhrase) UI::showToast("MELODY <- STEPS", 1500);
+    else UI::showToast(mini_acid_.currentSequencedSource(voice_index_) ==
+                               MiniAcid::SequencedSource::Phrase
+                           ? "SOURCE: MELODY" : "SOURCE: STEPS", 1000);
+    return true;
+  }
+  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
+      (ui_event.key == '\n' || ui_event.key == '\r') &&
+      ((preset_control_ && preset_control_->isFocused()) ||
+       (isDualOsc() && cutoff_knob_ && cutoff_knob_->isFocused()))) {
+    openPresetPopup(); return true;
+  }
+
   static UIInput::HoldAccelerator knobAccelerator;
 
   if (UIInput::isGlobalNav(ui_event)) return false;
   const int nav = UIInput::navCode(ui_event);
-  const bool fine = ui_event.shift || ui_event.ctrl;
+  const bool fine = ui_event.ctrl;
   if (more_tab_) {
     // MORE is a vertical list: Up/Down selects a row and Left/Right edits it.
     switch (nav) {
@@ -879,8 +1014,21 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
     }
   }
 
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
+      (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) &&
+      !isTb303Engine()) {
+    UI::showToast("FILTER RESET: TB303 ONLY", 1100);
+    return true;
+  }
+
   if (isTb303Engine() && ui_event.ctrl && !ui_event.alt && !ui_event.meta) {
-    if (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_); }); return true; }
+    if (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A) {
+      withAudioGuard([&]() {
+        mini_acid_.set303Parameter(TB303ParamId::Cutoff, 800.0f, voice_index_);
+      });
+      UI::showToast(voice_index_ == 0 ? "A FILTER 800Hz" : "B FILTER 800Hz", 1000);
+      return true;
+    }
     if (lowerKey == 'x' || ui_event.scancode == GROOVEPUTER_X) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::Resonance, 0.0f, voice_index_); }); return true; }
     if (lowerKey == 'c' || ui_event.scancode == GROOVEPUTER_C) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvAmount, 400.0f, voice_index_); }); return true; }
     if (lowerKey == 'v' || ui_event.scancode == GROOVEPUTER_V) { withAudioGuard([&]() { mini_acid_.set303Parameter(TB303ParamId::EnvDecay, 420.0f, voice_index_); }); return true; }
@@ -940,16 +1088,9 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
         adjustGenericParameter(5, 1, fine);
       }
       return true;
-    case 'h':
-      if (isTb303Engine()) {
-        withAudioGuard([&]() { mini_acid_.adjust303Parameter(TB303ParamId::FilterType, -1, voice_index_); });
-      } else {
-        adjustGenericParameter(5, -1, fine);
-      }
-      return true;
 
-    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(directKnobStep); return true;
-    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(-directKnobStep); return true;
+    case 'a': if (cutoff_knob_) cutoff_knob_->setValue(isDualOsc() ? 1 : directKnobStep); return true;
+    case 'z': if (cutoff_knob_) cutoff_knob_->setValue(isDualOsc() ? -1 : -directKnobStep); return true;
     case 's': if (resonance_knob_) resonance_knob_->setValue(directKnobStep); return true;
     case 'x': if (resonance_knob_) resonance_knob_->setValue(-directKnobStep); return true;
     case 'd': if (env_amount_knob_) env_amount_knob_->setValue(directKnobStep); return true;
@@ -968,6 +1109,45 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
   }
 
   return Container::handleEvent(ui_event);
+}
+
+bool TB303ParamsPage::hasSoundPresets() const {
+  const auto name = mini_acid_.currentSynthEngineName(voice_index_);
+  return name == "TB303" || name == "WAVEMORPH" || name == "DUAL OSC";
+}
+bool TB303ParamsPage::isDualOsc() const {
+  return mini_acid_.currentSynthEngineName(voice_index_) == "DUAL OSC";
+}
+int TB303ParamsPage::presetCount() const {
+  return isDualOsc() ? kDualOscPresetCount : 3;
+}
+int TB303ParamsPage::currentPresetIndex() const {
+  // DUAL OSC: its Preset parameter (index 0) is always one of the 13, so there is no CUSTOM state
+  if (isDualOsc()) return mini_acid_.synthParameter(voice_index_, 0).optionIndex();
+  return mini_acid_.soundQualityPresetIndex(voice_index_);
+}
+void TB303ParamsPage::openPresetPopup() {
+  if (!hasSoundPresets()) return;
+  engine_popup_ = false;
+  const int index = currentPresetIndex();
+  preset_popup_.open(isDualOsc() ? "DUAL OSC PRESET" : "SOUND PRESET", presetCount(), index < 0 ? 0 : index);
+}
+void TB303ParamsPage::openEnginePopup() {
+  const auto options = availableSynthEngines(mini_acid_);
+  if (options.empty()) return;
+  const int index = findEngineIndex(options, mini_acid_.currentSynthEngineName(voice_index_));
+  engine_popup_ = true;
+  preset_popup_.open("SYNTH TYPE", static_cast<uint8_t>(options.size()), index < 0 ? 0 : index);
+}
+void TB303ParamsPage::applyPreset(int index) {
+  if (!hasSoundPresets()) return;
+  if (isDualOsc()) {
+    // the Preset parameter moves by steps of 1; the difference to the target index is the number of steps
+    const int steps = index - currentPresetIndex();
+    if (steps != 0) withAudioGuard([&]() { mini_acid_.adjustSynthParameter(voice_index_, 0, steps); });
+    return;
+  }
+  withAudioGuard([&]() { mini_acid_.applySoundQualityPreset(voice_index_, index); });
 }
 
 void TB303ParamsPage::loadModePreset(int index) {

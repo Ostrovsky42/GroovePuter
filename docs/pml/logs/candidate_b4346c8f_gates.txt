@@ -1,0 +1,11 @@
+candidate SHA: b4346c8f230d0ef0fad6076c2b9880674a8765bc   dirty tracked files: 0
+gates run at this SHA (exit codes):
+pmle=0
+cycle=0
+host=0
+uss=0
+sdl=0
+adv=0
+seq=0
+fs1b=0
+probe=0

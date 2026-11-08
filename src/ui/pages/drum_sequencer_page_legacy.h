@@ -2,6 +2,7 @@
 #include "drum_automation_page.h"
 #include "../ui_common.h"
 #include "src/state/scene_revision.h"
+#include "src/state/drum_step_edit.h"
 
 #include <algorithm>
 #include <cctype>
@@ -15,6 +16,7 @@
 #include "../components/label_option.h"
 #include "../components/pattern_selection_bar.h"
 #include "../components/drum_sequencer_grid.h"
+#include "../screen_geometry.h"
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
 #include "../ui_widgets.h"
@@ -84,6 +86,12 @@ class DrumSequencerMainPage : public Container {
   int bankIndexFromKey(char key) const;
   void setBankIndex(int bankIndex);
   bool bankRowFocused() const;
+  // STEP SETTINGS (Alt+E on the grid): PROB, TIMING, VEL, FLAM/ROLL.
+  void openStepSettings();
+  bool handleStepSettingsKey(const UIEvent& ui_event);
+  void adjustStepSetting(int field, int direction);
+  void resetStepSetting(int field);  // field < 0 = all fields
+  void drawStepSettings(IGfx& gfx) const;
   template <typename F>
   void withAudioGuard(F&& fn) {
       if (audio_guard_) audio_guard_(std::forward<F>(fn));
@@ -128,6 +136,8 @@ class DrumSequencerMainPage : public Container {
   int selection_start_step_ = 0;
   int selection_start_voice_ = 0;
   bool selection_locked_ = false;
+  bool step_settings_open_ = false;
+  uint8_t step_settings_field_ = 0;
 };
 
 class GlobalDrumFeelPage : public Container {
@@ -166,7 +176,9 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
   drum_pattern_cursor_ = drumIdx;
   bank_index_ = mini_acid_.currentDrumBankIndex();
   bank_cursor_ = bank_index_;
-  pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("PATTERN");
+  // Pattern and bank share one row (no caption line) so the eight drum lanes
+  // get the recovered height.
+  pattern_bar_ = std::make_shared<PatternSelectionBarComponent>("");
   bank_bar_ = std::make_shared<BankSelectionBarComponent>("BANK", "AB");
   PatternSelectionBarComponent::Callbacks pattern_callbacks;
   pattern_callbacks.onSelect = [this](int index) {
@@ -192,21 +204,12 @@ DrumSequencerMainPage::DrumSequencerMainPage(MiniAcid& mini_acid, AudioGuard aud
     drum_step_cursor_ = step;
     drum_voice_cursor_ = voice;
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
-    });
-  };
-  callbacks.onToggleAccent = [this](int step) {
-    focusGrid();
-    drum_step_cursor_ = step;
-    commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
   };
   callbacks.cursorStep = [this]() { return activeDrumStep(); };
@@ -491,6 +494,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           g_drum_area_clipboard.has_area = true;
           selection_locked_ = true;
           g_drum_pattern_clipboard.has_pattern = false;
+          {
+            char msg[32];
+            std::snprintf(msg, sizeof(msg), "COPIED %d CELLS",
+                          g_drum_area_clipboard.voice_count * g_drum_area_clipboard.step_count);
+            UI::showToast(msg, 800);
+          }
           return true;
         }
 
@@ -502,66 +511,33 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
         }
         g_drum_pattern_clipboard.has_pattern = true;
         g_drum_area_clipboard.has_area = false;
+        UI::showToast("COPIED PATTERN", 800);
         return true;
       }
       case GROOVEPUTER_APP_EVENT_PASTE: {
         if (!g_drum_pattern_clipboard.has_pattern && !g_drum_area_clipboard.has_area) return false;
-        bool current_hits[NUM_DRUM_VOICES][SEQ_STEPS];
-        bool current_accents[NUM_DRUM_VOICES][SEQ_STEPS];
-        const bool* hits[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickSteps(),
-          mini_acid_.patternSnareSteps(),
-          mini_acid_.patternHatSteps(),
-          mini_acid_.patternOpenHatSteps(),
-          mini_acid_.patternMidTomSteps(),
-          mini_acid_.patternHighTomSteps(),
-          mini_acid_.patternRimSteps(),
-          mini_acid_.patternClapSteps()
-        };
-        const bool* accents[NUM_DRUM_VOICES] = {
-          mini_acid_.patternKickAccentSteps(),
-          mini_acid_.patternSnareAccentSteps(),
-          mini_acid_.patternHatAccentSteps(),
-          mini_acid_.patternOpenHatAccentSteps(),
-          mini_acid_.patternMidTomAccentSteps(),
-          mini_acid_.patternHighTomAccentSteps(),
-          mini_acid_.patternRimAccentSteps(),
-          mini_acid_.patternClapAccentSteps()
-        };
-        for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
-          for (int i = 0; i < SEQ_STEPS; ++i) {
-            current_hits[v][i] = hits[v][i];
-            current_accents[v][i] = accents[v][i];
-          }
-        }
         const DrumPatternSet& src = g_drum_pattern_clipboard.pattern;
-        withAudioGuard([&]() {
-          if (g_drum_area_clipboard.has_area) {
-            int start_step = activeDrumStep();
-            int start_voice = activeDrumVoice();
-            if (has_selection_) {
-              int min_voice, max_voice, min_step, max_step;
-              getSelectionBounds(min_voice, max_voice, min_step, max_step);
-              start_step = min_step;
-              start_voice = min_voice;
-            }
+        const bool areaPaste = g_drum_area_clipboard.has_area;
+        int start_step = activeDrumStep();
+        int start_voice = activeDrumVoice();
+        if (has_selection_) {
+          int min_voice, max_voice, min_step, max_step;
+          getSelectionBounds(min_voice, max_voice, min_step, max_step);
+          start_step = min_step;
+          start_voice = min_voice;
+        }
+        const bool changed = commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+          if (areaPaste) {
             int idx = 0;
             for (int v = 0; v < g_drum_area_clipboard.voice_count; ++v) {
               for (int i = 0; i < g_drum_area_clipboard.step_count; ++i) {
                 if (idx >= static_cast<int>(g_drum_area_clipboard.steps.size())) break;
-                int tv = start_voice + v;
-                int ts = start_step + i;
-                if (tv < 0 || tv >= NUM_DRUM_VOICES || ts < 0 || ts >= SEQ_STEPS) {
-                  ++idx;
-                  continue;
-                }
-                bool desiredHit = g_drum_area_clipboard.steps[idx].hit;
-                bool desiredAccent = g_drum_area_clipboard.steps[idx].accent && desiredHit;
-                if (current_hits[tv][ts] != desiredHit) {
-                  mini_acid_.toggleDrumStep(tv, ts);
-                }
-                if (current_accents[tv][ts] != desiredAccent) {
-                  mini_acid_.setDrumAccentStep(tv, ts, desiredAccent);
+                const int tv = start_voice + v;
+                const int ts = start_step + i;
+                if (tv >= 0 && tv < NUM_DRUM_VOICES && ts >= 0 && ts < SEQ_STEPS) {
+                  const DrumStep& d = g_drum_area_clipboard.steps[idx];
+                  pattern.voices[tv].steps[ts].hit = d.hit;
+                  pattern.voices[tv].steps[ts].accent = d.accent && d.hit;
                 }
                 ++idx;
               }
@@ -569,18 +545,13 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
           } else {
             for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
               for (int i = 0; i < SEQ_STEPS; ++i) {
-                bool desiredHit = src.voices[v].steps[i].hit;
-                bool desiredAccent = src.voices[v].steps[i].accent && desiredHit;
-                if (current_hits[v][i] != desiredHit) {
-                  mini_acid_.toggleDrumStep(v, i);
-                }
-                if (current_accents[v][i] != desiredAccent) {
-                  mini_acid_.setDrumAccentStep(v, i, desiredAccent);
-                }
+                pattern.voices[v].steps[i].hit = src.voices[v].steps[i].hit;
+                pattern.voices[v].steps[i].accent = src.voices[v].steps[i].accent && src.voices[v].steps[i].hit;
               }
             }
           }
         });
+        UI::showToast(changed ? "PASTED" : "PASTE: NO CHANGE", 800);
         if (has_selection_) clearSelection();
         return true;
       }
@@ -611,7 +582,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   // Arrow-first: Cardputer may deliver arrows in scancode OR key.
   // Keep vim-keys only as silent fallback (not in footer hints).
   int nav = UIInput::navCode(ui_event);
-  bool extend_selection = ui_event.shift || ui_event.ctrl;
+  bool extend_selection = ui_event.ctrl;
   if (extend_selection && selection_locked_) selection_locked_ = false;
   if (selection_locked_ && has_selection_ && !extend_selection && !patternRowFocused() && !bankRowFocused()) {
     switch (nav) {
@@ -627,7 +598,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       if (ui_event.alt) {
         int next = mini_acid_.currentPageIndex() - 1;
         if (next < 0) next = UI::kPageCount - 1;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -638,7 +609,7 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     case GROOVEPUTER_RIGHT:
       if (ui_event.alt) {
         int next = (mini_acid_.currentPageIndex() + 1) % UI::kPageCount;
-        mini_acid_.requestPageSwitch(next);
+        mini_acid_.tryManualPageSwitch(next);
         handled = true;
         break;
       }
@@ -703,8 +674,12 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
       int step = activeDrumStep();
       int voice = activeDrumVoice();
       commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      pattern.voices[voice].steps[step].hit =
-          !pattern.voices[voice].steps[step].hit;
+      DrumStep& value = pattern.voices[voice].steps[step];
+      value.hit = !value.hit;
+      // Accent is meaningful only for an onset. Toggling the hit is an
+      // explicit topology edit, so do not preserve hidden accent state across
+      // remove/re-add.
+      value.accent = false;
     });
     }
     return true;
@@ -746,17 +721,31 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
   bool key_v = (lowerKey == 'v') || (ui_event.scancode == GROOVEPUTER_V);
 
+  if (key_a && ui_event.ctrl && !ui_event.alt) {
+    // Ctrl+A: select every voice and step of the pattern.
+    focusGrid();
+    selection_start_step_ = 0;
+    selection_start_voice_ = 0;
+    drum_step_cursor_ = SEQ_STEPS - 1;
+    drum_voice_cursor_ = NUM_DRUM_VOICES - 1;
+    has_selection_ = true;
+    selection_locked_ = false;
+    UI::showToast("ALL STEPS SELECTED", 800);
+    return true;
+  }
   if (key_a) {
     focusGrid();
-    int step = activeDrumStep();
+    const int step = activeDrumStep();
+    const int voice = activeDrumVoice();
+    const DrumPatternSet& current =
+        mini_acid_.sceneManager().getCurrentDrumPattern();
+    if (!current.voices[voice].steps[step].hit) {
+      UI::showToast("ACCENT: ADD HIT", 800);
+      return true;
+    }
     commitDrumPatternMutation([&](DrumPatternSet& pattern) {
-      bool anyAccent = false;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v) {
-        if (pattern.voices[v].steps[step].accent) { anyAccent = true; break; }
-      }
-      const bool next = !anyAccent;
-      for (int v = 0; v < DrumPatternSet::kVoices; ++v)
-        pattern.voices[v].steps[step].accent = next;
+      pattern.voices[voice].steps[step].accent =
+          !pattern.voices[voice].steps[step].accent;
     });
     return true;
   }
@@ -767,7 +756,9 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
     setBankIndex(nextBank);
     return true;
   }
-  if (key_g) {
+  // Fn+G is no longer reserved by isGlobalNav; it must not fall into the
+  // unmodified legacy whole-pattern randomizer.
+  if (key_g && !ui_event.meta) {
     if (ui_event.ctrl) {
       int voice = activeDrumVoice();
       withAudioGuard([&]() { mini_acid_.randomizeDrumVoice(voice); });
@@ -793,34 +784,54 @@ bool DrumSequencerMainPage::handleEvent(UIEvent& ui_event) {
 
   if (key == '\b' || key == 0x7F) {
     if (ui_event.alt) {
-        // Alt+Backspace = Clear Pattern
-        withAudioGuard([&]() {
+        // Alt+Backspace no longer clears; Ctrl+Backspace does (as on SYNTH).
+        UI::showToast("CTRL+BKSP CLEARS PATTERN", 1000);
+        return true;
+    } else if (ui_event.ctrl) {
+        // Ctrl+Backspace = Clear Pattern (one undoable mutation), as on SYNTH:
+        // the whole pattern, with or without a selection. The toast reports
+        // the actual result.
+        bool prepared = false;
+        bool anySet = false;
+        const bool changed = commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+            prepared = true;
             for (int v = 0; v < NUM_DRUM_VOICES; ++v) {
                 for (int i = 0; i < SEQ_STEPS; ++i) {
-                    mini_acid_.sceneManager().setDrumStep(v, i, false, false);
+                    anySet = anySet || pattern.voices[v].steps[i].hit ||
+                             pattern.voices[v].steps[i].accent;
+                    pattern.voices[v].steps[i].hit = false;
+                    pattern.voices[v].steps[i].accent = false;
                 }
             }
         });
-        UI::showToast("Drums Cleared");
+        if (has_selection_) clearSelection();
+        UI::showToast(changed                 ? "DRUMS CLEARED  CTRL+Z UNDO"
+                      : (prepared && !anySet) ? "DRUMS ALREADY CLEAR"
+                                              : "DRUMS CLEAR FAILED",
+                      1000);
         return true;
     } else if (has_selection_) {
         int min_v, max_v, min_s, max_s;
         getSelectionBounds(min_v, max_v, min_s, max_s);
-        withAudioGuard([&]() {
+        commitDrumPatternMutation([&](DrumPatternSet& pattern) {
             for (int v = min_v; v <= max_v; ++v) {
                 for (int s = min_s; s <= max_s; ++s) {
-                    mini_acid_.sceneManager().setDrumStep(v, s, false, false);
+                    pattern.voices[v].steps[s].hit = false;
+                    pattern.voices[v].steps[s].accent = false;
                 }
             }
         });
         clearSelection();
         return true;
     } else {
-        // Backspace = Clear current voice/step
+        // Backspace = clear the current voice/step (one undoable mutation)
         int voice = activeDrumVoice();
         int step = activeDrumStep();
         if (!patternRowFocused() && !bankRowFocused()) {
-            withAudioGuard([&]() { mini_acid_.sceneManager().setDrumStep(voice, step, false, false); });
+            commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+                pattern.voices[voice].steps[step].hit = false;
+                pattern.voices[voice].steps[step].accent = false;
+            });
             return true;
         }
     }
@@ -834,16 +845,172 @@ void DrumSequencerMainPage::draw(IGfx& gfx) {
   std::static_pointer_cast<DrumSequencerGridComponent>(grid_component_)->setStyle(style);
 
   switch (style) {
-    case GrooveboxStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx);
-      break;
     case GrooveboxStyle::AMBER:
       drawAmberStyle(gfx);
       break;
+    case GrooveboxStyle::RETRO_CLASSIC:
+    case GrooveboxStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx);
+      // CLEAN shares the CYBER drum structure; forms differ inside the shared draw.
+      drawRetroClassicStyle(gfx);
       break;
   }
+  if (step_settings_open_) {
+    UI::drawStandardFooter(gfx, "UP/DN:FIELD L/R:VALUE", "ENT/ESC:CLOSE");
+  }
+  drawStepSettings(gfx);
+}
+
+void DrumSequencerMainPage::openStepSettings() {
+  focusGrid();
+  step_settings_open_ = true;
+  step_settings_field_ = 0;
+}
+
+void DrumSequencerMainPage::adjustStepSetting(int field, int direction) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  if (field < 0 || field >= Edit::kFieldCount) return;
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  // One press is one canonical drum mutation, so one Undo step. The first
+  // cell of the area decides the new value (same rule as synth Alt+E).
+  commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+    const DrumStep anchor = pattern.voices[min_voice].steps[min_step];
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        Edit::applyField(pattern.voices[v].steps[s], anchor, field, direction);
+      }
+    }
+  });
+}
+
+// Backspace in STEP SETTINGS: the field under the cursor (or, with field < 0,
+// every field) of the whole area back to a plain step. One press is one Undo.
+void DrumSequencerMainPage::resetStepSetting(int field) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  namespace Marks = GroovePuterUndo::StepSettingMarks;
+  if (field >= Edit::kFieldCount) return;
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  commitDrumPatternMutation([&](DrumPatternSet& pattern) {
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        DrumStep& st = pattern.voices[v].steps[s];
+        if (field < 0 || field == Edit::kFieldProb)
+          st.probability = static_cast<uint8_t>(Marks::kDefaultProbability);
+        if (field < 0 || field == Edit::kFieldTiming)
+          st.timing = static_cast<int8_t>(Marks::kDefaultTiming);
+        if (field < 0 || field == Edit::kFieldVelocity)
+          st.velocity = static_cast<uint8_t>(Marks::kDefaultVelocity);
+        if (field < 0 || field == Edit::kFieldOrnament)
+          Edit::setOrnament(st, Edit::Ornament::None);
+      }
+    }
+  });
+}
+
+bool DrumSequencerMainPage::handleStepSettingsKey(const UIEvent& ui_event) {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  const bool esc = ui_event.key == 0x1B ||
+                   ui_event.scancode == GROOVEPUTER_ESCAPE;
+  const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
+  if (esc || enter) {
+    step_settings_open_ = false;
+    return true;
+  }
+  if (ui_event.key == '\b' || ui_event.key == 0x7F) {
+    // Backspace = this field to its default; Ctrl+Backspace = all fields.
+    resetStepSetting(ui_event.ctrl ? -1 : static_cast<int>(step_settings_field_));
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  if (nav == GROOVEPUTER_UP) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + Edit::kFieldCount - 1) % Edit::kFieldCount);
+  } else if (nav == GROOVEPUTER_DOWN) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + 1) % Edit::kFieldCount);
+  } else if (nav == GROOVEPUTER_LEFT || ui_event.key == '-') {
+    adjustStepSetting(step_settings_field_, -1);
+  } else if (nav == GROOVEPUTER_RIGHT || ui_event.key == '=' ||
+             ui_event.key == '+') {
+    adjustStepSetting(step_settings_field_, 1);
+  }
+  // Modal: every other key (Alt+E included) is swallowed so a stray press
+  // cannot edit the grid, switch the slot or regenerate.
+  return true;
+}
+
+void DrumSequencerMainPage::drawStepSettings(IGfx& gfx) const {
+  namespace Edit = GroovePuterUndo::DrumStepEdit;
+  if (!step_settings_open_) return;
+  const UI::ThemePalette p = UI::themePalette();
+  const Rect& b = getBoundaries();
+  const int lineH = gfx.fontHeight() + 3;
+  const int w = std::min(
+      b.w - 8, std::max(150, textWidth(gfx, GroovePuterUndo::StepSettingMarks::kStepSettingsHint) + 8));
+  const int h = lineH * (Edit::kFieldCount + 2) + 6;
+  const int x = b.x + (b.w - w) / 2;
+  const int y = b.y + std::max(0, (b.h - h) / 2);
+
+  int min_voice = activeDrumVoice(), max_voice = min_voice;
+  int min_step = activeDrumStep(), max_step = min_step;
+  if (has_selection_) getSelectionBounds(min_voice, max_voice, min_step, max_step);
+  const int count = (max_voice - min_voice + 1) * (max_step - min_step + 1);
+  const DrumStep& st = mini_acid_.sceneManager().getCurrentDrumPattern()
+                           .voices[min_voice].steps[min_step];
+  bool mixed[Edit::kFieldCount] = {false, false, false, false};
+  if (count > 1) {
+    const auto& pat = mini_acid_.sceneManager().getCurrentDrumPattern();
+    for (int v = min_voice; v <= max_voice; ++v) {
+      for (int s = min_step; s <= max_step; ++s) {
+        for (int f = 0; f < Edit::kFieldCount; ++f) {
+          if (GroovePuterUndo::StepSettingMarks::drumFieldDiffers(
+                  st, pat.voices[v].steps[s], f))
+            mixed[f] = true;
+        }
+      }
+    }
+  }
+
+  gfx.fillRect(x, y, w, h, p.panel);
+  gfx.drawRect(x, y, w, h, p.accent);
+  char line[32];
+  if (count > 1) std::snprintf(line, sizeof(line), "STEP SETTINGS  SEL %d", count);
+  else std::snprintf(line, sizeof(line), "STEP SETTINGS  STEP %d", min_step + 1);
+  gfx.setTextColor(p.accent);
+  gfx.drawText(x + 4, y + 3, line);
+
+  char values[Edit::kFieldCount][12];
+  std::snprintf(values[0], sizeof(values[0]), "%d%%", static_cast<int>(st.probability));
+  std::snprintf(values[1], sizeof(values[1]), "%+d t", static_cast<int>(st.timing));
+  std::snprintf(values[2], sizeof(values[2]), "%d", static_cast<int>(st.velocity));
+  std::snprintf(values[3], sizeof(values[3]), "%s", Edit::ornamentName(st));
+  for (int i = 0; i < Edit::kFieldCount; ++i) {
+    if (mixed[i]) std::snprintf(values[i], sizeof(values[i]), "MIXED");
+  }
+  static const char* const kLabels[Edit::kFieldCount] = {"PROB", "TIMING", "VEL", "FLAM/ROLL"};
+  for (int i = 0; i < Edit::kFieldCount; ++i) {
+    const int ry = y + 3 + lineH * (i + 1);
+    const bool sel = i == step_settings_field_;
+    if (sel) gfx.fillRect(x + 2, ry - 1, w - 4, lineH - 1, p.focus);
+    // A value that differs from a plain step gets a 2x2 square left of the
+    // label and an accent-coloured value; the default shows neither.
+    const bool custom = GroovePuterUndo::StepSettingMarks::drumFieldCustom(st, i) || mixed[i];
+    if (custom) {
+      gfx.fillRect(x + 3, ry + gfx.fontHeight() / 2 - 1, 2, 2,
+                   sel ? p.invert : p.accent);
+    }
+    gfx.setTextColor(sel ? p.invert : p.text);
+    gfx.drawText(x + 6, ry, kLabels[i]);
+    if (custom && !sel) gfx.setTextColor(p.accent);
+    gfx.drawText(x + w - 6 - textWidth(gfx, values[i]), ry, values[i]);
+  }
+  gfx.setTextColor(p.dim);
+  gfx.drawText(x + 4, y + 3 + lineH * (Edit::kFieldCount + 1),
+               GroovePuterUndo::StepSettingMarks::kStepSettingsHint);
 }
 
 void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
@@ -878,10 +1045,6 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   pattern_state.show_cursor = patternFocus;
   pattern_state.song_mode = songMode;
   pattern_bar_->setState(pattern_state);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, 0});
-  int pattern_bar_h = pattern_bar_->barHeight(gfx);
-  pattern_bar_->setBoundaries(Rect{x, body_y, w, pattern_bar_h});
-  pattern_bar_->draw(gfx);
 
   BankSelectionBarComponent::State bank_state;
   bank_state.bank_count = kBankCount;
@@ -890,10 +1053,21 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   bank_state.show_cursor = bankFocus;
   bank_state.song_mode = songMode;
   bank_bar_->setState(bank_state);
-  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, 0});
-  int bank_bar_h = bank_bar_->barHeight(gfx);
-  bank_bar_->setBoundaries(Rect{x, body_y + pattern_bar_h, w, bank_bar_h});
+
+  // One selector row directly below the shell header: patterns 1..8 on the
+  // left, BANK A/B right-aligned. The shell header owns y < CONTENT.y.
+  const int row_y = std::max(body_y, Layout::CONTENT.y);
+  const int bank_w = bank_bar_->barWidth(gfx);
+  const int pattern_w = std::max(1, w - bank_w - 6);
+  pattern_bar_->setBoundaries(Rect{x, row_y, pattern_w, 0});
+  const int pattern_bar_h = pattern_bar_->barHeight(gfx);
+  pattern_bar_->setBoundaries(Rect{x, row_y, pattern_w, pattern_bar_h});
+  pattern_bar_->draw(gfx);
+  bank_bar_->setBoundaries(Rect{x, row_y, w, 0});
+  const int bank_bar_h = bank_bar_->barHeight(gfx);
+  bank_bar_->setBoundaries(Rect{x, row_y, w, bank_bar_h});
   bank_bar_->draw(gfx);
+  const int selector_h = std::max(pattern_bar_h, bank_bar_h) + 2;
 
   // Page Indicator
   char pageBuf[8];
@@ -909,8 +1083,8 @@ void DrumSequencerMainPage::drawMinimalStyle(IGfx& gfx) {
   gfx.setTextColor(COLOR_WHITE);
   gfx.drawText(x + w - 24, y + 2, pageBuf);
 
-  int grid_y = body_y + pattern_bar_h + bank_bar_h;
-  int grid_h = body_h - (pattern_bar_h + bank_bar_h);
+  int grid_y = row_y + selector_h;
+  int grid_h = (y + h) - grid_y;
   if (grid_h <= 0) {
     if (grid_component_) {
       grid_component_->setBoundaries(Rect{0, 0, 0, 0});
@@ -943,7 +1117,8 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
     
     retro::SelectorConfig pCfg;
-    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    // PTRN and BK share one row directly below the shell header.
+    pCfg.x = x + 4; pCfg.y = y + 16; pCfg.w = w - 8 - 52 - 2; pCfg.h = 10;
     pCfg.label = "PTRN";
     pCfg.count = Bank<DrumPatternSet>::kPatterns;
     pCfg.selected = selectedPattern;
@@ -953,7 +1128,7 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     retro::drawSelector(gfx, pCfg);
 
     retro::SelectorConfig bCfg;
-    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.x = x + w - 52; bCfg.y = y + 16; bCfg.w = 48; bCfg.h = 10;
     bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
@@ -963,12 +1138,14 @@ void DrumSequencerMainPage::drawRetroClassicStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     retro::drawSelector(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12; // footer is 12
+    // The shared PTRN/BK row ends at y+26. The grid component itself stops
+    // above the shell-owned performance HUD/footer band.
+    int grid_y = y + 28;
+    int grid_h = h - 28;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    retro::drawFooterBar(gfx, x, y + h - 12, w, 12, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
+    UI::drawStandardFooter(gfx, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
 }
 
 void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
@@ -990,7 +1167,8 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     int selectedPattern = mini_acid_.displayDrumLocalPatternIndex();
 
     amber::SelectionBarConfig pCfg;
-    pCfg.x = x + 4; pCfg.y = y + 14; pCfg.w = w - 8; pCfg.h = 10;
+    // PTRN and BK share one row directly below the shell header.
+    pCfg.x = x + 4; pCfg.y = y + 16; pCfg.w = w - 8 - 52 - 2; pCfg.h = 10;
     pCfg.label = "PTRN";
     pCfg.count = Bank<DrumPatternSet>::kPatterns;
     pCfg.selected = selectedPattern;
@@ -999,7 +1177,7 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     amber::drawSelectionBar(gfx, pCfg);
 
     amber::SelectionBarConfig bCfg;
-    bCfg.x = x + w - 52; bCfg.y = y + 26; bCfg.w = 48; bCfg.h = 10;
+    bCfg.x = x + w - 52; bCfg.y = y + 16; bCfg.w = 48; bCfg.h = 10;
     bCfg.label = "BK";
     bCfg.count = kBankCount;
     bCfg.selected = mini_acid_.currentDrumBankIndex();
@@ -1008,12 +1186,14 @@ void DrumSequencerMainPage::drawAmberStyle(IGfx& gfx) {
     bCfg.alphaLabels = true;
     amber::drawSelectionBar(gfx, bCfg);
 
-    int grid_y = y + 38;
-    int grid_h = h - 38 - 12;
+    // The shared PTRN/BK row ends at y+26. The grid component itself stops
+    // above the shell-owned performance HUD/footer band.
+    int grid_y = y + 28;
+    int grid_h = h - 28;
     grid_component_->setBoundaries(Rect{x, grid_y, w, grid_h});
     grid_component_->draw(gfx);
 
-    amber::drawFooterBar(gfx, x, y + h - 12, w, 12, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
+    UI::drawStandardFooter(gfx, "G:GEN Alt+G:ALL Q-I:PAT B:Bank", "DRUM Alt[]:PG");
 }
 #include "../retro_widgets.h"
 #include "../amber_widgets.h"
@@ -1070,7 +1250,7 @@ void GlobalDrumFeelPage::draw(IGfx& gfx) {
   int w = bounds.w;
 
   gfx.setTextColor(COLOR_LABEL);
-  gfx.drawText(x, y, "GLOBAL SETTINGS");
+  gfx.drawText(x, y, "DRUM SOUND");
   gfx.setTextColor(COLOR_WHITE);
 
   int row_y = y + gfx.fontHeight() + 4;
@@ -1106,6 +1286,8 @@ void GlobalDrumFeelPage::draw(IGfx& gfx) {
   int decPct = static_cast<int>(std::clamp(dfx.reverbDecay, 0.05f, 0.95f) * 100.0f + 0.5f);
   std::snprintf(buf, sizeof(buf), "DR DEC %d%%", decPct);
   Widgets::drawListRow(gfx, x, y_cursor, w, buf, selected_row_ == 5);
+
+  UI::drawStandardFooter(gfx, "[TAB]AUTO [U/D]ROW [L/R]VAL", "CHAR COMP ATT SUS REV");
 }
 
 void GlobalDrumFeelPage::adjustDrumFx(int row, float delta) {

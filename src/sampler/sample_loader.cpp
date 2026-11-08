@@ -1,3 +1,5 @@
+#include "../platform/cardputer_capabilities.h"
+#if GROOVEPUTER_ENABLE_SAMPLER
 #include "../audio/audio_config.h"
 #include "sample_store.h"
 #include <algorithm>
@@ -315,3 +317,5 @@ bool loadWavFile(const char* path, WavInfo& outInfo, int16_t** outPcm) {
   return loadWavFileBounded(path, outInfo, outPcm,
                             std::numeric_limits<std::size_t>::max());
 }
+
+#endif

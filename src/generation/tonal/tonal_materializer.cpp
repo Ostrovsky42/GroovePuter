@@ -45,22 +45,32 @@ uint16_t ordinalMask(uint8_t count) {
 }
 
 bool validEvent(const HarmonicEvent& event) {
+  uint8_t chordTones[5]{};
+  uint8_t chordToneCount = 0;
   return event.degree <= 6 &&
-         static_cast<uint8_t>(event.quality) <
-             static_cast<uint8_t>(ChordQuality::Count) &&
+         chordQualityIntervals(event.quality, chordTones, 5, chordToneCount) &&
          event.rootOffsetSemitones >= -kMaxRootOffsetSemitones &&
          event.rootOffsetSemitones <= kMaxRootOffsetSemitones;
 }
 
 bool validRequest(const TonalMaterializationRequest& request,
                   uint8_t onsetCount) {
+  const uint8_t strategy = static_cast<uint8_t>(request.harmonicStrategy);
+  const bool validProgressionIdentity =
+      request.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Legacy
+          ? isValidProgressionId(request.progression.id, false)
+          : request.harmonicStrategy == GroovePuterHarmony::HarmonicStrategy::Graph
+                ? request.progression.id == ProgressionId::Auto
+                : false;
   if (!validContinuationTopology(request.onsets, request.continuations) ||
       request.rootPitchClass > 11 ||
       !isValidScaleTypeValue(request.scaleTypeValue) ||
       request.minMidi > request.maxMidi || request.maxMidi > 127 ||
       request.maxAdjacentLeapSemitones > 127 ||
       request.progression.eventCount > kMaxHarmonicEvents ||
-      !isValidProgressionId(request.progression.id, false)) {
+      strategy > static_cast<uint8_t>(
+                     GroovePuterHarmony::HarmonicStrategy::Graph) ||
+      !validProgressionIdentity) {
     return false;
   }
 

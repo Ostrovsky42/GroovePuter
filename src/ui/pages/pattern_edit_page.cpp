@@ -1,8 +1,11 @@
 #include "pattern_edit_page.h"
+#include "synth_sequencer_page.h"
+#include "src/state/generation_shape_state.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstring>
+#include <cstdio>
 #include <string>
 #include <utility>
 #include <vector>
@@ -21,8 +24,11 @@
 #include "../../debug_log.h"
 #include "../../generation/migration/quantized_generation_commit.h"
 #include "../../state/scene_revision.h"
+#include "../../state/step_setting_marks.h"
 #include "../../state/undo_owner.h"
 #include "../../state/undo_receipts.h"
+#include "../material_accept_ux.h"
+#include "../material_development_ux.h"
 #include "../key_normalize.h"
 
 namespace UI {
@@ -44,8 +50,38 @@ namespace {
 constexpr unsigned long kFirstHoldRepeatMinMs = 250;
 constexpr unsigned long kFirstHoldRepeatMaxMs = 500;
 constexpr unsigned long kHoldRepeatMaxGapMs = 180;
-constexpr int kEntryLowerBaseNote = 48;  // C3
-constexpr int kEntryUpperBaseNote = 60;  // C4
+constexpr int kEntryBaseNote = 48;      // C3: lower row at the default octave
+constexpr int kEntryOctaveSpan = 12;    // upper row sits one octave above lower
+// Five octave ranges: 1-2 (C1 reaches the Synth A bass corridor), 2-3, 3-4,
+// 4-5 (upper row C5..A5: C#5 is W, E5 is T) and 5-6 (upper row C6..A6). They
+// reach the Pattern range for external MIDI; the internal voice folds notes
+// above B4 down by octaves (MiniAcid::internalVoiceNote).
+constexpr int kEntryOctaveShiftMin = -2;
+constexpr int kEntryOctaveShiftMax = 2;
+// Pattern step range (kMin303Note..kMaxPatternNote, C1..C7). Notes outside it
+// are refused instead of clipped to a different pitch.
+constexpr int kEntryNoteMin = 24;
+constexpr int kEntryNoteMax = 96;
+
+// STEP SETTINGS (Alt+E) limits and steps. Timing matches the validated atlas
+// range of +-23 ticks; velocity 0 would be a silent step, so it starts at 1.
+constexpr int kStepSettingsFields = 4;  // PROB, TIMING, VEL, CHANCE
+constexpr int kStepProbMin = 0;
+constexpr int kStepProbMax = 100;
+constexpr int kStepProbStep = 5;
+constexpr int kStepTimingMin = -23;
+constexpr int kStepTimingMax = 23;
+constexpr int kStepVelocityMin = 1;
+constexpr int kStepVelocityMax = 127;
+constexpr int kStepVelocityStep = 5;
+
+bool isStepSettingsChord(const UIEvent& ev) {
+  if (ev.event_type != GROOVEPUTER_KEY_DOWN) return false;
+  if (!ev.alt || ev.ctrl || ev.meta) return false;
+  return ev.key == 'e' || ev.key == 'E' || ev.scancode == GROOVEPUTER_E;
+}
+
+int clampInt(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 int indexInKeyRow(char key, const char* row) {
   if (!row) return -1;
@@ -92,6 +128,116 @@ void preparePatternEditorGeneration(MiniAcid& engine,
 #undef handleEvent
 #undef drawStandardFooter
 
+bool PatternEditPage::nextSlotAvailable() const {
+  return mini_acid_.current303PatternIndex(voice_index_) + 1 <
+         Bank<SynthPattern>::kPatterns;
+}
+
+int PatternEditPage::playheadPair() const {
+  if (!pair_view_ || !nextSlotAvailable()) return 0;
+  return mini_acid_.pairPlayPhase(voice_index_) == 1 ? 1 : 0;
+}
+
+const SynthPattern& PatternEditPage::slotNPattern() const {
+  if (pair_view_ && mini_acid_.pairPlayActive(voice_index_)) {
+    return mini_acid_.sceneManager().getSynthPattern(
+        voice_index_,
+        gridSourceSlot(0, true, mini_acid_.pairPlayPhase(voice_index_),
+                       mini_acid_.current303PatternIndex(voice_index_)));
+  }
+  return mini_acid_.synthPatternForDisplay(voice_index_);
+}
+
+// The pattern slot that edits, copy and the cursor act on: N, or N+1 while the
+// cursor is on rows 3-4 of the pair view.
+int PatternEditPage::editPatternIndex() const {
+  const int current = mini_acid_.current303PatternIndex(voice_index_);
+  return cursorOnNextSlot() ? current + 1 : current;
+}
+
+bool PatternEditPage::togglePairView() {
+  pair_view_ = !pair_view_;
+  cursor_next_ = false;
+  focus_ = Focus::Steps;
+  if (has_selection_) clearSelection();
+  resetNoteHoldTracking();
+  UI::showToast(pair_view_ ? "PAIR VIEW: ON" : "PAIR VIEW: OFF", 900);
+  return true;
+}
+
+bool PatternEditPage::togglePairPlay() {
+  MiniAcid::PairPlayResult result = MiniAcid::PairPlayResult::Stopped;
+  const auto toggle = [&]() { result = mini_acid_.togglePairPlay(voice_index_); };
+  if (audio_guard_) audio_guard_(toggle);
+  else toggle();
+  switch (result) {
+    case MiniAcid::PairPlayResult::Started: {
+      char toast[40];
+      const int n = mini_acid_.pairPlayBaseSlot(voice_index_) + 1;
+      std::snprintf(toast, sizeof(toast), "PAIR PLAY %d+%d", n, n + 1);
+      UI::showToast(toast, 900);
+      break;
+    }
+    case MiniAcid::PairPlayResult::Stopped:
+      UI::showToast("PAIR PLAY: OFF", 900);
+      break;
+    case MiniAcid::PairPlayResult::SongOn:
+      UI::showToast("PAIR PLAY: SONG OFF FIRST", 1200);
+      break;
+    case MiniAcid::PairPlayResult::NotSteps:
+      UI::showToast("PAIR PLAY: STEPS ONLY", 1200);
+      break;
+    case MiniAcid::PairPlayResult::SaveFirst:
+      UI::showToast("PAIR PLAY: SAVE FIRST", 1200);
+      break;
+    case MiniAcid::PairPlayResult::GoQueued:
+      UI::showToast("PAIR PLAY: GO QUEUED", 1200);
+      break;
+    case MiniAcid::PairPlayResult::NoNextSlot:
+      UI::showToast("PAIR PLAY: NO NEXT SLOT", 1200);
+      break;
+    case MiniAcid::PairPlayResult::RefreshFailed:
+      UI::showToast("PAIR PLAY: REFRESH FAILED", 1200);
+      break;
+  }
+  return true;
+}
+
+// Plain L: off -> view on, then play (a refusal keeps the view and its toast
+// is the last one shown). On -> view off, then stop play if it runs.
+bool PatternEditPage::togglePairViewAndPlay() {
+  if (pair_view_) {
+    togglePairView();
+    if (mini_acid_.pairPlayActive(voice_index_)) togglePairPlay();
+    return true;
+  }
+  togglePairView();
+  return togglePairPlay();
+}
+
+// Up/Down over the visible rows. Rows 3-4 are slot N+1 and do not exist for
+// slot 8. Crossing from one slot to the other ends a selection; extending a
+// selection never crosses, so a selection always belongs to one slot.
+bool PatternEditPage::moveGridRow(int delta, bool extendSelection) {
+  const int step = activePatternStep();
+  const int slotRow = step / kPatternStepColumns;
+  const int col = step % kPatternStepColumns;
+  const bool onNext = cursorOnNextSlot();
+  const int rows = pair_view_ && nextSlotAvailable() ? 2 * kPatternStepRows
+                                                     : kPatternStepRows;
+  int row = (onNext ? kPatternStepRows : 0) + slotRow + delta;
+  row = std::max(0, std::min(rows - 1, row));
+  const bool toNext = row >= kPatternStepRows;
+  if (toNext != onNext) {
+    if (extendSelection) return true;
+    if (has_selection_) clearSelection();
+  }
+  cursor_next_ = toNext;
+  pattern_edit_cursor_ =
+      (row % kPatternStepRows) * kPatternStepColumns + col;
+  return true;
+}
+
 bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   // B2 generation receipts use the same bounded Synth Pattern before-
   // image as R3 manual edits, but a distinct Generation kind. Handle
@@ -109,8 +255,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     if (owner.kind() == UndoKind::Generation &&
         owner.payloadSize() == GroovePuterRhythm::quantizedGenerationUndoPayloadSize()) {
       const bool redo = owner.nextIsRedo();
-      const UndoResult result =
-          GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+      UndoResult result = UndoResult::NothingToUndo;
+      withAudioGuard([&]() {
+        result = GroovePuterRhythm::toggleLastQuantizedGeneration(mini_acid_);
+      });
       switch (result) {
         case UndoResult::Restored:
           UI::showToast(redo ? "REDO: GENERATION" : "UNDO: GENERATION", 900);
@@ -155,6 +303,8 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
                 const auto exchange = [&]() {
                   GroovePuterUndo::exchangeSynthPatternUndo(
                       mini_acid_.sceneManager(), receipt);
+                  (void)mini_acid_.refreshPatternRuntimeEvents(
+                      receipt.synthIndex, receipt.bankIndex, receipt.patternIndex);
                 };
                 if (audio_guard_) audio_guard_(exchange);
                 else exchange();
@@ -197,6 +347,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_PASTE) {
     if (!g_pattern_step_clipboard.has_data && !g_pattern_clipboard.has_pattern) {
+      UI::showToast("CLIPBOARD EMPTY", 900);
       return handleEventLegacyUnowned(ui_event);
     }
 
@@ -204,6 +355,14 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
       if (g_pattern_step_clipboard.has_data) {
         int start_row = activePatternStep() / kPatternStepColumns;
         int start_col = activePatternStep() % kPatternStepColumns;
+        // A whole-pattern buffer without a selection goes to step 1, so a pattern
+        // copied to another cell lands intact instead of shifting from the cursor.
+        if (!has_selection_ &&
+            g_pattern_step_clipboard.rows == kPatternStepRows &&
+            g_pattern_step_clipboard.cols == kPatternStepColumns) {
+          start_row = 0;
+          start_col = 0;
+        }
         if (has_selection_) {
           int min_row, max_row, min_col, max_col;
           getSelectionBounds(min_row, max_row, min_col, max_col);
@@ -231,6 +390,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
         for (int i = 0; i < SEQ_STEPS; ++i) dst.steps[i] = src.steps[i];
       }
     });
+    UI::showToast("PASTED", 800);
     if (has_selection_) clearSelection();
     return true;
   }
@@ -251,8 +411,14 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   const bool isBackspace = key == '\b' || key == 0x7F;
 
   // R2 owns Reset Pattern and the existing application Undo implementation.
-  // Keep that exact vertical slice in the retained handler.
-  if (ui_event.alt && isBackspace) {
+  // Ctrl+Backspace clears the whole pattern in one undo step, before any
+  // selection is considered. Alt+Backspace is DISCARD and is consumed in
+  // handleEvent() before this point.
+  if (ui_event.ctrl && isBackspace) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("CLEAR: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     return handleEventLegacyUnowned(ui_event);
   }
 
@@ -311,17 +477,6 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     }
   }
 
-  if (ui_event.alt &&
-      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
-    ensureStepFocus();
-    const int step = activePatternStep();
-    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
-    commitPatternMutation([&](SynthPattern& pattern) {
-      adjustFxParam(pattern, step, delta);
-    });
-    return true;
-  }
-
   const bool keyA = lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A;
   const bool keyS = lowerKey == 's' || ui_event.scancode == GROOVEPUTER_S;
   const bool keyZ = lowerKey == 'z' || ui_event.scancode == GROOVEPUTER_Z;
@@ -368,7 +523,18 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   }
 
   if (keyA) {
-    if (ui_event.alt || ui_event.ctrl) {
+    if (ui_event.ctrl && !ui_event.alt) {
+      // Ctrl+A: select the whole pattern (Alt+A toggles accent).
+      if (patternRowFocused()) focusPatternSteps();
+      else ensureStepFocus();
+      selection_start_step_ = 0;
+      pattern_edit_cursor_ = SEQ_STEPS - 1;
+      has_selection_ = true;
+      selection_locked_ = false;
+      UI::showToast("ALL STEPS SELECTED", 800);
+      return true;
+    }
+    if (ui_event.alt) {
       if (patternRowFocused()) focusPatternSteps();
       else ensureStepFocus();
       if (has_selection_) {
@@ -401,7 +567,8 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  if (keyX) {
+  // X and F are plain keys here: Ctrl+X/Ctrl+F must not run the octave/retrig edit.
+  if (keyX && !ui_event.ctrl) {
     prepareSelectionOrCursor(
         [&](SynthPattern& pattern, int step) { adjustOctave(pattern, step, -1); });
     return true;
@@ -412,6 +579,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   // PLAY arms the old Pattern as audible truth, commits the new Pattern now,
   // then releases that overlay only at BAR_START.
   if (keyG) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
     using GroovePuterUndo::SynthPatternUndoPayload;
     using GroovePuterUndo::UndoKind;
 
@@ -448,7 +619,11 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
 
     const bool committed = GroovePuterUndo::undoOwner().commitPrepared(
         UndoKind::Generation, before, [&]() {
-          GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+          withAudioGuard([&]() {
+            GroovePuterUndo::restoreSynthPatternUndo(manager, prepared);
+            (void)mini_acid_.refreshPatternRuntimeEvents(
+                prepared.synthIndex, prepared.bankIndex, prepared.patternIndex);
+          });
         });
     if (!committed) {
       if (activationSlot >= 0) {
@@ -468,11 +643,27 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
     return true;
   }
 
-  if (keyF) {
+  if (keyF && !ui_event.ctrl) {
     ensureStepFocus();
     const int step = activePatternStep();
-    commitPatternMutation(
-        [&](SynthPattern& pattern) { cycleFx(pattern, step); });
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          cycleFx(pattern, step);
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (retrigCount == 0) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
     return true;
   }
 
@@ -487,7 +678,7 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
       }
     });
     clearSelection();
-    UI::showToast("Selection Cleared");
+    UI::showToast("SELECTION CLEARED");
     return true;
   }
 
@@ -503,14 +694,35 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
   return handleEventLegacyUnowned(ui_event);
 }
 
+int PatternEditPage::entryBaseNote() const {
+  const int voice = voice_index_ == 0 ? 0 : 1;
+  return kEntryBaseNote + kEntryOctaveSpan * entry_octave_shift_[voice];
+}
+
 int PatternEditPage::noteForEntryKey(char key) const {
   const char lower = static_cast<char>(
       std::tolower(static_cast<unsigned char>(key)));
   const int lowerIndex = indexInKeyRow(lower, "asdfghjkl");
-  if (lowerIndex >= 0) return kEntryLowerBaseNote + lowerIndex;
+  if (lowerIndex >= 0) return entryBaseNote() + lowerIndex;
   const int upperIndex = indexInKeyRow(lower, "qwertyuiop");
-  if (upperIndex >= 0) return kEntryUpperBaseNote + upperIndex;
+  if (upperIndex >= 0) return entryBaseNote() + kEntryOctaveSpan + upperIndex;
   return -1;
+}
+
+void PatternEditPage::shiftEntryOctave(int delta) {
+  const int voice = voice_index_ == 0 ? 0 : 1;
+  const int shift = entry_octave_shift_[voice] + delta;
+  if (shift < kEntryOctaveShiftMin || shift > kEntryOctaveShiftMax) {
+    UI::showToast(delta < 0 ? "ENTRY: LOWEST OCTAVE" : "ENTRY: HIGHEST OCTAVE",
+                  700);
+    return;
+  }
+  entry_octave_shift_[voice] = shift;
+  // The lower row's octave and the upper row's (one octave higher).
+  const int low = entryBaseNote() / 12 - 1;
+  char msg[24];
+  std::snprintf(msg, sizeof(msg), "ENTRY OCT %d-%d", low, low + 1);
+  UI::showToast(msg, 700);
 }
 
 void PatternEditPage::resetNoteHoldTracking() {
@@ -540,9 +752,32 @@ void PatternEditPage::writeNoteEntryStep(int step, int note, bool continuation) 
 bool PatternEditPage::handleNoteEntryKey(char key) {
   const int note = noteForEntryKey(key);
   if (note < 0) return false;
+  if (note < kEntryNoteMin || note > kEntryNoteMax) {
+    UI::showToast("NOTE OUT OF RANGE", 800);
+    return true;
+  }
 
   focus_ = Focus::Steps;
-  if (has_selection_) clearSelection();
+  if (has_selection_) {
+    // NOTE ENTRY over a selection fills every selected step with this note.
+    // One undoable edit; the selection stays so another note can follow.
+    int min_row, max_row, min_col, max_col;
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    commitPatternMutation([&](SynthPattern& pattern) {
+      for (int r = min_row; r <= max_row; ++r) {
+        for (int c = min_col; c <= max_col; ++c) {
+          SynthStep& step = pattern.steps[r * kPatternStepColumns + c];
+          step.note = static_cast<int8_t>(note);
+          step.slide = false;
+        }
+      }
+    });
+    char msg[24];
+    std::snprintf(msg, sizeof(msg), "FILLED %d STEPS",
+                  (max_row - min_row + 1) * (max_col - min_col + 1));
+    UI::showToast(msg, 800);
+    return true;
+  }
 
   const unsigned long now = millis();
   const char lower = static_cast<char>(
@@ -583,15 +818,174 @@ bool PatternEditPage::handleNoteEntryKey(char key) {
   return true;
 }
 
+void PatternEditPage::openStepSettings() {
+  if (mini_acid_.songVoiceDisplayState(voice_index_) !=
+      MiniAcid::SongVoiceDisplayState::Pattern) {
+    UI::showToast("STEP SETTINGS: STEPS ONLY", 1000);
+    return;
+  }
+  if (patternRowFocused()) focusPatternSteps();
+  else ensureStepFocus();
+  step_settings_open_ = true;
+  step_settings_field_ = 0;
+  resetNoteHoldTracking();
+}
+
+void PatternEditPage::adjustStepSetting(int field, int direction) {
+  if (field < 0 || field >= kStepSettingsFields) return;
+  int first = activePatternStep();
+  int min_row = 0, max_row = 0, min_col = 0, max_col = 0;
+  const bool area = has_selection_;
+  if (area) {
+    getSelectionBounds(min_row, max_row, min_col, max_col);
+    first = min_row * kPatternStepColumns + min_col;
+  }
+  const PatternMutationResult result = commitPatternMutation(
+      [&](SynthPattern& pattern) {
+        // The first step of the area decides the new value, so an area ends
+        // up uniform (same rule as Alt+A / Alt+S).
+        const SynthStep anchor = pattern.steps[first];
+        for (int r = area ? min_row : first / kPatternStepColumns;
+             r <= (area ? max_row : first / kPatternStepColumns); ++r) {
+          for (int c = area ? min_col : first % kPatternStepColumns;
+               c <= (area ? max_col : first % kPatternStepColumns); ++c) {
+            SynthStep& st = pattern.steps[r * kPatternStepColumns + c];
+            switch (field) {
+              case 0:
+                st.probability = static_cast<uint8_t>(
+                    GroovePuterUndo::StepSettingMarks::stepOnGrid(
+                        anchor.probability, direction, kStepProbStep,
+                        kStepProbMin, kStepProbMax));
+                break;
+              case 1:
+                st.timing = static_cast<int8_t>(clampInt(
+                    anchor.timing + direction, kStepTimingMin,
+                    kStepTimingMax));
+                break;
+              case 2:
+                st.velocity = static_cast<uint8_t>(
+                    GroovePuterUndo::StepSettingMarks::stepOnGrid(
+                        anchor.velocity, direction, kStepVelocityStep,
+                        kStepVelocityMin, kStepVelocityMax));
+                break;
+              default:
+                st.ghost = !anchor.ghost;
+                break;
+            }
+          }
+        }
+      });
+  if (result == PatternMutationResult::Invalid) {
+    UI::showToast("STEP EDIT FAILED", 800);
+  }
+}
+
+void PatternEditPage::resetStepSetting(int field) {
+  if (field < -1 || field >= kStepSettingsFields) return;
+  int first = activePatternStep();
+  int min_row = first / kPatternStepColumns, max_row = min_row;
+  int min_col = first % kPatternStepColumns, max_col = min_col;
+  if (has_selection_) getSelectionBounds(min_row, max_row, min_col, max_col);
+  const PatternMutationResult result = commitPatternMutation(
+      [&](SynthPattern& pattern) {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            SynthStep& st = pattern.steps[r * kPatternStepColumns + c];
+            if (field == 0 || field < 0)
+              st.probability = GroovePuterUndo::StepSettingMarks::kDefaultProbability;
+            if (field == 1 || field < 0)
+              st.timing = GroovePuterUndo::StepSettingMarks::kDefaultTiming;
+            if (field == 2 || field < 0)
+              st.velocity = GroovePuterUndo::StepSettingMarks::kDefaultVelocity;
+            if (field == 3 || field < 0) st.ghost = false;
+          }
+        }
+      });
+  if (result == PatternMutationResult::Invalid) {
+    UI::showToast("STEP EDIT FAILED", 800);
+  }
+}
+
+bool PatternEditPage::handleStepSettingsKey(const UIEvent& ui_event) {
+  const bool esc = ui_event.key == 0x1B ||
+                   ui_event.scancode == GROOVEPUTER_ESCAPE;
+  const bool enter = ui_event.key == '\n' || ui_event.key == '\r';
+  if (esc || enter) {
+    step_settings_open_ = false;
+    return true;
+  }
+  if (ui_event.key == '\b' || ui_event.key == 0x7F) {
+    // Backspace resets the field to its default, Ctrl+Backspace all fields.
+    resetStepSetting(ui_event.ctrl ? -1 : step_settings_field_);
+    return true;
+  }
+  const int nav = UIInput::navCode(ui_event);
+  if (nav == GROOVEPUTER_UP) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + kStepSettingsFields - 1) % kStepSettingsFields);
+  } else if (nav == GROOVEPUTER_DOWN) {
+    step_settings_field_ = static_cast<uint8_t>(
+        (step_settings_field_ + 1) % kStepSettingsFields);
+  } else if (nav == GROOVEPUTER_LEFT || ui_event.key == '-') {
+    adjustStepSetting(step_settings_field_, -1);
+  } else if (nav == GROOVEPUTER_RIGHT || ui_event.key == '=' ||
+             ui_event.key == '+') {
+    adjustStepSetting(step_settings_field_, 1);
+  }
+  // Modal: every other key is swallowed so a stray press cannot edit the grid.
+  return true;
+}
+
 bool PatternEditPage::handleEvent(UIEvent& ui_event) {
+  // STEP SETTINGS is modal for keys. Application events (Ctrl+Z Undo, Paste)
+  // are not keys and still reach their handlers below.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN) {
+    if (step_settings_open_) return handleStepSettingsKey(ui_event);
+    if (isStepSettingsChord(ui_event)) {
+      openStepSettings();
+      return true;
+    }
+  }
+  // Resolve modified commands before their unmodified base key. This keeps
+  // Alt/Ctrl/Meta+Enter from falling through to GO while NEXT is available.
+  if (GroovePuterMaterialAcceptUx::isAcceptEvent(ui_event)) {
+    return GroovePuterMaterialAcceptUx::handleAccept(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleCancel(mini_acid_, voice_index_);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
+    return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
+  }
+
   if (ui_event.event_type != GROOVEPUTER_KEY_DOWN) {
     return handleEventLegacy(ui_event);
+  }
+
+  if (GroovePuterMaterialDevelopmentUx::isDevelopEvent(ui_event) && !note_entry_mode_) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Revoice);
+  }
+  if (GroovePuterMaterialDevelopmentUx::isVaryEvent(ui_event)) {
+    return GroovePuterMaterialDevelopmentUx::handleDevelop(
+        mini_acid_, voice_index_, GroovePuterDevelopment::TransformationKind::Connect);
   }
 
   char key = ui_event.key;
   if (key == 0 && ui_event.scancode >= GROOVEPUTER_F1 &&
       ui_event.scancode <= GROOVEPUTER_F8) {
     key = static_cast<char>('1' + (ui_event.scancode - GROOVEPUTER_F1));
+  }
+  // These letters also arrive as scancode-only UI events. NOTE ENTRY must
+  // consume them as pitches before the command/legacy generation paths.
+  if (key == 0 && (ui_event.scancode == GROOVEPUTER_G ||
+                   ui_event.scancode == GROOVEPUTER_P ||
+                   ui_event.scancode == GROOVEPUTER_L)) {
+    key = ui_event.scancode == GROOVEPUTER_G ? 'g'
+        : ui_event.scancode == GROOVEPUTER_P ? 'p' : 'l';
   }
   const char lowerKey = key
       ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
@@ -614,39 +1008,45 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
-  // Cardputer ADV emits the physical arrow legends through Fn-modified
-  // punctuation HID codes, so those events carry meta=true. NOTE ENTRY owns
-  // arrow scancodes explicitly before the legacy/meta router can reject them.
+  // Cardputer ADV reserves four punctuation-key positions as physical arrows.
+  // Fn may additionally set meta=true, but HID navigation is authoritative in
+  // either case. NOTE ENTRY owns the arrow scancode before legacy/meta routing.
   if (note_entry_mode_ && gridArrow && !ui_event.alt && !ui_event.ctrl) {
     focus_ = Focus::Steps;
     if (has_selection_) clearSelection();
     resetNoteHoldTracking();
 
+    if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+      return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, false);
+    }
     const int step = activePatternStep();
     int row = step / kPatternStepColumns;
     int col = step % kPatternStepColumns;
-    switch (nav) {
-      case GROOVEPUTER_LEFT:
-        col = (col + kPatternStepColumns - 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_RIGHT:
-        col = (col + 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_UP:
-        row = std::max(0, row - 1);
-        break;
-      case GROOVEPUTER_DOWN:
-        row = std::min(kPatternStepRows - 1, row + 1);
-        break;
-      default:
-        break;
-    }
+    col = nav == GROOVEPUTER_LEFT
+        ? (col + kPatternStepColumns - 1) % kPatternStepColumns
+        : (col + 1) % kPatternStepColumns;
     pattern_edit_cursor_ = row * kPatternStepColumns + col;
     return true;
   }
 
   if (note_entry_mode_ && !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
     const bool isBackspace = key == '\b' || key == 0x7F;
+    if (isBackspace && has_selection_) {
+      // A selection is cleared as a whole, matching Backspace outside NOTE ENTRY.
+      int min_row, max_row, min_col, max_col;
+      getSelectionBounds(min_row, max_row, min_col, max_col);
+      commitPatternMutation([&](SynthPattern& pattern) {
+        for (int r = min_row; r <= max_row; ++r) {
+          for (int c = min_col; c <= max_col; ++c) {
+            GroovePuterUndo::PatternEdit::clearStep(pattern, r * kPatternStepColumns + c);
+          }
+        }
+      });
+      clearSelection();
+      UI::showToast("SELECTION CLEARED");
+      resetNoteHoldTracking();
+      return true;
+    }
     if (isBackspace) {
       const int step = activePatternStep();
       commitPatternMutation([&](SynthPattern& pattern) {
@@ -662,7 +1062,11 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
 
-    if (key == ';' || key == ':') {
+    // Cardputer reserves ;/: as the physical Up-arrow position. C is the
+    // reachable NOTE ENTRY command for copying the last entered pitch to the
+    // current step; Ctrl+C remains the normal clipboard command outside this
+    // unmodified local branch.
+    if (lowerKey == 'c') {
       if (last_entered_note_ >= 0) {
         const int step = activePatternStep();
         writeNoteEntryStep(step, last_entered_note_, false);
@@ -676,12 +1080,37 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       return true;
     }
 
+    // -/= move the entry row one octave, as they do for PERFORM. Only inside
+    // NOTE ENTRY: outside it these keys keep their own meaning.
+    if (key == '-' || key == '=') {
+      shiftEntryOctave(key == '-' ? -1 : 1);
+      resetNoteHoldTracking();
+      return true;
+    }
+
     if (handleNoteEntryKey(key)) return true;
 
     // Any other local command ends hold inference so a later press cannot be
     // mistaken for a held-key repeat. The last entered pitch is intentionally
-    // retained so ';' can still recall it after navigation.
+    // retained so C can still recall it after navigation.
     resetNoteHoldTracking();
+  }
+
+  // L: pair view AND pair play as one toggle (outside NOTE ENTRY, where L is
+  // a pitch). Ctrl+L does nothing here.
+  if (!note_entry_mode_ && lowerKey == 'l' &&
+      !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    return togglePairViewAndPlay();
+  }
+  if (!note_entry_mode_ && lowerKey == 'l' && ui_event.ctrl) {
+    return true;
+  }
+
+  if (!note_entry_mode_ && lowerKey == 'p' &&
+      !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    const auto level = GroovePuterState::cycleGenerationLevel();
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
+    return true;
   }
 
   // Outside NOTE ENTRY, plain G rerolls only this physical synth voice through
@@ -690,6 +1119,16 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
   // the retained legacy handler.
   if (!note_entry_mode_ && keyG &&
       !ui_event.ctrl && !ui_event.meta && !ui_event.alt) {
+    if (cursorOnNextSlot()) {
+      UI::showToast("G: ROWS 1-2 ONLY", 900);
+      return true;
+    }
+    // GEN panel TARGET MELODY: the phrase goes into this synth's Melody.
+    if (GroovePuterState::generationTarget() ==
+        GroovePuterState::GenerationTarget::Melody) {
+      return SynthSequencerPage::generateMelodyFor(mini_acid_, audio_guard_,
+                                                   voice_index_);
+    }
     using GroovePuterRhythm::QuantizedGenerationResult;
     QuantizedGenerationResult result = QuantizedGenerationResult::Failed;
     const auto generate = [&]() {
@@ -711,18 +1150,70 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       label = "GEN -> NEXT BAR";
     else if (result == QuantizedGenerationResult::AttemptUnavailable)
       label = "GEN ATTEMPT FULL";
+    else if (result == QuantizedGenerationResult::Busy)
+      label = "GEN BUSY: WAIT";
+
+    if (result == QuantizedGenerationResult::Failed) {
+      const Scene& scene = mini_acid_.sceneManager().currentScene();
+      LOG_WARN_UI("Synth G refused: voice=%d status=%u genre=%u recipe=%u rhythm=%u/%u level=%u page=%d",
+                  voice_index_,
+                  static_cast<unsigned>(GroovePuterRhythm::quantizedGenerationStatus()),
+                  static_cast<unsigned>(scene.genre.generativeMode),
+                  static_cast<unsigned>(scene.genre.recipe),
+                  static_cast<unsigned>(scene.genre.rhythmSelectionMode),
+                  static_cast<unsigned>(scene.genre.rhythmArchetypeId),
+                  static_cast<unsigned>(GroovePuterState::currentGenerationLevel()),
+                  mini_acid_.currentPageIndex());
+    }
     UI::showToast(label, 1200);
     return true;
   }
 
-  // Global navigation, pattern rotation/FX editing and meta note editing keep
-  // their existing behavior. Only unmodified/selection arrows are grid-owned.
+  // On Cardputer the physical punctuation/arrow keys can carry meta=true
+  // through Fn. Resolve Alt+vertical-arrow here before the retained meta-note
+  // branch so Alt+Fn+Up/Down cannot accidentally edit pitch. Plain Alt+Up/Down
+  // uses this same owner as well, leaving one authoritative Retrig-count path.
+  if (!note_entry_mode_ && ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    ensureStepFocus();
+    const int step = activePatternStep();
+    const int delta = nav == GROOVEPUTER_UP ? 1 : -1;
+    bool retrigActive = false;
+    uint8_t retrigCount = 0;
+    const PatternMutationResult result = commitPatternMutation(
+        [&](SynthPattern& pattern) {
+          retrigActive =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]) != 0;
+          if (retrigActive) {
+            GroovePuterUndo::PatternEdit::adjustFxParam(
+                pattern, step, delta);
+          }
+          retrigCount =
+              GroovePuterUndo::PatternEdit::effectiveRetrigCount(
+                  pattern.steps[step]);
+        });
+    if (result == PatternMutationResult::Invalid) {
+      UI::showToast("RETRIG FAILED", 800);
+    } else if (!retrigActive) {
+      UI::showToast("RETRIG OFF", 800);
+    } else {
+      char label[16];
+      std::snprintf(label, sizeof(label), "RETRIG R%u",
+                    static_cast<unsigned>(retrigCount));
+      UI::showToast(label, 800);
+    }
+    return true;
+  }
+
+  // Global navigation, pattern rotation and meta note editing keep their
+  // existing behavior. Only unmodified/selection arrows are grid-owned.
   if (UIInput::isGlobalNav(ui_event)) {
     return handleEventLegacy(ui_event);
   }
 
   if (gridArrow && !ui_event.alt && !ui_event.meta) {
-    const bool extendSelection = ui_event.shift || ui_event.ctrl;
+    const bool extendSelection = ui_event.ctrl;
     if (extendSelection && selection_locked_) selection_locked_ = false;
 
     focus_ = Focus::Steps;
@@ -739,25 +1230,15 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
     if (extendSelection) updateSelection();
 
+    if (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN) {
+      return moveGridRow(nav == GROOVEPUTER_UP ? -1 : 1, extendSelection);
+    }
     const int step = activePatternStep();
     int row = step / kPatternStepColumns;
     int col = step % kPatternStepColumns;
-    switch (nav) {
-      case GROOVEPUTER_LEFT:
-        col = (col + kPatternStepColumns - 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_RIGHT:
-        col = (col + 1) % kPatternStepColumns;
-        break;
-      case GROOVEPUTER_UP:
-        row = std::max(0, row - 1);
-        break;
-      case GROOVEPUTER_DOWN:
-        row = std::min(kPatternStepRows - 1, row + 1);
-        break;
-      default:
-        break;
-    }
+    col = nav == GROOVEPUTER_LEFT
+        ? (col + kPatternStepColumns - 1) % kPatternStepColumns
+        : (col + 1) % kPatternStepColumns;
     pattern_edit_cursor_ = row * kPatternStepColumns + col;
     return true;
   }
@@ -771,9 +1252,14 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
     }
     if (patternIdx >= 0) {
       if (mini_acid_.songModeEnabled()) return true;
+      if (mini_acid_.hasUnsavedWorkingMelody(voice_index_) &&
+          patternIdx != mini_acid_.display303LocalPatternIndex(voice_index_)) {
+        UI::showToast("ALT+ENTER SAVE", 1200);
+        return true;
+      }
       setPatternCursor(patternIdx);
       withAudioGuard([&]() {
-        mini_acid_.set303PatternIndex(voice_index_, patternIdx);
+        mini_acid_.tryManual303TargetSwitch(voice_index_, patternIdx);
       });
       if (chaining_mode_) {
         const SongTrack track = voice_index_ == 0

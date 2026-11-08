@@ -124,7 +124,7 @@ for needle in (
 # Multi-bar Stage 12 remains opt-in here only; unsupported one-bar identities
 # receive deterministic strong variations instead of being mislabeled evolved.
 for needle in (
-    "ReferenceVocabulary::phraseEvolutionEnabled",
+    "phraseEvolutionAdmitted(auditionSettings, selection.archetype)",  # P0-B2: per-scenario admission (Acid/House excluded)
     "ReferenceVocabulary::phraseEvolutionCatalog()",
     "evolveMultiBarPhrase(request)",
     "AppliedEvolved",

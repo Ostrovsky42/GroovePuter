@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 
@@ -42,6 +43,15 @@ public:
     static constexpr uint32_t kIntervalsToLock = 6;
     static constexpr std::size_t kMedianWindow = 5;
     static constexpr double kProjectStepsPerClockPulse = 1.0 / 6.0;
+    // USB delivers F8 on 1 ms frame boundaries, so one pulse interval at
+    // 128 BPM (19.5 ms) is only known to about 5%. The tempo is measured
+    // across up to two beats of accepted pulses instead: the same 1 ms error
+    // spread over ~940 ms is ~0.1%.
+    static constexpr std::size_t kBaselineAnchors = 48;
+    // A short span that disagrees with the long baseline by more than this
+    // is a real tempo change, not USB jitter: restart the baseline from it.
+    static constexpr std::size_t kTempoChangeSpanPulses = 6;
+    static constexpr double kTempoChangeRatio = 0.04;
 
     void reset() {
         *this = ExternalMidiClockTracker{};
@@ -63,11 +73,8 @@ public:
             lastTimingPulseMicros_ = timestampMicros;
             lastObservedPulseMicros_ = timestampMicros;
             pulseCount_ += observedPulseCount;
-            if (transportRunning_) {
-                absoluteProjectSteps_ +=
-                    static_cast<double>(observedPulseCount) *
-                    kProjectStepsPerClockPulse;
-            }
+            advancePhase(observedPulseCount);
+            pushAnchor(timestampMicros, pulseOrdinal);
             if (state_ == ExternalClockLockState::Waiting) {
                 state_ = ExternalClockLockState::Locking;
             }
@@ -85,10 +92,7 @@ public:
         if (phaseGap > observedPulseCount) {
             pulseGaps_ += phaseGap - observedPulseCount;
         }
-        if (transportRunning_) {
-            absoluteProjectSteps_ +=
-                static_cast<double>(phaseGap) * kProjectStepsPerClockPulse;
-        }
+        advancePhase(phaseGap);
 
         if (!haveTimingPulse_) {
             haveTimingPulse_ = true;
@@ -114,6 +118,7 @@ public:
             // accepted tempo anchor or median window.
             ++intervalOutliers_;
             consecutiveValidIntervals_ = 0;
+            anchorCount_ = 0;
             if (state_ != ExternalClockLockState::Lost) {
                 state_ = ExternalClockLockState::Locking;
             }
@@ -125,15 +130,28 @@ public:
         intervals_[intervalWriteIndex_] = perPulseUs;
         intervalWriteIndex_ = (intervalWriteIndex_ + 1u) % kMedianWindow;
         if (intervalCount_ < kMedianWindow) ++intervalCount_;
+        pushAnchor(timestampMicros, pulseOrdinal);
 
-        const uint32_t median = medianInterval();
-        if (filteredPulsePeriodUs_ == 0) {
-            filteredPulsePeriodUs_ = median;
+        uint32_t baseline = 0;
+        if (baselinePeriod(baseline)) {
+            uint32_t recent = 0;
+            if (recentPeriod(recent) &&
+                std::fabs(static_cast<double>(recent) - baseline) >
+                    kTempoChangeRatio * baseline) {
+                keepNewestAnchors(kTempoChangeSpanPulses + 1u);
+                baseline = recent;
+            }
+            filteredPulsePeriodUs_ = baseline;
         } else {
-            const int64_t delta = static_cast<int64_t>(median) -
-                                  filteredPulsePeriodUs_;
-            filteredPulsePeriodUs_ = static_cast<uint32_t>(
-                static_cast<int64_t>(filteredPulsePeriodUs_) + delta / 8);
+            const uint32_t median = medianInterval();
+            if (filteredPulsePeriodUs_ == 0) {
+                filteredPulsePeriodUs_ = median;
+            } else {
+                const int64_t delta = static_cast<int64_t>(median) -
+                                      filteredPulsePeriodUs_;
+                filteredPulsePeriodUs_ = static_cast<uint32_t>(
+                    static_cast<int64_t>(filteredPulsePeriodUs_) + delta / 8);
+            }
         }
 
         if (consecutiveValidIntervals_ < UINT32_MAX) {
@@ -145,10 +163,15 @@ public:
         return true;
     }
 
+    // The first F8 after Start is the downbeat itself (MIDI 1.0: the receiver
+    // starts on that clock), so it does not advance the position. After
+    // Continue the last clock before Stop was already played, so the next one
+    // advances normally.
     void onStart(uint32_t timestampMicros) {
         (void)timestampMicros;
         ++transportEpoch_;
         transportRunning_ = true;
+        downbeatPending_ = true;
         absoluteProjectSteps_ = 0.0;
         ++startCount_;
     }
@@ -170,6 +193,7 @@ public:
         if (state_ != ExternalClockLockState::Lost) ++lostTransitions_;
         state_ = ExternalClockLockState::Lost;
         transportRunning_ = false;
+        anchorCount_ = 0;
     }
 
     void update(uint32_t nowMicros) {
@@ -185,6 +209,7 @@ public:
             if (state_ != ExternalClockLockState::Lost) ++lostTransitions_;
             state_ = ExternalClockLockState::Lost;
             transportRunning_ = false;
+            anchorCount_ = 0;
             return;
         }
         if (elapsedUs > holdTimeoutUs &&
@@ -220,7 +245,8 @@ public:
     }
 
     double predictedAbsoluteProjectSteps(uint32_t nowMicros) const {
-        if (!transportRunning_ || filteredPulsePeriodUs_ == 0 ||
+        if (!transportRunning_ || downbeatPending_ ||
+            filteredPulsePeriodUs_ == 0 ||
             state_ == ExternalClockLockState::Lost) {
             return absoluteProjectSteps_;
         }
@@ -233,6 +259,8 @@ public:
 
     ExternalClockLockState state() const { return state_; }
     bool transportRunning() const { return transportRunning_; }
+    // True between Start and the downbeat F8 that follows it.
+    bool downbeatPending() const { return downbeatPending_; }
     uint32_t transportEpoch() const { return transportEpoch_; }
     uint32_t pulseGapCount() const { return pulseGaps_; }
     uint32_t intervalOutlierCount() const { return intervalOutliers_; }
@@ -243,6 +271,57 @@ public:
     uint32_t stopCount() const { return stopCount_; }
 
 private:
+    void advancePhase(uint32_t pulses) {
+        if (!transportRunning_) return;
+        if (downbeatPending_ && pulses > 0) {
+            downbeatPending_ = false;
+            --pulses;
+        }
+        absoluteProjectSteps_ +=
+            static_cast<double>(pulses) * kProjectStepsPerClockPulse;
+    }
+
+    void pushAnchor(uint32_t timestampMicros, uint32_t pulseOrdinal) {
+        anchorMicros_[anchorWriteIndex_] = timestampMicros;
+        anchorOrdinals_[anchorWriteIndex_] = pulseOrdinal;
+        anchorWriteIndex_ = (anchorWriteIndex_ + 1u) % kBaselineAnchors;
+        if (anchorCount_ < kBaselineAnchors) ++anchorCount_;
+    }
+
+    // Index of the anchor `back` positions before the newest one.
+    std::size_t anchorIndex(std::size_t back) const {
+        return (anchorWriteIndex_ + kBaselineAnchors - 1u - back) %
+               kBaselineAnchors;
+    }
+
+    bool spanPeriod(std::size_t back, uint32_t& periodUs) const {
+        if (back == 0 || back >= anchorCount_) return false;
+        const std::size_t newest = anchorIndex(0);
+        const std::size_t oldest = anchorIndex(back);
+        const uint32_t pulses =
+            anchorOrdinals_[newest] - anchorOrdinals_[oldest];
+        const uint32_t elapsedUs =
+            anchorMicros_[newest] - anchorMicros_[oldest];
+        if (pulses == 0 || elapsedUs == 0) return false;
+        periodUs = static_cast<uint32_t>(
+            (static_cast<uint64_t>(elapsedUs) + pulses / 2u) / pulses);
+        return true;
+    }
+
+    bool baselinePeriod(uint32_t& periodUs) const {
+        if (anchorCount_ < kTempoChangeSpanPulses + 1u) return false;
+        return spanPeriod(anchorCount_ - 1u, periodUs);
+    }
+
+    bool recentPeriod(uint32_t& periodUs) const {
+        if (anchorCount_ <= kTempoChangeSpanPulses + 1u) return false;
+        return spanPeriod(kTempoChangeSpanPulses, periodUs);
+    }
+
+    void keepNewestAnchors(std::size_t count) {
+        if (anchorCount_ > count) anchorCount_ = count;
+    }
+
     uint32_t medianInterval() const {
         std::array<uint32_t, kMedianWindow> sorted{};
         for (std::size_t i = 0; i < intervalCount_; ++i) {
@@ -265,9 +344,14 @@ private:
     uint32_t transportEpoch_{0};
     uint64_t pulseCount_{0};
     double absoluteProjectSteps_{0.0};
+    std::array<uint32_t, kBaselineAnchors> anchorMicros_{};
+    std::array<uint32_t, kBaselineAnchors> anchorOrdinals_{};
+    std::size_t anchorWriteIndex_{0};
+    std::size_t anchorCount_{0};
     bool haveTimingPulse_{false};
     bool havePhasePulse_{false};
     bool transportRunning_{false};
+    bool downbeatPending_{false};
     uint32_t pulseGaps_{0};
     uint32_t intervalOutliers_{0};
     uint32_t holdTransitions_{0};

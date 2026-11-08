@@ -19,6 +19,15 @@ ARDUINO_BUILD_PATH="${ARDUINO_BUILD_PATH:-${BUILD_PATH}/.arduino-build}"
 # so reserve 32 KiB for the control/UI task. Keep the audio task unchanged.
 ARDUINO_LOOP_STACK_SIZE="${ARDUINO_LOOP_STACK_SIZE:-32768}"
 
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  SOURCE_DATE_EPOCH="$(git -C "${PROJECT_ROOT}" log -1 --format=%ct HEAD)"
+fi
+if [[ ! "${SOURCE_DATE_EPOCH}" =~ ^[0-9]+$ ]]; then
+  echo "SOURCE_DATE_EPOCH must be an integer Unix timestamp" >&2
+  exit 2
+fi
+export SOURCE_DATE_EPOCH
+
 if ! command -v "${ARDUINO_CLI}" >/dev/null 2>&1; then
   echo "arduino-cli was not found: ${ARDUINO_CLI}" >&2
   echo "Install it or set ARDUINO_CLI=/absolute/path/to/arduino-cli" >&2
@@ -30,14 +39,22 @@ echo "FQBN: ${FQBN}"
 echo "Output: ${BUILD_PATH}"
 
 # Arduino CLI requires the sketch directory name to match GroovePuter.ino.
-# The repository is named miniacid, so stage the current checkout under the
-# required directory name without changing the user's branch or files.
-TEMP_ROOT="$(mktemp -d /tmp/grooveputer-build.XXXXXX)"
+# Keep the stage path stable under BUILD_PATH so it cannot affect __FILE__ or
+# debug paths differently between builds of the same source.
+BUILD_PATH="$(realpath -m "${BUILD_PATH}")"
+ARDUINO_BUILD_PATH="$(realpath -m "${ARDUINO_BUILD_PATH}")"
+if [[ "${BUILD_PATH}" == "/" ]]; then
+  echo "BUILD_PATH must not be the filesystem root" >&2
+  exit 2
+fi
+TEMP_ROOT="${BUILD_PATH}/.source-stage"
 cleanup() {
   rm -rf "${TEMP_ROOT}"
 }
 trap cleanup EXIT
 
+mkdir -p "${BUILD_PATH}"
+rm -rf "${TEMP_ROOT}"
 mkdir -p "${TEMP_ROOT}/GroovePuter"
 mkdir -p "${BUILD_PATH}"
 mkdir -p "${ARDUINO_BUILD_PATH}"
@@ -50,13 +67,20 @@ rsync -a --delete \
 # Arduino CLI may compile nested sketch sources from generated build paths.
 # Keep the staged page directory on the include search path so quoted
 # implementation fragments remain visible without compiling them separately.
-ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages"
+# Extra flags for diagnostic-only images (memory censuses, phase traces).
+# Appended to the product defaults (DUAL OSC is always on).
+# DUAL OSC is part of the product build: the Felucca analog engine is enabled by default.
+GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS="-DGROOVEPUTER_FELUCCA_ANALOG=1 ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS:-}"
+ARDUINO_REPRODUCIBLE_PATH_FLAGS="-ffile-prefix-map=${ARDUINO_BUILD_PATH}=. -ffile-prefix-map=${BUILD_PATH}=. -ffile-prefix-map=${TEMP_ROOT}/GroovePuter=."
+ARDUINO_CPP_EXTRA_FLAGS="-DARDUINO_LOOP_STACK_SIZE=${ARDUINO_LOOP_STACK_SIZE} -I${TEMP_ROOT}/GroovePuter/src/ui/pages ${GROOVEPUTER_BUILD_EXTRA_CPP_FLAGS} ${ARDUINO_REPRODUCIBLE_PATH_FLAGS}"
+ARDUINO_C_EXTRA_FLAGS="${GROOVEPUTER_BUILD_EXTRA_C_FLAGS:-} ${ARDUINO_REPRODUCIBLE_PATH_FLAGS}"
 
 "${ARDUINO_CLI}" compile \
   --clean \
   --fqbn "${FQBN}" \
   --build-path "${ARDUINO_BUILD_PATH}" \
   --build-property "compiler.cpp.extra_flags=${ARDUINO_CPP_EXTRA_FLAGS}" \
+  --build-property "compiler.c.extra_flags=${ARDUINO_C_EXTRA_FLAGS}" \
   --output-dir "${BUILD_PATH}" \
   "$@" \
   "${TEMP_ROOT}/GroovePuter"

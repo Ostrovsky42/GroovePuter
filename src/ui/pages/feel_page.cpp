@@ -7,6 +7,7 @@
 #include "../axis_page_palette.h"
 #include "../layout_manager.h"
 #include "../ui_common.h"
+#include "../workflow_mode.h"
 #include "../../state/generation_request_state.h"
 #include "../../state/scene_revision.h"
 
@@ -93,6 +94,7 @@ void FeelPage::adjustFocused(int delta, bool fast) {
         if (next != scene.feel.swingPct) {
           scene.feel.swingPct = next;
           mini_acid_.applyFeelTimingFromScene_();
+          (void)mini_acid_.rebuildPatternRuntimeEventBank();
           changed = true;
         }
         break;
@@ -181,6 +183,7 @@ void FeelPage::applyPreset(int index) {
       scene.generatorParams.microTimingAmount = nextTiming;
       scene.generatorParams.velocityRange = nextVelocity;
       mini_acid_.applyFeelTimingFromScene_();
+      (void)mini_acid_.rebuildPatternRuntimeEventBank();
     });
     GroovePuterState::markSceneMutated();
   }
@@ -209,7 +212,7 @@ void FeelPage::draw(IGfx& gfx) {
   const int x = Layout::COL_1;
   const int width = Layout::CONTENT.w - Layout::CONTENT_PAD_X * 2;
   AxisUI::drawAxisTag(gfx, x, LayoutManager::lineY(0),
-                      "FEEL 2/2", "TIMING / VELOCITY",
+                      "FEEL 3/3", "TIMING / VELOCITY",
                       axisColor, palette);
 
   char value[48];
@@ -283,20 +286,22 @@ void FeelPage::draw(IGfx& gfx) {
       explanation = "ENTER: load all FEEL values";
       break;
   }
-  gfx.setTextColor(palette.text);
-  gfx.drawText(x + 2, LayoutManager::lineY(7) + 1, explanation);
+  UI::publishShellInfo(explanation, "FEEL");
 
   UI::drawStandardFooter(gfx,
-                         "TAB/U/D:FIELD L/R:CHANGE",
-                         "HOLD L/R:ACCEL P:LEVEL");
+                         "[TAB]GENRE U/D:FIELD L/R:CHANGE",
+                         "HOLD L/R:ACCEL P:STYLE");
 }
 
 bool FeelPage::handleEvent(UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN) return false;
 
-  if (UIInput::isTab(event)) {
-    moveFocus(1);
-    return true;
+  if (!event.ctrl && !event.alt && !event.meta) {
+    if (UIInput::isTab(event)) {
+      requestPageTransition(WorkflowPages::kGenre);
+      return true;
+    }
+    if (event.key == '[' || event.key == ']') return true;
   }
 
   const int nav = UIInput::navCode(event);
@@ -310,7 +315,7 @@ bool FeelPage::handleEvent(UIEvent& event) {
   }
   if (nav == GROOVEPUTER_LEFT || nav == GROOVEPUTER_RIGHT) {
     const int delta = nav == GROOVEPUTER_RIGHT ? 1 : -1;
-    adjustFocused(delta, event.shift || event.ctrl || event.alt);
+    adjustFocused(delta, event.ctrl || event.alt);
     return true;
   }
 
@@ -326,13 +331,13 @@ bool FeelPage::handleEvent(UIEvent& event) {
   const bool keyP = lowerKey == 'p' || event.scancode == GROOVEPUTER_P;
   if (!event.ctrl && !event.alt && !event.meta && keyP) {
     const auto level = GroovePuterState::cycleGenerationLevel();
-    UI::showToast(GroovePuterState::generationLevelShortName(level), 1200);
+    UI::showToast(GroovePuterState::generationStyleName(level), 1200);
     return true;
   }
 
   // The GENERATE workflow must not fall through to the old global I/O
-  // GrooveboxModeManager shortcuts. P is now owned above by the single
-  // P1/P2/P3 generation-request selector.
+  // GrooveboxModeManager shortcuts. P cycles the shared internal realization
+  // selector above, but the musician-facing projection is STYLE.
   if (!event.ctrl && !event.alt && !event.meta &&
       (lowerKey == 'i' || lowerKey == 'o')) {
     UI::showToast("LEGACY SYNTH GEN OFF", 1200);

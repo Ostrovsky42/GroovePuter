@@ -1,0 +1,8 @@
+{
+  "command": "bash tests/run_g6_failed_load_tests.sh",
+  "exit_code": 0,
+  "head": "a0ad73df007f498193a264d4cf3d378c8db9c35d",
+  "working_changes": "new tests/test_g6_failed_save.cpp and runner addition; acceptance documentation",
+  "log_sha256": "7d998aae104eabe8b2bd5915a92fc5ef80d54646b570b37a4c2e47892676cd5f",
+  "scope": "full G6 host runner plus Cardputer prune host dependency; no hardware gate claim"
+}

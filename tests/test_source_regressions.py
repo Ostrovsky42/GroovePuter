@@ -15,7 +15,8 @@ def require(condition: bool, message: str) -> None:
 def test_ppqn_dispatch_is_not_step_gated() -> None:
     source = (ROOT / "src/dsp/miniacid_engine.cpp").read_text(encoding="utf-8")
     loop_start = source.index("while (ticksToAdvance--)")
-    loop_end = source.index("if (gateCountdownA_", loop_start)
+    advance_pos = source.index("advanceTick();", loop_start)
+    loop_end = source.index("}", advance_pos) + 1
     dispatch_block = source[loop_start:loop_end]
 
     require("advanceTick();" in dispatch_block,
@@ -36,7 +37,7 @@ def test_all_substep_offsets_are_reachable() -> None:
                     f"step={step} offset={offset} must be visited exactly once")
 
 
-def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
+def test_adv_pa_no_gpio_and_verified_rgb_profile() -> None:
     profile = (ROOT / "src/platform/cardputer_adv_hardware.h").read_text(
         encoding="utf-8"
     )
@@ -50,10 +51,10 @@ def test_adv_amp_pin_is_not_used_as_rgb_data() -> None:
     require("pinMode(UnusedPowerAmplifierEnablePin" in profile and
             "digitalWrite(UnusedPowerAmplifierEnablePin" in profile,
             "Cardputer ADV PA compatibility overloads must not drive GPIO")
-    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (-1)" in profile,
-            "RGB output must remain disabled until a distinct ADV pin is verified")
+    require("GROOVEPUTER_CARDPUTER_ADV_RGB_LED_PIN (21)" in profile,
+            "ADV RGB data must use the verified M5Unified GPIO21 mapping")
     require("neopixelWrite(21" not in led,
-            "GPIO21 must never receive WS2812 timing on Cardputer ADV")
+            "RGB output must use the hardware profile, not a hardcoded GPIO")
 
 
 def test_cardputer_sd_has_one_hardware_mount_path() -> None:
@@ -114,13 +115,15 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     require(audio_task_pos < early_sd_pos < engine_init_pos,
             "SD must mount after reserving AudioTask and before DSP heap allocation")
 
-    smf_runtime_pos = sketch.index("beginCardputerSmfPlayerService();")
+    smf_runtime_pos = sketch.index('screenLog("4c. SMF Runtime (lazy)...")')
     require(early_sd_pos < smf_runtime_pos < engine_init_pos,
-            "SMF task and timing storage must be reserved before DSP/UI fragmentation")
+            "SMF deferral marker must remain between SD setup and engine init")
+    require("beginCardputerSmfPlayerService()" not in sketch,
+            "SMF task/timing storage must remain lazy at boot")
 
     midi_runtime_pos = sketch.index("registerCardputerUsbMidiSink(")
     require(smf_runtime_pos < midi_runtime_pos < engine_init_pos,
-            "MIDI dispatcher stack must be reserved before engine heap fragmentation")
+            "MIDI dispatcher stack must still start before engine heap fragmentation")
 
 
 def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
@@ -134,7 +137,7 @@ def test_scene_and_page_validation_share_one_scratch_buffer() -> None:
     require("PageStaging" not in paging and "g_stagingPage" not in paging,
             "pattern paging must not retain a second 22 KiB static staging buffer")
     require("Scene& staging = sceneTransactionScratch();" in paging and
-            "readAndValidatePage(const std::string& path, Scene& staging)" in paging,
+            "readAndValidatePage(const std::string& path, Scene& staging," in paging,
             "page validation must use the shared scene transaction scratch")
 
 
@@ -256,16 +259,8 @@ def test_atlas_recipe_precedes_random_fallback() -> None:
     fallback_pos = block.index("getCompiledGenerativeParams()")
     require(atlas_pos < fallback_pos,
             "compiled Atlas patterns must be attempted before random fallback")
-    # GF2-I2: Atlas material application is not a swing owner either. Swing
-    # belongs to FeelSettings; the source pattern's analysed swing is evidence
-    # about the corpus, not a live control.
     require("scene.feel.swingPct" not in block,
             "Atlas materialization must not write the musician's FEEL swing")
-
-    # GF2-I1: Atlas material application is not a tempo owner. The generation
-    # corridor of the requested genre/recipe resolves the production tempo once,
-    # and the request/candidate/commit path carries it. Atlas source BPM stays
-    # readable provenance.
     require("setBpm(" not in block,
             "Atlas materialization must not write the production tempo")
     require("atlasMetadata.bpm" in block,
@@ -332,9 +327,6 @@ def test_genre_page_profile_only_never_generates_or_retempos() -> None:
         require("doApplyTempo, requestedBpm" in call.split(";")[0],
                 "generation requests must carry the resolved corridor tempo")
 
-    # PROFILE ONLY selects language without rewriting material or tempo: both
-    # generation entries stay behind doRegenerate, and Genre Apply never writes
-    # a tempo of its own.
     require("if (doRegenerate && mini_acid_.isPlaying())" in block,
             "PLAY generation must stay behind the regenerate opt-in")
     require(block.count("regenerateWithQuantizedCommit") == 2,
@@ -446,16 +438,33 @@ def test_enter_applies_selected_recipe() -> None:
             "Enter apply block must remain explicitly bound to Enter")
     require("applyCurrent();" in command_block,
             "Enter must apply the selected recipe through the current ApplyMode")
-    require("applyCurrent(true);" in command_block,
-            "plain G must force full Stage 15 generation")
+    # 0.9.18: plain G goes through the GEN panel TARGET; STEPS is still the
+    # full Stage 15 generation.
+    require("return generateFromG();" in command_block,
+            "plain G must route through the GEN TARGET")
+    g_start = page.index("bool GenrePage::generateFromG()")
+    g_block = page[g_start:page.index("\n}\n", g_start)]
+    require("applyCurrent(true);" in g_block,
+            "plain G with TARGET STEPS must force full Stage 15 generation")
+    require("SynthSequencerPage::generateMelodyFor(" in g_block,
+            "plain G with TARGET MELODY must write the Melody")
     require("cycleApplyMode" not in command_block,
             "Enter/G generation commands must not cycle the apply mode")
 
-    footer_start = page.index("UI::drawStandardFooter(gfx")
+    footer_start = page.index("UI::drawStandardFooter(gfx",
+                              page.index("void GenrePage::draw(IGfx& gfx)"))
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
-    require('"G:GEN P:DEPTH M:APPLY"' in footer_block,
-            "Genre footer must document generation, DEPTH and ApplyMode controls")
+    require('"ENTER:APPLY G:TAKE"' in footer_block,
+            "Genre footer must show how to apply the selected profile and generate a take")
+    require('case FocusRow::Key: (void)cycleProjectKeyRoot(delta); return true;' in page,
+            "Genre KEY selector must be editable from the selected row")
+    require('"KEY"' in page and '"SCALE SELECT"' in page and
+            'openScalePopup();' in page,
+            "Genre page must open the scale list from the KEY row")
+    require('"ENT:SCALE H:HARM L/R:ROOT"' in page and
+            'openHarmonyPopup();' in page and '"HARMONY SELECT"' in page,
+            "Genre KEY footer must expose scale, root and harmony controls")
 
 
 def test_performance_workflow_boundaries() -> None:
@@ -494,8 +503,24 @@ def test_performance_workflow_boundaries() -> None:
 
     live_start = engine.index("void MiniAcid::liveNoteOn")
     live_end = engine.index("void MiniAcid::liveNoteOff", live_start)
-    require("if (playing) return;" in engine[live_start:live_end],
-            "PatternPlayer must exclusively own Synth A while transport runs")
+    live_block = engine[live_start:live_end]
+    engine_header = (ROOT / "src/dsp/miniacid_engine.h").read_text(encoding="utf-8")
+    internal_header = (ROOT / "src/input/internal_synth_output.h").read_text(encoding="utf-8")
+    internal = (ROOT / "src/input/internal_synth_output.cpp").read_text(encoding="utf-8")
+    require("if (playing) return;" not in live_block,
+            "transport-wide live lock must stay removed; Pattern ownership is arbitrated per voice")
+    require("bool patternOwnsInternalSynth(int synthIndex) const;" in engine_header and
+            "void suspendLiveNoteProjection(int synthIndex);" in engine_header,
+            "MiniAcid must expose only the minimal Pattern ownership/projection bridge")
+    require("struct MonoArbitrationState" in internal_header and
+            "bool patternOwned" in internal_header and
+            "generatedCandidate" in internal_header and
+            "directCandidate" in internal_header and
+            "otherLiveCandidate" in internal_header,
+            "InternalSynthOutput must retain the fixed-size PATTERN > GENERATED > DIRECT > OTHER LIVE arbiter")
+    require("void InternalSynthOutput::syncPatternOwnership()" in internal and
+            "engine_.patternOwnsInternalSynth" in internal,
+            "Pattern ownership must reach the internal arbiter without routing Pattern playback through the live event path")
     require("performance_keyboard_.keyDown" in display,
             "display input policy must route unhandled page keys through PerformanceKeyboard")
     require("g_performanceKeyboard.keyDown" not in sketch,
@@ -530,6 +555,12 @@ def test_ui_redraw_does_not_hold_audio_pause() -> None:
     last_scope_end = block.rfind("    }\n\n    if (needsDraw) drawUI();")
     require(last_scope_end >= 0,
             "audio mutation scope must close before the full UI redraw")
+
+
+def test_cardputer_smf_source_has_no_embedded_nul() -> None:
+    source = ROOT / "src/platform/cardputer_smf_player.cpp"
+    require(b"\x00" not in source.read_bytes(),
+            "Cardputer SMF source must use textual escape sequences, not NUL bytes")
 
 
 def test_splash_closes_display_transaction() -> None:
@@ -575,12 +606,15 @@ def test_project_midi_import_and_persistence_contracts() -> None:
     import_block = project[import_start:import_end]
     require("Select at least one MIDI route" in import_block,
             "MIDI import must reject an empty routing matrix")
-    require("if (midi_mask_a_)" in import_block and
-            "if (midi_mask_b_)" in import_block and
-            "if (midi_mask_d_)" in import_block,
-            "song population must respect the A/B/Drums routing matrix")
-    require("firstRowEmpty" in import_block and
-            "if (firstRowEmpty) songPosition = 0;" in import_block,
+    require("settings.synthAMask = midi_mask_a_;" in import_block and
+            "settings.synthBMask = midi_mask_b_;" in import_block and
+            "settings.drumMask = midi_mask_d_;" in import_block,
+            "MIDI import settings must preserve the A/B/Drums routing matrix")
+    publish_start = engine.index("bool MiniAcid::publishMidiImport")
+    publish_end = engine.index("void MiniAcid::", publish_start + 1)
+    publish_block = engine[publish_start:publish_end]
+    require("firstRowEmpty" in publish_block and
+            "if (firstRowEmpty) songPosition = 0;" in publish_block,
             "APPEND must reuse row zero in a genuinely blank song")
     require("saveSceneAs(mini_acid_.currentSceneName())" in import_block,
             "successful MIDI import must persist patterns and song rows")
@@ -686,7 +720,7 @@ def test_synth_pitch_and_live_note_contracts() -> None:
 def main() -> None:
     test_ppqn_dispatch_is_not_step_gated()
     test_all_substep_offsets_are_reachable()
-    test_adv_amp_pin_is_not_used_as_rgb_data()
+    test_adv_pa_no_gpio_and_verified_rgb_profile()
     test_genre_regeneration_uses_full_compiled_params()
     test_recipe_selects_the_matching_groovebox_mode()
     test_legacy_recipe_adapters_start_from_compiled_params()
@@ -703,6 +737,7 @@ def main() -> None:
     test_performance_workflow_boundaries()
     test_performance_settings_are_runtime_only()
     test_ui_redraw_does_not_hold_audio_pause()
+    test_cardputer_smf_source_has_no_embedded_nul()
     test_splash_closes_display_transaction()
     test_project_midi_import_and_persistence_contracts()
     test_scene_and_page_validation_share_one_scratch_buffer()

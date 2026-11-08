@@ -4,25 +4,19 @@
 
 namespace {
 constexpr float kPi = 3.14159265358979323846f;
-constexpr float kHalfPi = 1.57079632679489661923f;
 
 // Fast soft saturation to avoid expensive tanhf() in hot DSP paths.
 inline float fastSaturate(float x) {
   return x / (1.0f + fabsf(x));
 }
 
-// 7th-order sine approximation for the Chamberlin coefficient hot path.
-// cutoff/sampleRate maps to [0, pi/2] for the useful low-pass range. The
-// approximation stays within about 0.001% of sinf() at the TB303 8 kHz cap
-// while avoiding a libm transcendental call for every rendered sample.
-inline float fastSinForChamberlin(float x) {
-  if (x < 0.0f) x = 0.0f;
-  if (x > kHalfPi) x = kHalfPi;
+// Rational tan approximation for the bounded [0, .45*pi] coefficient.
+// At the product's 8 kHz / 22050 Hz limit its relative error is <0.008%.
+// Avoid a per-sample transcendental while the filter envelope moves cutoff.
+inline float fastTanForSvf(float x) {
   const float x2 = x * x;
-  return x *
-         (1.0f + x2 *
-                     (-1.0f / 6.0f +
-                      x2 * (1.0f / 120.0f + x2 * (-1.0f / 5040.0f))));
+  return x * (105.0f - 10.0f * x2) /
+         (105.0f - 45.0f * x2 + x2 * x2);
 }
 }  // namespace
 
@@ -41,28 +35,20 @@ void ChamberlinFilter::setSampleRate(float sr) {
 }
 
 float ChamberlinFilter::process(float input, float cutoffHz, float resonance) {
-  const float phase = kPi * cutoffHz / _sampleRate;
-  float f = 2.0f * fastSinForChamberlin(phase);
-  if (!isfinite(f))
-    f = 0.0f;
-  float q = 1.0f / (1.0f + resonance * 4.0f);
-  if (q < 0.06f)
-    q = 0.06f;
-
-  float hp = input - _lp - q * _bp;
-  _bp += f * hp;
-  _lp += f * _bp;
-
-  _bp = fastSaturate(_bp * 1.3f);
-
-  // Keep states bounded to avoid numeric blowups
-  const float kStateLimit = 50.0f;
-  if (_lp > kStateLimit) _lp = kStateLimit;
-  if (_lp < -kStateLimit) _lp = -kStateLimit;
-  if (_bp > kStateLimit) _bp = kStateLimit;
-  if (_bp < -kStateLimit) _bp = -kStateLimit;
-
-  return _lp;
+  // Topology-preserving state-variable low-pass. The retained class/API and
+  // two states serve the same LP1/Warm/Retro profiles. The old explicit update
+  // became unstable at reachable accented cutoffs; multiplying bandpass state
+  // by 1.3 also created autonomous oscillation at zero resonance.
+  const float cutoff = fminf(fmaxf(cutoffHz, 0.0f), _sampleRate * 0.45f);
+  const float boundedResonance = fminf(fmaxf(resonance, 0.0f), 0.95f);
+  const float g = fastTanForSvf(kPi * cutoff / _sampleRate);
+  const float damping = 1.0f / (1.0f + boundedResonance * 4.0f);
+  const float normalization = 1.0f / (1.0f + g * (g + damping));
+  const float band = (_bp + g * (input - _lp)) * normalization;
+  const float low = _lp + g * band;
+  _bp = 2.0f * band - _bp;
+  _lp = 2.0f * low - _lp;
+  return low;
 }
 
 // === DIODE FILTER (Classic Acid) ===

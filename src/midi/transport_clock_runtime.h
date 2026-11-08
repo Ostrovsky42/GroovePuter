@@ -84,6 +84,17 @@ public:
         return enabled;
     }
 
+    // While following, the master owns Start/Stop; Space only silences
+    // GroovePuter (audio and its MIDI notes) and keeps it in phase. Runtime
+    // only: never persisted, and it does not notify the settings callback.
+    bool followOutputMuted() const {
+        return followOutputMuted_.loadAcquire() != 0u;
+    }
+
+    void setFollowOutputMuted(bool muted) {
+        followOutputMuted_.storeRelease(muted ? 1u : 0u);
+    }
+
     // Applies decoded settings before registering the persistence callback.
     // This avoids rewriting NVS merely because a record was loaded or migrated.
     void applyPersistedControl(TransportClockSource source,
@@ -177,6 +188,7 @@ private:
 
     MidiRealtimeWord source_;
     MidiRealtimeWord externalFollowDisabled_;
+    MidiRealtimeWord followOutputMuted_;
     MidiRealtimeWord version_;
     MidiRealtimeWord externalState_;
     MidiRealtimeWord externalRunning_;
@@ -193,6 +205,30 @@ private:
 inline TransportClockRuntime& transportClockRuntime() {
     static TransportClockRuntime runtime;
     return runtime;
+}
+
+// While GroovePuter follows incoming MIDI Clock, Start/Stop belong to the
+// clock source. A local Play would restart the engine (all-notes-off) and run
+// it on a transport the follower does not own.
+inline bool externalClockOwnsTransport() {
+    const TransportClockRuntime& runtime = transportClockRuntime();
+    return runtime.source() == TransportClockSource::SeqtrakExternal &&
+           runtime.externalFollowEnabled();
+}
+
+// The mute takes effect only while GroovePuter actually follows; leaving MIDI
+// IN therefore restores sound without anyone having to remember the flag.
+inline bool followOutputSilenced() {
+    return externalClockOwnsTransport() &&
+           transportClockRuntime().followOutputMuted();
+}
+
+// Space while following: silence or restore GroovePuter. Returns the toast.
+inline const char* toggleFollowOutputMute() {
+    TransportClockRuntime& runtime = transportClockRuntime();
+    const bool muted = !runtime.followOutputMuted();
+    runtime.setFollowOutputMuted(muted);
+    return muted ? "GP MUTED / SPACE: SOUND" : "GP SOUND ON";
 }
 
 }  // namespace GroovePuterMidi

@@ -8,6 +8,10 @@ This file is the single source of truth for **why GroovePuter exists, what must 
 
 Implementation documents under `docs/stages/` are subordinate specifications, acceptance procedures, and historical records. They must map to an item in this file and must not silently reorder the roadmap.
 
+## Current 0.9.21 priority — Rhythm Browser
+
+The next approved product direction is manual-first rhythm discovery: **browse → audition → apply drums → play/edit/record**. A musician must be able to hear named drum candidates alone or with their existing parts and explicitly apply only drums without losing other work. The normative scope, invariants and milestone gates are in [the Rhythm Browser goal](docs/releases/0_9_21_RHYTHM_BROWSER_GOAL.md). Rhythm Browser is the current priority; further 0.9.21 features require a separate product decision and must not silently expand this work. UMG, Looper and Energy FORM are independent tracks and are excluded from this goal. Earlier roadmap text below remains historical direction, not authorization to widen this milestone.
+
 `README.md` describes the product and capabilities that are actually available on the branch. `MANUAL.md` describes current user-visible behavior. Neither file may redefine product priorities independently of this plan.
 
 ## Product thesis
@@ -212,6 +216,14 @@ AUDITION LOOP  - repeat locally or externally for selection
 SEND ONCE      - transmit one bounded pass and stop output
 PERFORM        - continuous live ownership
 ```
+
+### Smart Play restoration
+
+Restore the controller-independent Smart Play layer as bounded live-note interpretation owned by the existing `PerformanceKeyboard`. The dependency order is shared harmonic semantics and snapshots → source-owned note lifecycle → RAW/BASS/LEAD/CHORD/ARP live roles → deterministic Smart Arp → published legacy harmony → standalone UI/configuration → software acceptance and hardware handoff. Genre-aware HGS supplies future harmony snapshots through the same boundary; it does not add a second chord-quality table or let performance input mutate composition state. Hardware testing starts after the SP-7 host/core, SDL and firmware gates pass; until a person tests the Cardputer, hardware acceptance remains NOT RUN.
+
+### Unified harmonic system / genre HGS
+
+Phase A implementation is in the isolated `feature/smart-play-return` worktree. It adds bounded genre policy/genome routing, shared harmonic semantics, deterministic route memory, persisted Graph harmony for generated material, Graph capability reporting, and Song cycle/Undo integration. HGS2 software verification is recorded in `docs/superpowers/reports/2026-10-13-hgs-listening.md`; all 17 profiles are swept, while only nine currently map to device GENRE settings. Hardware and listening acceptance remain pending. The sweep reports typed four-event RETURN capacity rejections explicitly; do not interpret those requests as successful returns. Phase B semantic descriptors stay conditional on named listening evidence and an accepted blocked-value case.
 
 ### Musical boundaries by default
 

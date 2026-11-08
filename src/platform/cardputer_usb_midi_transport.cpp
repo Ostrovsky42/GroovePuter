@@ -1,3 +1,6 @@
+#include "cardputer_usb_role_runtime.h"
+#include "src/midi/latency_histogram.h"
+#include "cardputer_usb_host_midi.h"
 #include "cardputer_usb_midi_transport.h"
 #include "cardputer_usb_midi_service.h"
 
@@ -17,6 +20,10 @@
 #include "src/input/musical_event_router.h"
 #include "src/midi/midi_companion_settings.h"
 #include "src/midi/midi_control_event_queue.h"
+#include "src/midi/midi_input_dispatcher.h"
+#include "src/midi/midi_input_parser.h"
+#include "src/midi/midi_input_queue.h"
+#include "src/midi/midi_io_state.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
@@ -41,10 +48,12 @@
 namespace {
 constexpr uint8_t kCinNoteOff = 0x08;
 constexpr uint8_t kCinNoteOn = 0x09;
+constexpr uint8_t kCinPitchBend = 0x0E;
 constexpr uint8_t kCinControlChange = 0x0B;
 constexpr uint8_t kCinSingleByte = 0x0F;
 constexpr uint8_t kStatusNoteOff = 0x80;
 constexpr uint8_t kStatusNoteOn = 0x90;
+constexpr uint8_t kStatusPitchBend = 0xE0;
 constexpr uint8_t kStatusControlChange = 0xB0;
 constexpr uint8_t kStatusTimingClock = 0xF8;
 constexpr uint8_t kStatusStart = 0xFA;
@@ -79,6 +88,13 @@ constexpr uint32_t kSmfStallProbeDelayMs = 1000;
 // A 16-packet TinyUSB FIFO can reject a short chord while the receiver catches
 // up. This threshold classifies only sustained backpressure for diagnostics.
 constexpr uint32_t kUsbEndpointStallThresholdMs = 50;
+// BLOCKED on screen needs rejects within this window; older stalls are sticky
+// labels waiting for a write that may never come (quiet host or idle player).
+constexpr uint32_t kUsbBlockedFreshMs = 1000;
+// Start, Continue and Stop are state, not timing: a host that misses one keeps
+// playing or stays stopped. A rejected one is retried this many times (one
+// pacer slot each, like the SMF send limit) before it is given up.
+constexpr uint8_t kTransportSendAttemptLimit = 24;
 constexpr std::size_t kControlDrainBudget = 8;
 // Upper bound on how long the dispatcher may stay runnable without blocking.
 // The task watchdog window is seconds; 10 ms keeps sample-accurate dispatch
@@ -178,6 +194,7 @@ struct MidiDispatchDiagnostics {
     uint32_t continueSent{0};
     uint32_t stopSent{0};
     uint32_t transportSendFailures{0};
+    uint32_t transportSendRetries{0};
     uint32_t smfSent{0};
     uint32_t smfStaleGenerationDrops{0};
     uint32_t smfPanics{0};
@@ -201,7 +218,9 @@ struct MidiDispatchDiagnostics {
     uint32_t externalRxStop{0};
     uint32_t externalRxIgnored{0};
     uint32_t externalRxMasterIgnored{0};
+    uint32_t uartRxBytes{0};
     uint32_t outboundTransportSuppressed{0};
+    uint32_t followMuteDrops{0};
 };
 
 // Construction of USBMIDI registers its interface descriptor before Arduino
@@ -224,6 +243,33 @@ UsbMidiOutput g_output(
         true,
     });
 MidiControlEventQueue g_controlQueue;
+GroovePuterMidi::MidiInputQueue g_inputQueue;
+GroovePuterMidi::MidiInputParser g_inputParser;
+GroovePuterMidi::MidiIoState g_midiIoState;
+GroovePuterMidi::MidiInputDispatcher g_inputDispatcher;
+GroovePuterMidi::ExternalNoteQueue g_externalNotes;
+GroovePuterMidi::LatencyHistogram g_ringLatency;  // USB callback -> dispatch task (diagnostics)
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+uint8_t g_lastHostRaw[4][4]{};  // last four non-note packets of a Host session (acceptance diagnostics)
+uint32_t g_lastHostRawCount = 0;
+struct RampStats {  // per controller / pitch bend: shape of what a button sends (diagnostics)
+    uint8_t id = 0xFF;
+    uint32_t n = 0;
+    uint8_t mn = 255, mx = 0, last = 0;
+    void add(uint8_t value) {
+        ++n;
+        if (value < mn) mn = value;
+        if (value > mx) mx = value;
+        last = value;
+    }
+};
+RampStats g_ccStats, g_pbStats;
+#endif
+bool g_usbInputMounted = false;
+portMUX_TYPE g_inputConfigMux = portMUX_INITIALIZER_UNLOCKED;
+GroovePuterMidi::MidiInputRoutingConfig g_requestedInputConfig{};
+uint32_t g_requestedInputConfigVersion = 0;
+uint32_t g_appliedInputConfigVersion = 0;
 MusicalEventQueue* g_patternQueue = nullptr;
 ScheduledSmfMidiEventQueue* g_smfQueue = nullptr;
 ExternalMidiTransportEventQueue* g_externalTransportQueue = nullptr;
@@ -382,6 +428,30 @@ void dispatchPatternPanics() {
     }
 }
 
+// Space while following MIDI IN silences GroovePuter in place. Entering the
+// mute releases every sequenced note GroovePuter owns on the wire (Pattern and
+// MIDI Player); while muted their NoteOns are dropped before the write. NoteOn
+// carries no cleanup duty, so dropping it leaves ownership consistent. Live
+// PERFORM notes are deliberate playing and stay untouched.
+void serviceFollowMute() {
+    static bool wasSilenced = false;
+    const bool silenced = GroovePuterMidi::followOutputSilenced();
+    if (silenced && !wasSilenced) {
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthA));
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::SynthB));
+        g_patternDrumGates.clear();
+        g_output.handleMusicalEvent(
+            panicEvent(MusicalEventSource::PatternPlayer,
+                       MusicalEventTarget::Drums));
+        beginSmfCleanup();
+    }
+    wasSilenced = silenced;
+}
+
 void dispatchControlPanics() {
     const uint8_t mask = g_controlQueue.takePendingAllNotesOffMask();
     if (mask & MidiControlEventQueue::kSynthAMask) {
@@ -459,54 +529,154 @@ void drainControlEvents(std::size_t budget = kControlDrainBudget) {
     }
 }
 
+bool sameMidiInputConfig(const GroovePuterMidi::MidiInputRoutingConfig& lhs,
+                         const GroovePuterMidi::MidiInputRoutingConfig& rhs) {
+    return lhs.enabled == rhs.enabled && lhs.channelMode == rhs.channelMode &&
+           lhs.channel == rhs.channel && lhs.target == rhs.target;
+}
+
+void applyPendingMidiInputConfig() {
+    GroovePuterMidi::MidiInputRoutingConfig requested{};
+    uint32_t requestedVersion = 0;
+    portENTER_CRITICAL(&g_inputConfigMux);
+    requested = g_requestedInputConfig;
+    requestedVersion = g_requestedInputConfigVersion;
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    if (requestedVersion == g_appliedInputConfigVersion) return;
+    if (g_inputDispatcher.setConfig(requested)) {
+        g_appliedInputConfigVersion = requestedVersion;
+    }
+}
+
+bool usbHostRole() {
+#if ARDUINO_USB_CDC_ON_BOOT
+    // The core already started TinyUSB Device before setup(); a stale saved Host role
+    // (it outlives a reflash) must not turn this build's Device receive into a silent Host path.
+    return false;
+#else
+    return CardputerUsbRoleRuntime::activeRole() == UsbBootRole::Host;
+#endif
+}
+
+void syncUsbMidiInputLifecycle() {
+    const bool host = usbHostRole();
+    const bool mounted = host ? GroovePuterMidi::CardputerUsbHostMidi::isConnected()
+                              : g_transport.mounted();
+    if (mounted && !g_usbInputMounted) {
+        g_midiIoState.usbAttached();
+        g_midiIoState.usbReady(true, !host);  // a Host session only receives
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_usbInputMounted = true;
+    } else if (!mounted && g_usbInputMounted) {
+        g_midiIoState.usbDetached();
+        g_inputParser.reset(GroovePuterMidi::InputSession{
+            GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
+        g_usbInputMounted = false;
+    }
+}
+
+// Clock, Start, Continue and Stop from any input (USB or DIN) go to the one
+// follower queue. Ignored while GroovePuter owns the clock.
+void pushExternalRealtime(ExternalMidiTransportEventType type) {
+    if (GroovePuterMidi::transportClockRuntime().source() !=
+        GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
+        ++g_diagnostics.externalRxMasterIgnored;
+        return;
+    }
+
+    const uint32_t receivedAtMicros = micros();
+    switch (type) {
+        case ExternalMidiTransportEventType::Clock:
+            ++g_externalRxPulseOrdinal;
+            if (g_externalTransportQueue->tryPushClock(
+                    receivedAtMicros, g_externalRxPulseOrdinal)) {
+                ++g_diagnostics.externalRxClock;
+            }
+            break;
+        case ExternalMidiTransportEventType::Start:
+        case ExternalMidiTransportEventType::Continue:
+        case ExternalMidiTransportEventType::Stop:
+            if (g_externalTransportQueue->tryPushCritical(
+                    type, receivedAtMicros, g_externalRxPulseOrdinal)) {
+                if (type == ExternalMidiTransportEventType::Start) ++g_diagnostics.externalRxStart;
+                else if (type == ExternalMidiTransportEventType::Continue) ++g_diagnostics.externalRxContinue;
+                else ++g_diagnostics.externalRxStop;
+            }
+            break;
+    }
+}
+
+// DIN MIDI IN (Unit MIDI in SEPARATE mode). Only realtime transport bytes are
+// consumed: they are what clock follow needs. DIN notes are not routed yet, so
+// an external sequencer's own pattern cannot play the internal synths.
+void drainIncomingUartRealtime() {
+    if (g_externalTransportQueue == nullptr) return;
+    auto& uart = GroovePuterMidi::cardputerUartMidiTransport();
+    uint8_t byte = 0;
+    for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
+        if (!uart.readByte(byte)) break;
+        ++g_diagnostics.uartRxBytes;
+        ExternalMidiTransportEventType type{};
+        if (GroovePuterMidi::parseMidiRealtimeTransportByte(byte, type)) {
+            pushExternalRealtime(type);
+        }
+    }
+}
+
 void drainIncomingMidiPackets() {
     if (g_externalTransportQueue == nullptr) return;
 
+    applyPendingMidiInputConfig();
+    syncUsbMidiInputLifecycle();
     midiEventPacket_t packet{};
-    for (std::size_t drained = 0;
-         drained < kMidiRxDrainBudget && g_transport.readPacket(packet);
-         ++drained) {
-        ExternalMidiTransportEventType type{};
-        if (!GroovePuterMidi::parseUsbMidiRealtimeTransport(
-                packet.header, packet.byte1, type)) {
-            ++g_diagnostics.externalRxIgnored;
-            continue;
+    const bool hostRole = usbHostRole();
+    for (std::size_t drained = 0; drained < kMidiRxDrainBudget; ++drained) {
+        if (hostRole) {
+            uint8_t raw4[4];
+            uint32_t stampUs = 0;
+            if (!GroovePuterMidi::CardputerUsbHostMidi::popPacket(raw4, &stampUs)) break;
+            if (stampUs != 0) g_ringLatency.add(micros() - stampUs);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+            if ((raw4[1] & 0xF0u) == 0xB0u) {
+                if (g_ccStats.id != raw4[2]) g_ccStats = RampStats{raw4[2]};
+                g_ccStats.add(raw4[3]);
+            } else if ((raw4[1] & 0xF0u) == 0xE0u) {
+                g_pbStats.id = 0;
+                g_pbStats.add(raw4[3]);  // MSB
+            }
+            if ((raw4[1] & 0xF0u) != 0x80u && (raw4[1] & 0xF0u) != 0x90u) {  // not a plain note
+                std::memcpy(g_lastHostRaw[g_lastHostRawCount & 3u], raw4, 4);
+                ++g_lastHostRawCount;
+            }
+#endif
+            packet.header = raw4[0];
+            packet.byte1 = raw4[1];
+            packet.byte2 = raw4[2];
+            packet.byte3 = raw4[3];
+        } else if (!g_transport.readPacket(packet)) {
+            break;
         }
-        if (GroovePuterMidi::transportClockRuntime().source() !=
-            GroovePuterMidi::TransportClockSource::SeqtrakExternal) {
-            ++g_diagnostics.externalRxMasterIgnored;
+        ExternalMidiTransportEventType type{};
+        if (GroovePuterMidi::parseUsbMidiRealtimeTransport(
+                packet.header, packet.byte1, type)) {
+            pushExternalRealtime(type);
             continue;
         }
 
-        const uint32_t receivedAtMicros = micros();
-        switch (type) {
-            case ExternalMidiTransportEventType::Clock:
-                ++g_externalRxPulseOrdinal;
-                if (g_externalTransportQueue->tryPushClock(
-                        receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxClock;
-                }
-                break;
-            case ExternalMidiTransportEventType::Start:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStart;
-                }
-                break;
-            case ExternalMidiTransportEventType::Continue:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxContinue;
-                }
-                break;
-            case ExternalMidiTransportEventType::Stop:
-                if (g_externalTransportQueue->tryPushCritical(
-                        type, receivedAtMicros, g_externalRxPulseOrdinal)) {
-                    ++g_diagnostics.externalRxStop;
-                }
-                break;
+        const uint8_t raw[4] = {
+            packet.header, packet.byte1, packet.byte2, packet.byte3};
+        const GroovePuterMidi::ParseResult parsed = g_inputParser.usbPacket(raw, micros());
+        if (parsed.hasInput) {
+            if (!g_inputQueue.tryPush(parsed.input)) {
+                ++g_diagnostics.externalRxIgnored;
+            }
+            continue;
         }
+        ++g_diagnostics.externalRxIgnored;
     }
+    (void)g_inputDispatcher.service(g_inputQueue, kMidiRxDrainBudget);
+    g_output.servicePitchBendRetries();
 }
 
 bool deadlineFor(uint32_t blockSequence,
@@ -673,7 +843,7 @@ void logDiagnosticsIfDue() {
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
         "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
-        "transportFail=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
+        "transportFail=%u tsRetry=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
         "liveDrop=%u/%u suppressed=%u panic=%u/%u "
         // DIN endpoint. dinDropOn is the visible cost of a 1040 msg/s wire;
@@ -713,6 +883,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.continueSent),
         static_cast<unsigned>(g_diagnostics.stopSent),
         static_cast<unsigned>(g_diagnostics.transportSendFailures),
+        static_cast<unsigned>(g_diagnostics.transportSendRetries),
         static_cast<unsigned>(g_diagnostics.lateEvents),
         static_cast<unsigned>(g_diagnostics.maximumLatenessUs),
         static_cast<unsigned>(g_diagnostics.staleGenerationDrops),
@@ -830,10 +1001,18 @@ void midiDispatchTask(void*) {
     ScheduledSmfMidiEvent pendingSmf{};
     bool hasPendingMusical = false;
     bool hasPendingTransport = false;
+    uint8_t transportSendAttempts = 0;
     bool hasPendingSmf = false;
     uint8_t smfFailedAttempts = 0;
     uint32_t lastFairnessYieldMs = millis();
     uint32_t pendingSmfLatenessUs = 0;
+
+    // Any wait in this loop gives CPU0 to the idle task, so it also resets
+    // the fairness budget below (no extra 1 ms sleep right after a wait).
+    auto blockFor = [&](TickType_t ticks) {
+        ulTaskNotifyTake(pdTRUE, ticks);
+        lastFairnessYieldMs = millis();
+    };
 
     auto clearPendingSmf = [&]() {
         hasPendingSmf = false;
@@ -842,16 +1021,32 @@ void midiDispatchTask(void*) {
     };
 
     while (true) {
+        // Every branch that waits for a deadline blocks, but dispatching a
+        // due event and dropping a stale one do not. A backlog of due or
+        // stale events - a saturated queue, a resume anchored in the past -
+        // keeps this loop runnable and starves the CPU0 idle task until the
+        // task watchdog fires. The budget is checked at the top of every
+        // iteration so no `continue` can skip it (it used to sit at the end).
+        {
+            const uint32_t nowMs = millis();
+            if (nowMs - lastFairnessYieldMs >= kDispatchFairnessYieldMs) {
+                lastFairnessYieldMs = nowMs;
+                ++g_diagnostics.dispatchFairnessYields;
+                vTaskDelay(1);
+            }
+        }
         g_output.pollConnection();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
         // transport queues and this drains what the UART driver will take.
         GroovePuterMidi::cardputerUartMidiTransport().service();
         drainIncomingMidiPackets();
+        drainIncomingUartRealtime();
 
         // Existing PatternPlayer and live cleanup remain ahead of scheduled
         // lifecycle traffic. SMF cleanup is independent and cannot silence a
         // Pattern/PERFORM owner of the same physical channel+note.
+        serviceFollowMute();
         dispatchPatternPanics();
         dispatchControlPanics();
         dispatchSmfPanic();
@@ -970,7 +1165,7 @@ void midiDispatchTask(void*) {
         if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
             GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
             if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
-                ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+                blockFor(pdMS_TO_TICKS(1));
                 continue;
             }
             if (!transport.valid || !transport.playing ||
@@ -986,7 +1181,7 @@ void midiDispatchTask(void*) {
             !hasPendingDrumGate && !hasPendingSmf) {
             drainControlEvents();
             logDiagnosticsIfDue();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(2));
+            blockFor(pdMS_TO_TICKS(2));
             continue;
         }
 
@@ -1024,7 +1219,7 @@ void midiDispatchTask(void*) {
 
         if (kind == PendingKind::None) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -1054,7 +1249,7 @@ void midiDispatchTask(void*) {
         uint32_t deadlineMicros = 0;
         if (!deadlineFor(blockSequence, frameOffset, deadlineMicros)) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
 
@@ -1063,7 +1258,7 @@ void midiDispatchTask(void*) {
             deadlineMicros - nowMicros);
         if (untilDeadline > 1500) {
             drainControlEvents();
-            ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(1));
+            blockFor(pdMS_TO_TICKS(1));
             continue;
         }
         if (untilDeadline > 0) {
@@ -1106,10 +1301,17 @@ void midiDispatchTask(void*) {
                     pendingTransport,
                     g_patternQueue->transportQueue().generation())) {
                 ++g_diagnostics.clockStaleGenerationDrops;
-            } else {
-                dispatchTransportEvent(pendingTransport);
+            } else if (!dispatchTransportEvent(pendingTransport) &&
+                       pendingTransport.type != MidiTransportEventType::Clock &&
+                       transportSendAttempts < kTransportSendAttemptLimit) {
+                // Keep the event pending: the next pass retries it after the
+                // pacer slot. Clock stays drop-on-failure, it goes stale fast.
+                ++transportSendAttempts;
+                ++g_diagnostics.transportSendRetries;
+                continue;
             }
             hasPendingTransport = false;
+            transportSendAttempts = 0;
         } else if (kind == PendingKind::Pattern) {
             if (scheduledMusicalEventGenerationIsCurrent(
                     pendingMusical,
@@ -1117,6 +1319,12 @@ void midiDispatchTask(void*) {
                         pendingMusical.event.target))) {
                 bool dispatch = true;
                 if (pendingMusical.event.source ==
+                        MusicalEventSource::PatternPlayer &&
+                    pendingMusical.event.type == MusicalEventType::NoteOn &&
+                    GroovePuterMidi::followOutputSilenced()) {
+                    dispatch = false;
+                    ++g_diagnostics.followMuteDrops;
+                } else if (pendingMusical.event.source ==
                         MusicalEventSource::PatternPlayer &&
                     pendingMusical.event.target == MusicalEventTarget::Drums &&
                     pendingMusical.event.type == MusicalEventType::NoteOn) {
@@ -1168,6 +1376,10 @@ void midiDispatchTask(void*) {
                        GroovePuterMidi::smfTrackMuteState().isMuted(
                            pendingSmf.trackIndex)) {
                 ++g_diagnostics.smfStaleGenerationDrops;
+                clearPendingSmf();
+            } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
+                       GroovePuterMidi::followOutputSilenced()) {
+                ++g_diagnostics.followMuteDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
                        !projectSmfNoteOnStillCurrent(pendingSmf)) {
@@ -1228,18 +1440,6 @@ void midiDispatchTask(void*) {
         drainControlEvents(2);
         logDiagnosticsIfDue();
 
-        // Every branch that waits for a deadline blocks, but the branch that
-        // dispatches a due event does not. A backlog of already-due events -
-        // a saturated queue, or a resume anchored in the past - therefore keeps
-        // this loop runnable indefinitely and starves the CPU0 idle task until
-        // the task watchdog fires. Yield on a wall-clock budget so the fast
-        // path stays fast while fairness is guaranteed.
-        const uint32_t nowMs = millis();
-        if (nowMs - lastFairnessYieldMs >= kDispatchFairnessYieldMs) {
-            lastFairnessYieldMs = nowMs;
-            ++g_diagnostics.dispatchFairnessYields;
-            vTaskDelay(1);
-        }
     }
 }
 
@@ -1278,6 +1478,11 @@ bool CardputerUsbMidiTransport::begin() {
     // so start the already registered MIDI descriptor explicitly in that
     // configuration.
 #if !ARDUINO_USB_CDC_ON_BOOT
+    // Single binary: the saved boot role decides who owns the one USB-OTG controller.
+    if (CardputerUsbRoleRuntime::activeRole() != UsbBootRole::Device) {
+        begun_ = false;
+        return false;
+    }
     if (!USB.begin()) {
         begun_ = false;
         return false;
@@ -1435,6 +1640,15 @@ bool CardputerUsbMidiTransport::sendNoteOff(uint8_t zeroBasedChannel,
                               velocity);
 }
 
+bool CardputerUsbMidiTransport::sendPitchBend(uint8_t zeroBasedChannel,
+                                              uint16_t value14) {
+    if (value14 > 16383u) value14 = 16383u;
+    return writeChannelPacket(kCinPitchBend, kStatusPitchBend,
+                              zeroBasedChannel,
+                              static_cast<uint8_t>(value14 & 0x7fu),
+                              static_cast<uint8_t>((value14 >> 7u) & 0x7fu));
+}
+
 bool CardputerUsbMidiTransport::sendControlChange(uint8_t zeroBasedChannel,
                                                   uint8_t controller,
                                                   uint8_t value) {
@@ -1470,6 +1684,26 @@ bool registerCardputerUsbMidiSink(
 
     g_patternQueue = &patternQueue;
     g_externalTransportQueue = &externalTransportQueue;
+    // Incoming notes are for an external keyboard plugged into the Cardputer
+    // (USB Host). In the COMPUTER role the other side is a sequencer or DAW:
+    // its pattern notes must not play PERFORM or step-record into MELODY.
+    // Realtime Clock/Start/Stop is handled before this route and still follows.
+    g_midiIoState.setRoutes(GroovePuterMidi::MidiRoutes{
+        usbHostRole(), false, true, true});
+    // An external keyboard (Host) plays through the external output too; a Device session
+    // must not echo the computer's notes back to it.
+    UsbMidiOutput::setMidiInputThru(usbHostRole());
+    g_midiIoState.requestUsbRole(
+        usbHostRole() ? GroovePuterMidi::UsbRole::Host
+                      : GroovePuterMidi::UsbRole::Device);
+    g_midiIoState.boot();
+    g_inputDispatcher.bind(router, g_midiIoState);
+    g_inputDispatcher.setPerformSink(&g_externalNotes);
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    g_externalNotes.setClock([]() -> uint32_t { return micros(); });
+#endif
+    g_inputParser.reset(GroovePuterMidi::InputSession{
+        GroovePuterMidi::InputSource::Usb, g_midiIoState.usbInputGeneration()});
     g_patternDrumGates.clear();
     if (!router.addSink(g_queueSink)) {
         Serial.println("[MIDI-INIT] router sink registration failed");
@@ -1510,6 +1744,29 @@ bool registerCardputerUsbMidiSink(
     return true;
 }
 
+GroovePuterMidi::MidiInputRoutingConfig cardputerMidiInputRuntimeRoutingConfig() {
+    portENTER_CRITICAL(&g_inputConfigMux);
+    const GroovePuterMidi::MidiInputRoutingConfig config = g_requestedInputConfig;
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    return config;
+}
+
+bool applyCardputerMidiInputRuntimeRoutingConfig(
+        const GroovePuterMidi::MidiInputRoutingConfig& config) {
+    if (!GroovePuterMidi::MidiInputDispatcher::isValidConfig(config)) return false;
+    bool changed = false;
+    portENTER_CRITICAL(&g_inputConfigMux);
+    if (!sameMidiInputConfig(g_requestedInputConfig, config)) {
+        g_requestedInputConfig = config;
+        ++g_requestedInputConfigVersion;
+        if (g_requestedInputConfigVersion == 0u) ++g_requestedInputConfigVersion;
+        changed = true;
+    }
+    portEXIT_CRITICAL(&g_inputConfigMux);
+    if (changed) notifyDispatcher();
+    return true;
+}
+
 void registerCardputerSmfMidiQueue(ScheduledSmfMidiEventQueue* queue) {
     g_smfQueue = queue;
     notifyDispatcher();
@@ -1523,6 +1780,10 @@ void publishCardputerUsbMidiBlockAnchor(uint32_t blockSequence,
     notifyDispatcher();
 }
 
+uint32_t cardputerUsbMidiOutputLatencyUs() {
+    return kOutputLatencyUs;
+}
+
 bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
                                          uint32_t& playbackStartMicros) {
     return g_anchorClock.snapshot(blockSequence, playbackStartMicros);
@@ -1530,7 +1791,7 @@ bool snapshotCardputerUsbMidiBlockAnchor(uint32_t& blockSequence,
 
 CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
     const CardputerUsbMidiTransportDiagnostics usb = g_transport.diagnostics();
-    const UsbEndpointHealthSnapshot endpoint = g_endpointHealth.snapshot(millis());
+    const uint32_t nowMs = millis();
     CardputerUsbMidiStatusSnapshot snapshot{};
     snapshot.registered = g_registered;
     snapshot.started = g_transport.started();
@@ -1539,7 +1800,7 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
 #endif
     snapshot.mounted = g_transport.mounted();
     snapshot.suspended = g_transport.suspended();
-    snapshot.stalled = endpoint.state == UsbEndpointHealthState::Stalled;
+    snapshot.stalled = g_endpointHealth.isFreshlyStalled(nowMs, kUsbBlockedFreshMs);
     snapshot.txAccepted = usb.txAccepted;
     snapshot.txRejected = usb.txRejected;
     snapshot.txRejectedEndpointBusy = usb.txRejectedEndpointBusy;
@@ -1568,3 +1829,67 @@ void setCardputerDinMidiEnabled(bool enabled) {
 }
 
 bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+
+GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
+    return g_externalNotes;
+}
+
+bool cardputerMidiInputIdentityCurrent(const PerformanceInputIdentity& input) {
+    if (input.source > static_cast<uint8_t>(GroovePuterMidi::InputSource::Uart))
+        return false;
+    return g_midiIoState.acceptsInputIdentity(
+        static_cast<GroovePuterMidi::InputSource>(input.source), input.generation);
+}
+
+const GroovePuterMidi::LatencyHistogram& cardputerUsbRingLatency() { return g_ringLatency; }
+
+uint32_t cardputerUsbDispatchStackFreeBytes() {
+    return g_dispatchTaskHandle != nullptr
+        ? static_cast<uint32_t>(uxTaskGetStackHighWaterMark(g_dispatchTaskHandle) * sizeof(StackType_t))
+        : 0u;
+}
+
+void cardputerUsbClockRxText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    // Racy reads of monotonically increasing counters; display only.
+    std::snprintf(out, size, "RX pk=%lu din=%lu f8=%lu ign=%lu fa=%lu fc=%lu",
+                  static_cast<unsigned long>(g_transport.diagnostics().rxPackets),
+                  static_cast<unsigned long>(g_diagnostics.uartRxBytes),
+                  static_cast<unsigned long>(g_diagnostics.externalRxClock),
+                  static_cast<unsigned long>(g_diagnostics.externalRxMasterIgnored),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStart),
+                  static_cast<unsigned long>(g_diagnostics.externalRxStop));
+#else
+    if (size > 0) out[0] = '\0';
+#endif
+}
+
+void cardputerUsbLastRawText(char* out, size_t size) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    const uint32_t count = g_lastHostRawCount;
+    std::snprintf(out, size, "CTL n=%lu", static_cast<unsigned long>(count));
+    for (uint32_t i = 0; i < 3 && i < count; ++i) {
+        const uint8_t* p = g_lastHostRaw[(count - 1u - i) & 3u];
+        char item[16];
+        std::snprintf(item, sizeof(item), " %02X.%02X.%02X", p[1], p[2], p[3]);
+        std::strncat(out, item, size - std::strlen(out) - 1);
+    }
+#else
+    if (size > 0) out[0] = '\0';
+#endif
+}
+
+// "CC5E n=37 0..127 l=0" for the last controller seen, "PB n=12 40..88 l=64" for pitch bend (MSB).
+void cardputerUsbRampText(char* ccOut, size_t ccSize, char* pbOut, size_t pbSize) {
+#ifdef GROOVEPUTER_USB_ACCEPT_DIAG
+    if (g_ccStats.n == 0) std::snprintf(ccOut, ccSize, "CC -");
+    else std::snprintf(ccOut, ccSize, "CC%02X n=%lu %u..%u l=%u", g_ccStats.id,
+                       static_cast<unsigned long>(g_ccStats.n), g_ccStats.mn, g_ccStats.mx, g_ccStats.last);
+    if (g_pbStats.n == 0) std::snprintf(pbOut, pbSize, "PB -");
+    else std::snprintf(pbOut, pbSize, "PB n=%lu %u..%u l=%u", static_cast<unsigned long>(g_pbStats.n),
+                       g_pbStats.mn, g_pbStats.mx, g_pbStats.last);
+#else
+    if (ccSize > 0) ccOut[0] = '\0';
+    if (pbSize > 0) pbOut[0] = '\0';
+#endif
+}

@@ -31,5 +31,6 @@ COMMON_FLAGS=(
 "${BUILD_DIR}/test_output_ownership_queues"
 "${BUILD_DIR}/test_output_scene_persistence"
 python3 "${ROOT_DIR}/tests/test_output_ownership_source_contract.py"
+bash "${ROOT_DIR}/tests/run_rhythm_browser_drum_route_spike.sh"
 
 echo "0.9.6 output ownership contract gate: PASS"

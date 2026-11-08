@@ -1,4 +1,5 @@
 #include "song_page.h"
+#include "../screen_geometry.h"
 #include "../../../scenes.h"
 #include "../../debug_log.h"
 #include "../key_normalize.h"
@@ -23,6 +24,9 @@ using UI::showToast;
 
 #include "../help_dialog_frames.h"
 #include "../components/mode_button.h"
+#include "../phrase_source_toggle.h"
+#include "material_take.h"
+#include "src/state/phrase_generation_request_state.h"
 
 namespace {
 inline IGfxColor song303Color(int synthIndex) {
@@ -30,7 +34,12 @@ inline IGfxColor song303Color(int synthIndex) {
   return (synthIndex == 0) ? IGfxColor(0x00D7FF) : IGfxColor(0xFF4FD8);
 }
 
-inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
+inline void formatSongPatternLabel(const MiniAcid& engine,
+                                   SongTrack track,
+                                   int pattern,
+                                   char* out,
+                                   int outSize,
+                                   int row = -1) {
   if (!out || outSize <= 0) return;
   if (pattern < 0) {
     std::snprintf(out, outSize, "---");
@@ -43,7 +52,35 @@ inline void formatSongPatternLabel(int pattern, char* out, int outSize) {
     std::snprintf(out, outSize, "---");
     return;
   }
-  std::snprintf(out, outSize, "%d%c%d", page, static_cast<char>('A' + bank), slot);
+  int voice = -1;
+  if (track == SongTrack::SynthA) voice = 0;
+  if (track == SongTrack::SynthB) voice = 1;
+  if (voice < 0) {
+    std::snprintf(out, outSize, "%d%c%d", page,
+                  static_cast<char>('A' + bank), slot);
+    return;
+  }
+
+  char kind = '?';
+  switch (engine.songCellMaterialKind(voice, static_cast<int16_t>(pattern), row)) {
+    case MiniAcid::SongCellMaterialKind::Pattern: kind = 'P'; break;
+    case MiniAcid::SongCellMaterialKind::Melody: kind = 'M'; break;
+    case MiniAcid::SongCellMaterialKind::Unknown: kind = '?'; break;
+    case MiniAcid::SongCellMaterialKind::Empty: kind = '-'; break;
+  }
+  std::snprintf(out, outSize, "%c%d%c%d", kind, page,
+                static_cast<char>('A' + bank), slot);
+}
+
+inline const char* songVoiceStateLabel(MiniAcid::SongVoiceDisplayState state) {
+  switch (state) {
+    case MiniAcid::SongVoiceDisplayState::Pattern: return "PAT";
+    case MiniAcid::SongVoiceDisplayState::Melody: return "MEL";
+    case MiniAcid::SongVoiceDisplayState::Held: return "HOLD";
+    case MiniAcid::SongVoiceDisplayState::Awaiting: return "WAIT";
+    case MiniAcid::SongVoiceDisplayState::LoadFailed: return "FAIL";
+    default: return "?";
+  }
 }
 
 inline int songQuarterFromRow(int row) {
@@ -219,9 +256,18 @@ const char* SongPage::trackHeaderLabel(int col) const {
   bool valid = false;
   SongTrack track = trackForColumn(col, valid);
   if (!valid) return "--";
+  // A:P = that voice plays STEPS, A:M = it plays MELODY; the source flips with Opt.
+  static char synthLabel[2][4];
   switch (track) {
-    case SongTrack::SynthA: return "A";
-    case SongTrack::SynthB: return "B";
+    case SongTrack::SynthA:
+    case SongTrack::SynthB: {
+      const int voice = track == SongTrack::SynthA ? 0 : 1;
+      const bool melody =
+          mini_acid_.currentSequencedSource(voice) == MiniAcid::SequencedSource::Phrase;
+      std::snprintf(synthLabel[voice], sizeof(synthLabel[voice]), "%c:%c",
+                    voice == 0 ? 'A' : 'B', melody ? 'M' : 'P');
+      return synthLabel[voice];
+    }
     case SongTrack::Drums: return "DR";
     //case SongTrack::Voice: return "VO";
     default: return "--";
@@ -342,9 +388,55 @@ void SongPage::moveCursorToRow(int row) {
   syncSongPositionToCursor();
 }
 
+void SongPage::tick() {
+  applyPendingOpen();
+}
+
+void SongPage::onExit() {
+  // Leaving SONG ends a waiting open: it must not fire later against another cell.
+  pending_open_.active = false;
+}
+
+void SongPage::applyPendingOpen() {
+  if (!pending_open_.active) return;
+  if (mini_acid_.currentPageIndex() != pending_open_.page) {
+    // Still loading is fine only while that page is the target; anything else
+    // (another page requested, the load gave up) ends the open.
+    if (mini_acid_.targetPageIndex() != pending_open_.page) pending_open_.active = false;
+    return;
+  }
+  pending_open_.active = false;
+  // The cell must still hold the pattern that was asked for.
+  if (mini_acid_.songPatternAt(pending_open_.row, pending_open_.track) !=
+      pending_open_.globalPattern) {
+    return;
+  }
+  bool moved = false;
+  withAudioGuard([&]() {
+    moved = mini_acid_.tryManual303TargetSwitch(pending_open_.voice, pending_open_.bank,
+                                                pending_open_.pattern);
+  });
+  if (!moved) {
+    UI::showToast(mini_acid_.hasUnsavedWorkingMelody(pending_open_.voice) ? "SAVE MELODY FIRST"
+                                                                          : "SAVE STEPS FIRST",
+                  1000);
+    return;
+  }
+  char toast[32];
+  std::snprintf(toast, sizeof(toast), "Edit: %s", pending_open_.label);
+  UI::showToast(toast, 800);
+  requestPageTransition(pending_open_.targetPage);
+}
+
+void SongPage::onEnter(int context) {
+  if (context > 0) cursor_row_ = clampCursorRow(context - 1);
+}
+
 void SongPage::saveMarker(int marker_index) {
   if (marker_index < 0 || marker_index >= 4) return;
-  row_markers_[marker_index] = cursorRow();
+  mini_acid_.sceneManager().currentScene().songMarks[marker_index] =
+      static_cast<int16_t>(cursorRow());
+  GroovePuterState::markSceneMutated();
   char toast[32];
   std::snprintf(toast, sizeof(toast), "Mark %d: %d", marker_index + 1, cursorRow() + 1);
   showToast(toast, 900);
@@ -352,7 +444,7 @@ void SongPage::saveMarker(int marker_index) {
 
 bool SongPage::jumpToMarker(int marker_index) {
   if (marker_index < 0 || marker_index >= 4) return false;
-  int row = row_markers_[marker_index];
+  const int row = mini_acid_.sceneManager().currentScene().songMarks[marker_index];
   if (row < 0) {
     char toast[24];
     std::snprintf(toast, sizeof(toast), "Mark %d empty", marker_index + 1);
@@ -469,8 +561,8 @@ void SongPage::getSelectionBounds(int& min_row, int& max_row, int& min_track, in
 }
 
 void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
-  int before_row = cursor_row_;
-  int before_track = cursor_track_;
+  [[maybe_unused]] int before_row = cursor_row_;
+  [[maybe_unused]] int before_track = cursor_track_;
   int before_slot = mini_acid_.activeSongSlot();
   if (extend_selection) {
     updateSelection();
@@ -525,8 +617,8 @@ void SongPage::moveCursorHorizontal(int delta, bool extend_selection) {
 
 void SongPage::moveCursorVertical(int delta, bool extend_selection) {
   if (delta == 0) return;
-  int before_row = cursor_row_;
-  int before_track = cursor_track_;
+  [[maybe_unused]] int before_row = cursor_row_;
+  [[maybe_unused]] int before_track = cursor_track_;
   if (cursorOnModeButton()) {
     // If on sidebar, Up/Down does nothing or scrolls? 
     // Let's allow vertical movement within the grid but keep focus on sidebar if it was meant to be a vertical list.
@@ -870,9 +962,13 @@ bool SongPage::toggleSongMode() {
 bool SongPage::toggleLoopMode() {
   if (mini_acid_.loopModeEnabled()) {
     withAudioGuard([&]() { mini_acid_.setLoopMode(false); });
+    showToast("LOOP OFF", 800);
     return true;
   }
-  if (!has_selection_) return false;
+  if (!has_selection_) {
+    showToast("LOOP: SELECT ROWS FIRST", 1100);
+    return true;
+  }
   int min_row, max_row, min_track, max_track;
   getSelectionBounds(min_row, max_row, min_track, max_track);
   (void)min_track;
@@ -881,6 +977,9 @@ bool SongPage::toggleLoopMode() {
     mini_acid_.setLoopRange(min_row, max_row);
     mini_acid_.setLoopMode(true);
   });
+  char msg[24];
+  std::snprintf(msg, sizeof(msg), "LOOP ROWS %d-%d", min_row + 1, max_row + 1);
+  showToast(msg, 1000);
   return true;
 }
 
@@ -966,12 +1065,14 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
           g_song_area_clipboard.has_area = true;
           g_song_pattern_clipboard.has_pattern = false; // Clear single-cell clipboard
           selection_locked_ = true;
+          showToast("COPIED AREA", 800);
         } else {
           // Copy single cell
           int row = cursorRow();
           g_song_pattern_clipboard.pattern_index = mini_acid_.songPatternAt(row, track);
           g_song_pattern_clipboard.has_pattern = true;
           g_song_area_clipboard.has_area = false; // Clear area clipboard
+          showToast("COPIED CELL", 800);
         }
         return true;
       }
@@ -1169,6 +1270,21 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   }
 
   int nav = UIInput::navCode(ui_event);
+  // Cardputer reserves the ; , . / physical positions for arrows, so the old
+  // Alt+, / Alt+. Top/End shortcuts are not hardware-reachable. Keep plain
+  // Alt+Up/Down for value editing and use the explicit Ctrl+Alt chord for the
+  // long-distance Song jump.
+  if (ui_event.ctrl && ui_event.alt &&
+      (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
+    if (nav == GROOVEPUTER_UP) {
+      moveCursorToRow(0);
+      showToast("Top", 500);
+    } else {
+      moveCursorToRow(mini_acid_.songLength() - 1);
+      showToast("End", 500);
+    }
+    return true;
+  }
   if (ui_event.alt && (nav == GROOVEPUTER_UP || nav == GROOVEPUTER_DOWN)) {
     int delta = nav == GROOVEPUTER_UP ? 1 : -1;
     if (cursorOnPlayheadLabel()) return adjustSongPlayhead(delta);
@@ -1177,7 +1293,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
 
   bool handled = false;
   // Cardputer keyboard may not have a practical Shift key, allow Ctrl as selection modifier too.
-  bool extend_selection = ui_event.shift || ui_event.ctrl;
+  bool extend_selection = ui_event.ctrl;
   if (extend_selection && selection_locked_) selection_locked_ = false;
   if (selection_locked_ && has_selection_ && !extend_selection) {
     switch (nav) {
@@ -1226,29 +1342,17 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       break;
   }
   
-  // Home/End via Alt + < / > (prevent accidental jumps with plain comma/dot)
-  if (ui_event.alt && (ui_event.key == '<' || ui_event.key == ',')) {
-     moveCursorToRow(0);
-     showToast("Top", 500);
-     return true;
-  }
-  if (ui_event.alt && (ui_event.key == '>' || ui_event.key == '.')) {
-     moveCursorToRow(mini_acid_.songLength() - 1);
-     showToast("End", 500);
-     return true;
-  }
-
   if (handled) return true;
 
   char key = ui_event.key;
-  if (!key) return false;
+  if (!key && ui_event.scancode == GROOVEPUTER_NO_SCANCODE) return false;
 
   // Log modifier+key combos for debugging song controls
   if (ui_event.ctrl || ui_event.alt) {
-    LOG_DEBUG_INPUT("SongPage key=%d(0x%02X)'%c' ctrl=%d alt=%d shift=%d",
+    LOG_DEBUG_INPUT("SongPage key=%d(0x%02X)'%c' ctrl=%d alt=%d",
                     (int)(unsigned char)key, (unsigned char)key,
                     (key >= 32 && key < 127) ? key : '?',
-                    ui_event.ctrl, ui_event.alt, ui_event.shift);
+                    ui_event.ctrl, ui_event.alt);
   }
 
   // Robust Ctrl-letter handling: some keyboard paths deliver control chars (0x01..0x1A)
@@ -1259,7 +1363,9 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       key = static_cast<char>('a' + (u - 1));
     }
   }
-  char lowerKey = static_cast<char>(std::tolower(static_cast<unsigned char>(key)));
+  char lowerKey = key
+      ? static_cast<char>(std::tolower(static_cast<unsigned char>(key)))
+      : 0;
 
   bool key_b = (lowerKey == 'b') || (ui_event.scancode == GROOVEPUTER_B);
   bool key_c = (lowerKey == 'c') || (ui_event.scancode == GROOVEPUTER_C);
@@ -1288,31 +1394,25 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return jumpToMarker(markerIdx);
   }
 
-  // alt + 1-4: Jump + Lock (Loop current section)
-  if (ui_event.alt && !ui_event.ctrl && markerIdx >= 0 && markerIdx < 4) {
-    int target = row_markers_[markerIdx];
-    if (target >= 0) {
-      int sectionLen = 16; // Default 16 bar loop
-      withAudioGuard([&]() {
-        mini_acid_.setSongPosition(target);
-        mini_acid_.setLoopRange(target, std::min(Song::kMaxPositions - 1, target + sectionLen - 1));
-        mini_acid_.setLoopMode(true);
-      });
-      moveCursorToRow(target);
-      char buf[32];
-      snprintf(buf, sizeof(buf), "JUMP+LOCK: Mark %d", markerIdx + 1);
-      showToast(buf, 1000);
-      return true;
-    }
-  }
-
   const int targetPage = UI::songPatternPageShortcut(
       key, ui_event.ctrl, ui_event.meta, ui_event.alt);
   if (targetPage >= 0) {
-    mini_acid_.requestPageSwitch(targetPage);
+    mini_acid_.tryManualPageSwitch(targetPage);
     char buf[20];
     std::snprintf(buf, sizeof(buf), "Page: %d", targetPage + 1);
     showToast(buf, 800);
+    return true;
+  }
+
+  // Ctrl+A: select every row and track of the song editor (Alt+A is not used here).
+  if (ui_event.ctrl && !ui_event.alt && (lowerKey == 'a' || ui_event.scancode == GROOVEPUTER_A)) {
+    selection_start_row_ = 0;
+    selection_start_track_ = 0;
+    cursor_row_ = std::max(0, mini_acid_.songLength() - 1);
+    cursor_track_ = maxEditableTrackColumn();
+    has_selection_ = true;
+    selection_locked_ = false;
+    showToast("ALL ROWS SELECTED", 800);
     return true;
   }
 
@@ -1363,13 +1463,20 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     if (!mini_acid_.liveMixModeEnabled()) {
       withRuntimeAudioGuard([&]() { mini_acid_.setLiveMixMode(true); });
     }
-    const int nextPlaySlot = mini_acid_.songPlaybackSlot() == 0 ? 1 : 0;
-    const auto status =
-        GroovePuterRhythm::LiveSongArrangementDetail::
-            requestSongPlaybackSwitch(mini_acid_, nextPlaySlot);
+    using GroovePuterRhythm::LiveSongArrangementDetail::pendingPlaybackSwitchTarget;
+    const int pendingTarget = pendingPlaybackSwitchTarget(mini_acid_);
+    const int from = pendingTarget >= 0 ? pendingTarget : mini_acid_.songPlaybackSlot();
+    const int nextPlaySlot = from == 0 ? 1 : 0;
+    GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus status{};
+    withRuntimeAudioGuard([&]() {
+      status = GroovePuterRhythm::LiveSongArrangementDetail::
+          requestSongPlaybackSwitch(mini_acid_, nextPlaySlot);
+    });
     using GroovePuterRhythm::LiveSongArrangementDetail::SongLiveStatus;
     if (status == SongLiveStatus::Busy) {
       showToast("SONG BUSY", 900);
+    } else if (status == SongLiveStatus::NoChange && pendingTarget >= 0) {
+      showToast("PLAY SWITCH CANCELLED", 1000);
     } else if (status == SongLiveStatus::TargetChanged) {
       showToast("PLAY TARGET CHANGED", 1100);
     } else if (status == SongLiveStatus::PendingNextRow) {
@@ -1419,7 +1526,14 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     ctrl_r_long_fired_ = false;
 
     bool wasSongMode = mini_acid_.songModeEnabled();
-    bool newReverse = !mini_acid_.isSongReverse();
+    // While the Song plays, reverse changes the slot that plays (what is heard);
+    // when stopped it changes the slot being edited, as before.
+    const bool playingSong = mini_acid_.isPlaying() && mini_acid_.songModeEnabled();
+    const int reverseSlot = playingSong ? mini_acid_.songPlaybackSlot() : -1;
+    const bool currentReverse = playingSong
+        ? mini_acid_.sceneManager().isSongReverseAtSlot(reverseSlot)
+        : mini_acid_.isSongReverse();
+    bool newReverse = !currentReverse;
     int len = mini_acid_.songLength();
     LOG_INFO_UI("Song reverse: %s (songMode=%d len=%d pos=%d)",
                 newReverse ? "ON" : "OFF",
@@ -1431,7 +1545,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
       });
     }
     const bool reverseCommitted = commitSongMutation(
-        [&](Song& song) { song.reverse = newReverse; });
+        [&](Song& song) { song.reverse = newReverse; }, reverseSlot);
     if (!reverseCommitted) return true;
     bool songModeNow = mini_acid_.songModeEnabled();
     if (len <= 1 && !mini_acid_.isPlaying()) {
@@ -1482,15 +1596,55 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         char patLabel[16] = "---";
         
         if (patIndex >= 0) {
-            formatSongPatternLabel(patIndex, patLabel, sizeof(patLabel));
+            formatSongPatternLabel(mini_acid_, trk, patIndex, patLabel,
+                                   sizeof(patLabel), cursorRow());
         }
 
-        if (trk == SongTrack::SynthA) {
-            targetPage = 1;
-            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(0, patIndex); });
-        } else if (trk == SongTrack::SynthB) {
-            targetPage = 2;
-            if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.set303PatternIndex(1, patIndex); });
+        if (trk == SongTrack::SynthA || trk == SongTrack::SynthB) {
+            targetPage = trk == SongTrack::SynthA ? 1 : 2;
+            if (patIndex >= 0) {
+                // The cell stores a global index: page * 16 + bank * 8 + pattern.
+                const int voice = trk == SongTrack::SynthA ? 0 : 1;
+                const int page = patIndex / kPatternsPerPage;
+                const int bank = (patIndex % kPatternsPerPage) / Bank<SynthPattern>::kPatterns;
+                const int local = patIndex % Bank<SynthPattern>::kPatterns;
+                pending_open_.active = false;  // a new Enter replaces any waiting open
+                if (page != mini_acid_.currentPageIndex()) {
+                    if (!mini_acid_.tryManualPageSwitch(page)) {
+                        UI::showToast(mini_acid_.hasUnsavedWorkingMelody(0) ||
+                                              mini_acid_.hasUnsavedWorkingMelody(1)
+                                          ? "SAVE MELODY FIRST"
+                                          : "SAVE STEPS FIRST",
+                                      1000);
+                        return true;
+                    }
+                    // The page loads asynchronously: remember the target and apply it when it is current.
+                    pending_open_.active = true;
+                    pending_open_.page = page;
+                    pending_open_.bank = bank;
+                    pending_open_.pattern = local;
+                    pending_open_.voice = voice;
+                    pending_open_.targetPage = targetPage;
+                    pending_open_.row = cursorRow();
+                    pending_open_.track = trk;
+                    pending_open_.globalPattern = patIndex;
+                    std::snprintf(pending_open_.label, sizeof(pending_open_.label),
+                                  "%s", patLabel);
+                    char pageToast[24];
+                    std::snprintf(pageToast, sizeof(pageToast), "PAGE %d  B%d", page + 1, bank + 1);
+                    showToast(pageToast, 1000);
+                    return true;
+                }
+                // Same page: the guarded switch refuses an unsaved melody or a modified pattern.
+                bool moved = false;
+                withAudioGuard([&]() { moved = mini_acid_.tryManual303TargetSwitch(voice, bank, local); });
+                if (!moved) {
+                    showToast(mini_acid_.hasUnsavedWorkingMelody(voice) ? "SAVE MELODY FIRST"
+                                                                        : "SAVE STEPS FIRST",
+                              1000);
+                    return true;
+                }
+            }
         } else if (trk == SongTrack::Drums) {
             targetPage = 5;
             if (patIndex >= 0) withAudioGuard([&]() { mini_acid_.setDrumPatternIndex(patIndex); });
@@ -1582,8 +1736,12 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
     return assignPattern(patternIdx);
   }
 
-  // Alt + Backspace = Reset Song
+  // Alt + Backspace only hints; Ctrl + Backspace = Reset Song
   if (ui_event.alt && (key == '\b' || key == 0x7F)) {
+      UI::showToast("CTRL+BKSP CLEARS SONG", 1000);
+      return true;
+  }
+  if (ui_event.ctrl && (key == '\b' || key == 0x7F)) {
       withAudioGuard([&]() {
           for (int r = 0; r < Song::kMaxPositions; ++r) {
               mini_acid_.clearSongPattern(r, SongTrack::SynthA);
@@ -1597,11 +1755,6 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
   }
 
   if (key == '\b') {
-    return clearPattern();
-  }
-
-  // Tab clears pattern (legacy behavior)
-  if (key == '\t') {
     return clearPattern();
   }
 
@@ -1621,7 +1774,7 @@ bool SongPage::handleEventLegacyUnowned(UIEvent& ui_event) {
         for (int r = min_row; r <= max_row; ++r) {
             for (int t = min_track; t <= max_track; ++t) {
                 bool valid = false;
-                SongTrack track = trackForColumn(t, valid);
+                [[maybe_unused]] SongTrack track = trackForColumn(t, valid);
                 if (!valid) continue;
                 // Each cell remains an independent copy-on-write mutation.
                 int savedRow = cursor_row_;
@@ -1668,29 +1821,58 @@ const std::string & SongPage::getTitle() const {
 }
 
 void SongPage::draw(IGfx& gfx) {
+  if (form_view_) {
+    drawForm(gfx);
+    return;
+  }
   switch (visual_style_) {
-    case ::VisualStyle::RETRO_CLASSIC:
-      drawRetroClassicStyle(gfx);
-      break;
     case ::VisualStyle::AMBER:
       drawAmberStyle(gfx);
       break;
     case ::VisualStyle::MINIMAL_DARK:
       drawTEGridStyle(gfx);
       break;
+    case ::VisualStyle::RETRO_CLASSIC:
     case ::VisualStyle::MINIMAL:
     default:
-      drawMinimalStyle(gfx);
+      // CLEAN shares the CYBER song structure (see `clean` in drawRetroClassicStyle).
+      drawRetroClassicStyle(gfx);
       break;
   }
+  char materialStatus[48];
+  std::snprintf(
+      materialStatus, sizeof(materialStatus), "A:%s B:%s  G:GEN C+N/M:ROW",
+      songVoiceStateLabel(mini_acid_.songVoiceDisplayState(0)),
+      songVoiceStateLabel(mini_acid_.songVoiceDisplayState(1)));
+  // The normal footer shows only publishShellInfo text; the page footer is
+  // revealed by holding H. Publish F:FORM here so it is visible by default.
+  {
+    bool trackValid = false;
+    const SongTrack cellTrack = trackForColumn(cursorTrack(), trackValid);
+    const char* songHint = "[ARWS]MOVE  F:FORM";
+    if (GroovePuterRhythm::LiveSongArrangementDetail::pendingPlaybackSwitchTarget(
+            mini_acid_) >= 0) {
+      songHint = "CTRL+B AGAIN: CANCEL SWITCH";
+    } else if (trackValid &&
+               (cellTrack == SongTrack::SynthA || cellTrack == SongTrack::SynthB)) {
+      songHint = "ENT OPEN  OPT SRC  CTRL+B PLAY  F FORM";
+    } else if (trackValid && cellTrack == SongTrack::Drums) {
+      songHint = "ENT OPEN  Q-I PAT  G GEN  F FORM";
+    }
+    UI::publishShellInfo(songHint);
+  }
+  UI::drawStandardFooter(gfx, "[ARWS]MOVE F:FORM Q-I:PAT", materialStatus);
 }
 
 void SongPage::drawMinimalStyle(IGfx &gfx) {
   const Rect &bounds = getBoundaries();
   const int x = bounds.x;
-  const int y = bounds.y;
+  // The page gets the whole screen, but the shell draws its header and bottom
+  // bars over it: keep the status line and the rows inside Layout::CONTENT.
+  const int y = std::max(bounds.y, static_cast<int>(Layout::CONTENT.y));
   const int w = bounds.w;
-  const int h = bounds.h;
+  const int h = std::min(bounds.y + bounds.h,
+                         static_cast<int>(Layout::CONTENT.y + Layout::CONTENT.h) + 11) - y;
   if (w <= 0 || h <= 0)
     return;
 
@@ -1887,7 +2069,8 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
           gfx.drawText(tx + 2, rowY + 1, "WAIT");
         } else if (pattern >= 0) {
           char patternBuf[10];
-          formatSongPatternLabel(pattern, patternBuf, sizeof(patternBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patternBuf,
+                                 sizeof(patternBuf), row);
           gfx.setTextColor(selected && has_selection_
                                ? palette.invert
                                : (editable ? trackColor(track) : palette.dim));
@@ -1926,11 +2109,6 @@ void SongPage::drawMinimalStyle(IGfx &gfx) {
   } else {
     drawPane(x, w, activeSlot, true);
   }
-
-  gfx.fillRect(x, footerY, w, footerH, palette.panel);
-  gfx.drawLine(x, footerY, x + w - 1, footerY, palette.dim);
-  gfx.setTextColor(palette.secondary);
-  gfx.drawText(x + 2, footerY + 2, "Q-I:P B:PAT <>:TRK/SLOT V:LANE X:SPL");
 
   if (mini_acid_.isPageLoading()) {
     char loadBuf[32];
@@ -2201,7 +2379,8 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
 
         if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf), row_idx);
           IGfxColor patColor = colorForSongTrack(track);
           gfx.setTextColor(patColor.color16());
           gfx.drawText(tx + 1, ry + 1, patBuf);
@@ -2222,8 +2401,6 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
   if (split_compare_) {
     int gap = 6; // Increased gap for border
     int paneW = (w - gap) / 2;
-    int otherSlot = slot == 0 ? 1 : 0;
-
     // Draw active pane first or second?
     // Left is always A, Right is always B.
     drawPane(x, paneW, 0, slot == 0);
@@ -2275,11 +2452,18 @@ void SongPage::drawTEGridStyle(IGfx &gfx) {
 }
 
 void SongPage::drawRetroClassicStyle(IGfx &gfx) {
+  const UI::ThemePalette p = UI::themePalette();
+  // CLEAN shares this structure; palette roles and state forms differ.
+  const bool clean = UI::currentStyle == ::VisualStyle::MINIMAL;
   const Rect &bounds = getBoundaries();
   const int x = bounds.x;
-  const int y = bounds.y;
+  // The shell draws its header and bottom bars over the page: the 12 px
+  // header bar below stays under the shell header, the status line starts at
+  // Layout::CONTENT and the last row ends with it (row 8 sat under the bar).
+  const int y = std::max(bounds.y, static_cast<int>(Layout::CONTENT.y) - 14);
   const int w = bounds.w;
-  const int h = bounds.h;
+  const int h = std::min(bounds.y + bounds.h,
+                         static_cast<int>(Layout::CONTENT.y + Layout::CONTENT.h) + 12) - y;
   const int activeSlot = mini_acid_.activeSongSlot();
   const int playSlot = mini_acid_.songPlaybackSlot();
   const bool liveMix = mini_acid_.liveMixModeEnabled();
@@ -2303,18 +2487,18 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
   const int statusY = y + 14;
   const int statusH = 10;
-  gfx.fillRect(x, statusY, w, statusH, IGfxColor(RetroTheme::BG_PANEL));
+  gfx.fillRect(x, statusY, w, statusH, p.panel);
   gfx.drawLine(x, statusY + statusH, x + w - 1, statusY + statusH,
-               IGfxColor(RetroTheme::GRID_DIM));
+               p.gridDim);
   char statusBuf[48];
   std::snprintf(statusBuf, sizeof(statusBuf), "EDIT:%c PLAY:%c PAT:%c%s %s",
                 'A' + activeSlot, 'A' + playSlot, 'A' + assignment_bank_index_,
                 liveMix ? " LM" : "", laneShortLabel());
-  gfx.setTextColor(IGfxColor(RetroTheme::TEXT_SECONDARY));
+  gfx.setTextColor(p.secondary);
   gfx.drawText(x + 3, statusY + 1, statusBuf);
   if (liveMix) {
     drawLockIcon(gfx, x + w - 8, statusY + 2,
-                 IGfxColor(RetroTheme::SELECT_BRIGHT));
+                 p.selectBright);
   }
 
   const int footerY = y + h - 12;
@@ -2353,12 +2537,12 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     getSelectionBounds(minSelRow, maxSelRow, minSelTrack, maxSelTrack);
   }
 
-  auto themedTrackColor = [](SongTrack track) -> IGfxColor {
-    if (track == SongTrack::SynthA)
-      return IGfxColor(RetroTheme::NEON_CYAN);
-    if (track == SongTrack::SynthB)
-      return IGfxColor(RetroTheme::NEON_MAGENTA);
-    return IGfxColor(RetroTheme::NEON_YELLOW);
+  auto themedTrackColor = [&](SongTrack track) -> IGfxColor {
+    // CYBER: one hue per track. CLEAN: text for every track (identity by label and row).
+    if (clean) return p.text;
+    if (track == SongTrack::SynthA) return p.accent;
+    if (track == SongTrack::SynthB) return p.accent2;
+    return p.warning;
   };
 
   auto drawPane = [&](int paneX, int paneW, int paneSlot, bool editable) {
@@ -2369,10 +2553,10 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     if (cellW < 12)
       cellW = 12;
 
-    const IGfxColor frameColor = editable ? IGfxColor(RetroTheme::SELECT_BRIGHT)
-                                          : IGfxColor(RetroTheme::GRID_DIM);
+    const IGfxColor frameColor = editable ? p.selectBright
+                                          : p.gridDim;
     gfx.fillRect(paneX, gridTop, usableW, paneHeaderH,
-                 IGfxColor(RetroTheme::BG_INSET));
+                 p.inset);
     gfx.drawRect(paneX, gridTop, usableW, footerY - gridTop, frameColor);
 
     char paneLabel[8];
@@ -2380,8 +2564,8 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       std::snprintf(paneLabel, sizeof(paneLabel), "%c", 'A' + paneSlot);
     else
       std::snprintf(paneLabel, sizeof(paneLabel), "BAR");
-    gfx.setTextColor(editable ? IGfxColor(RetroTheme::TEXT_PRIMARY)
-                              : IGfxColor(RetroTheme::TEXT_DIM));
+    gfx.setTextColor(editable ? p.text
+                              : p.dim);
     gfx.drawText(paneX + 2, gridTop + 1, paneLabel);
 
     for (int t = 0; t < trackCount; ++t) {
@@ -2391,14 +2575,14 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         continue;
       const int tx = paneX + barW + t * cellW;
       const IGfxColor color =
-          editable ? themedTrackColor(track) : IGfxColor(RetroTheme::TEXT_DIM);
+          editable ? themedTrackColor(track) : p.dim;
       gfx.fillRect(tx, gridTop, cellW - 1, 1, color);
       gfx.setTextColor(color);
       gfx.drawText(tx + 2, gridTop + 1, trackHeaderLabel(t));
     }
 
     if (mini_acid_.isWaitingForRehearsal()) {
-      gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
+      gfx.setTextColor(p.danger);
       gfx.drawText(paneX + usableW - 36, gridTop + 1, "PAUSE");
     }
 
@@ -2407,33 +2591,35 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       if (row >= Song::kMaxPositions)
         break;
       const int ry = cellsTop + i * rowH;
-      const IGfxColor rowBg =
-          (i & 1) ? IGfxColor(0x0E1319) : IGfxColor(0x090D12);
+      // CLEAN: rows are separated by spacing and rules, not tinted bands.
+      const IGfxColor rowBg = clean ? p.background
+                              : (i & 1) ? IGfxColor(0x0E1319) : IGfxColor(0x090D12);
       gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, rowBg);
 
       char barBuf[8];
       std::snprintf(barBuf, sizeof(barBuf), "%d", row + 1);
-      gfx.setTextColor(((row + 1) % 8) == 0 ? IGfxColor(RetroTheme::NEON_YELLOW)
-                                            : IGfxColor(RetroTheme::TEXT_DIM));
+      gfx.setTextColor(((row + 1) % 8) == 0 && !clean ? p.warning
+                                                      : p.dim);
       gfx.drawText(paneX + 2, ry + 1, barBuf);
 
       if (row == playhead) {
         const bool activePlay = playing && songMode && paneSlot == playSlot;
         if (activePlay) {
-          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH, IGfxColor(0x13261E));
+          gfx.fillRect(paneX + 1, ry, usableW - 2, rowH,
+                       clean ? p.background : IGfxColor(0x13261E));
           gfx.drawLine(paneX + 1, ry, paneX + usableW - 2, ry,
-                       IGfxColor(RetroTheme::NEON_CYAN));
+                       p.accent);
           gfx.drawLine(paneX + 1, ry + rowH - 1, paneX + usableW - 2,
-                       ry + rowH - 1, IGfxColor(RetroTheme::NEON_CYAN));
+                       ry + rowH - 1, p.accent);
           char playRowBuf[8];
           std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
-          gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+          gfx.setTextColor(p.accent);
           gfx.drawText(paneX + 2, ry + 1, playRowBuf);
         } else {
           gfx.fillRect(paneX + barW, ry, usableW - barW - 1, rowH,
-                       IGfxColor(0x11161B));
+                       clean ? p.selectBg : IGfxColor(0x11161B));
           gfx.fillRect(paneX + 1, ry, 2, rowH,
-                       IGfxColor(RetroTheme::TEXT_DIM));
+                       p.dim);
         }
       }
 
@@ -2457,8 +2643,9 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
 
         if (selected && has_selection_) {
           gfx.fillRect(tx, ry, cellW - 1, rowH,
-                       IGfxColor(RetroTheme::SELECT_BRIGHT));
-        } else if (pattern >= 0 || pattern == -2) {
+                       p.selectBright);
+        } else if (!clean && (pattern >= 0 || pattern == -2)) {
+          // CLEAN: a filled cell is its text alone, without a tinted block.
           const uint32_t bg = track == SongTrack::SynthA   ? 0x071510
                               : track == SongTrack::SynthB ? 0x100718
                                                            : 0x151007;
@@ -2466,18 +2653,19 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
         }
 
         if (pattern == -2) {
-          gfx.setTextColor(IGfxColor(RetroTheme::NEON_ORANGE));
+          gfx.setTextColor(p.danger);
           gfx.drawText(tx + 2, ry + 1, "WAIT");
         } else if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf), row);
           gfx.setTextColor(selected && has_selection_
-                               ? IGfxColor(RetroTheme::BG_DEEP_BLACK)
+                               ? p.background
                                : (editable ? themedTrackColor(track)
-                                           : IGfxColor(RetroTheme::TEXT_DIM)));
+                                           : p.dim));
           gfx.drawText(tx + 2, ry + 1, patBuf);
         } else if (!selected) {
-          gfx.setTextColor(IGfxColor(RetroTheme::GRID_DIM));
+          gfx.setTextColor(p.gridDim);
           gfx.drawText(tx + 2, ry + 1, "--");
         }
 
@@ -2489,19 +2677,19 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
       // Final playhead overlay must remain visible above populated cells.
       if (row == playhead && playing && songMode && paneSlot == playSlot) {
         gfx.drawRect(paneX + 1, ry, usableW - 2, rowH,
-                     IGfxColor(RetroTheme::NEON_CYAN));
+                     p.accent);
         char playRowBuf[8];
         std::snprintf(playRowBuf, sizeof(playRowBuf), ">%d", row + 1);
-        gfx.setTextColor(IGfxColor(RetroTheme::NEON_CYAN));
+        gfx.setTextColor(p.accent);
         gfx.drawText(paneX + 2, ry + 1, playRowBuf);
       }
     }
 
     drawQuarterStrip(gfx, paneX + paneW - 3, cellsTop, visibleRows * rowH,
                      songQuarterFromRow(cursorRowValue),
-                     editable ? IGfxColor(RetroTheme::SELECT_BRIGHT)
-                              : IGfxColor(RetroTheme::TEXT_DIM),
-                     IGfxColor(RetroTheme::GRID_DIM));
+                     editable ? p.selectBright
+                              : p.dim,
+                     p.gridDim);
   };
 
   if (split_compare_) {
@@ -2521,15 +2709,13 @@ void SongPage::drawRetroClassicStyle(IGfx &gfx) {
     const int boxX = x + (w - textW) / 2 - 6;
     const int boxY = y + (h - 18) / 2;
     gfx.fillRect(boxX, boxY, textW + 12, 16,
-                 IGfxColor(RetroTheme::BG_DEEP_BLACK));
+                 p.background);
     gfx.drawRect(boxX, boxY, textW + 12, 16,
-                 IGfxColor(RetroTheme::NEON_YELLOW));
-    gfx.setTextColor(IGfxColor(RetroTheme::NEON_YELLOW));
+                 p.warning);
+    gfx.setTextColor(p.warning);
     gfx.drawText(boxX + 6, boxY + 3, loadBuf);
   }
-
-  retro::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
+  drawGeneratorHint(gfx);
 }
 
 void SongPage::drawAmberStyle(IGfx &gfx) {
@@ -2729,7 +2915,8 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
           gfx.drawText(tx + 2, ry + 1, "WAIT");
         } else if (pattern >= 0) {
           char patBuf[10];
-          formatSongPatternLabel(pattern, patBuf, sizeof(patBuf));
+          formatSongPatternLabel(mini_acid_, track, pattern, patBuf,
+                                 sizeof(patBuf), row);
           gfx.setTextColor(selected && has_selection_
                                ? IGfxColor(AmberTheme::BG_DEEP_BLACK)
                                : (editable ? themedTrackColor(track)
@@ -2786,9 +2973,6 @@ void SongPage::drawAmberStyle(IGfx &gfx) {
     gfx.setTextColor(IGfxColor(AmberTheme::SELECT_BRIGHT));
     gfx.drawText(boxX + 6, boxY + 3, loadBuf);
   }
-
-  amber::drawFooterBar(gfx, x, footerY, w, 12,
-                       "Q-I:Pat  <-/->:Track/Bank  C+N/M:Row", "SONG");
 }
 
 std::unique_ptr<MultiPageHelpDialog> SongPage::getHelpDialog() {
@@ -2936,7 +3120,20 @@ SongPatternMaterializer::Result SongPage::materializeSongTracks(
 
     auto commit = [&](auto&& applyPrepared) {
         withRuntimeAudioGuard([&]() {
-            applyPrepared();
+            const auto& written = applyPrepared();
+            // Song playback and the pair view read Synth events from the
+            // derived runtime bank: publish each written synth slot.
+            for (int synthIndex = 0; synthIndex < 2; ++synthIndex) {
+                const int localSlot = written.localSlot[synthIndex];
+                if (localSlot < 0) continue;
+                const int bank = localSlot / Bank<SynthPattern>::kPatterns;
+                const int index = localSlot % Bank<SynthPattern>::kPatterns;
+                if (!mini_acid_.refreshPatternRuntimeEvents(
+                        synthIndex, bank, index)) {
+                    LOG_WARN_UI("Pattern event refresh failed: synth=%d bank=%d slot=%d",
+                                synthIndex, bank, index);
+                }
+            }
             if (mini_acid_.songModeEnabled() && !mini_acid_.isPlaying()) {
                 mini_acid_.setSongPosition(row);
             }
@@ -2995,7 +3192,8 @@ bool SongPage::generateCurrentCellPattern(bool rememberForDoubleTap) {
 
     char patternLabel[12];
     formatSongPatternLabel(
-        result.globalPattern[trackIndex], patternLabel, sizeof(patternLabel));
+        mini_acid_, track, result.globalPattern[trackIndex],
+        patternLabel, sizeof(patternLabel));
     const char* trackLabel = track == SongTrack::SynthA
         ? "A"
         : track == SongTrack::SynthB ? "B" : "DR";
@@ -3112,3 +3310,4 @@ bool SongPage::generateEntireRow() {
 }
 
 #include "song_page_r4_owner.inc"
+#include "song_page_form.inc"

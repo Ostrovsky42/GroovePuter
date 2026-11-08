@@ -96,9 +96,12 @@ constexpr RhythmCompatibilityCandidate kChipBase[] = {
 
 // Stage 14 uses only repository-approved production identities. Pending
 // HARD_02/HARD_04/HARD_05 never appear in these compatibility edges.
+// G4-I5: House BASE owns quarter-pulse ideas. FunkHouseBridge remains in the
+// shared vocabulary and its other owners, but its kick grammar does not carry
+// the House quarter-pulse witness and therefore is not admitted here.
 constexpr RhythmCompatibilityCandidate kHouseBase[] = {
     candidate(Archetype::StraightDrive, 90), candidate(Archetype::OffbeatOpenHat, 90),
-    candidate(Archetype::StackedQuarters, 125), candidate(Archetype::FunkHouseBridge, 130),
+    candidate(Archetype::StackedQuarters, 125),
     candidate(Archetype::ShuffledFourFour, 70),
 };
 constexpr RhythmCompatibilityCandidate kTechnoBase[] = {
@@ -145,9 +148,14 @@ constexpr RhythmCompatibilityCandidate kPsytrance[] = {
     candidate(Archetype::StraightDrive, 120), candidate(Archetype::OffbeatOpenHat, 110),
     candidate(Archetype::RollingAcid, 100),
 };
+// G4-I4: Dub Techno recipe 5 owns only ideas with an explicit structural
+// techno-skeleton witness. The retained Steppers candidate also preserves the
+// dub chord-response vocabulary. OneDropSpace, SparseSkank and ChordResponse
+// remain available to Reggae/Dub owners instead of entering through timbre/FX.
 constexpr RhythmCompatibilityCandidate kDubTechno[] = {
-    candidate(Archetype::OneDropSpace, 110), candidate(Archetype::Steppers, 100),
-    candidate(Archetype::SparseSkank, 110), candidate(Archetype::ChordResponse, 120),
+    candidate(Archetype::StraightDrive, 55),
+    candidate(Archetype::BrokenTechno, 65),
+    candidate(Archetype::Steppers, 100),
 };
 constexpr RhythmCompatibilityCandidate kChicagoJack[] = {
     candidate(Archetype::StraightAcid, 120), candidate(Archetype::SparseAcid, 100),

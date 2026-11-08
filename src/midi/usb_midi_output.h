@@ -43,6 +43,11 @@ public:
     static constexpr uint8_t kSeqtrakMonoPolyController = 26;
     static constexpr uint8_t kSeqtrakMonoValue = 0;
     static constexpr uint8_t kSeqtrakPolyValue = 1;
+    // Pattern slide on SEQTRAK SYNTH tracks: portamento glides only in MONO,
+    // and PORTAMENTO TIME 0 means off (SEQTRAK User Guide 18.3.1).
+    static constexpr uint8_t kPortamentoTimeController = 5;
+    static constexpr uint8_t kPortamentoSwitchController = 65;
+    static constexpr uint8_t kSeqtrakSlidePortamentoTime = 24;
 
     explicit UsbMidiOutput(IUsbMidiTransport& transport,
                            UsbMidiRouteConfig config = {});
@@ -75,6 +80,7 @@ public:
     }
 
     void handleMusicalEvent(const MusicalEvent& event) override;
+    void servicePitchBendRetries();
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -118,6 +124,12 @@ private:
     static uint8_t patternDrumChannel(uint8_t logicalVoice);
     static int generatedTargetIndex(MusicalEventTarget target);
     static bool isSynthPerformanceSource(MusicalEventSource source);
+
+public:
+    // Host keyboard session only; see usb_midi_output.cpp. Default off (fail-closed).
+    static void setMidiInputThru(bool enabled);
+
+private:
     static bool sourceRequestsPolyReceiver(MusicalEventSource source);
 
     void configureLanes();
@@ -125,6 +137,8 @@ private:
     uint8_t generatedChannel(MusicalEventTarget target) const;
     void ensurePerformanceReceiverMode(MusicalEventTarget target,
                                        bool polyphonic);
+    void applyPatternSlide(uint8_t channel, bool slide);
+    void releasePatternPortamento(uint8_t channel);
     bool generatedNoteActive(int targetIndex, uint8_t note) const;
     bool generatedNotePendingRelease(int targetIndex, uint8_t note) const;
     void setGeneratedNoteActive(int targetIndex, uint8_t note, bool active);
@@ -165,12 +179,33 @@ private:
     void releaseTargetAllNotes(MusicalEventSource source,
                                MusicalEventTarget target);
     void releaseAllActiveNotes();
-    bool releaseAbandonedSmfChannels();
+    // Melody chords: Pattern notes flagged kMusicalEventChord, held per note
+    // on the Pattern lane's channel instead of the one-note lane.
+    static int patternChordIndex(MusicalEventTarget target);
+    bool patternChordNoteActive(int index, uint8_t note) const;
+    void setPatternChordNote(uint8_t (&set)[2][kGeneratedBitsetBytes],
+                             int index, uint8_t note, bool value);
+    void ensurePatternChordPoly(uint8_t channel);
+    bool acquirePatternChordNote(MidiVoiceLane& lane, int index,
+                                 uint8_t note, uint8_t velocity);
+    bool releasePatternChordNote(MidiVoiceLane& lane, int index,
+                                 uint8_t note, uint8_t velocity = 0);
+    bool releasePatternChordNotes(MidiVoiceLane& lane, int index);
+    void requestChannelPanic(uint8_t channel);
+    bool releasePendingChannelPanics();
     void clearActiveState();
+    // CALL/RESPONSE answer lane (kMusicalEventWireChannel): one note at a time
+    // on the wire channel the event names, owned through owners_ like the other
+    // lanes, so it shares a channel/note with PERFORM or Pattern safely.
+    void handleAnswerLaneEvent(const MusicalEvent& event);
+    bool releaseAnswerLane();
 
     IUsbMidiTransport& transport_;
     UsbMidiRouteConfig config_;
     MidiVoiceLane lanes_[kLaneCount];
+    // Kept out of lanes_ so laneFor() never resolves a (source, target) to it.
+    // Set up in configureLanes(); its channel follows the event at NoteOn.
+    MidiVoiceLane answerLane_;
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
@@ -180,7 +215,19 @@ private:
     GroovePuterMidi::MidiEndpointOwnershipTable owners_;
     uint8_t patternDrumNotes_[kPatternDrumVoiceCount];
     uint8_t performanceDrumNotes_[kSeqtrakDrumLaneCount];
-    uint16_t abandonedSmfChannels_;
+    uint16_t pendingChannelPanics_;
+    // Per wire channel: MONO + portamento time sent for Pattern slide, and
+    // whether PORTAMENTO SWITCH is currently on.
+    uint16_t patternSlideReady_;
+    // Channels whose receiver GroovePuter has put into POLY on this connection.
+    uint16_t patternPolyKnown_ = 0;
+    uint16_t patternPortamentoOn_;
+    // Melody chord notes of Synth A / Synth B, and the ones whose NoteOff did
+    // not reach the wire yet (retried before the next event on that lane).
+    uint8_t patternChordActive_[2][kGeneratedBitsetBytes]{};
+    uint8_t patternChordPending_[2][kGeneratedBitsetBytes]{};
+    uint16_t pendingPitchBendMask_{0};
+    uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;

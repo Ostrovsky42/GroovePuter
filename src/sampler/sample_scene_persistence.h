@@ -17,6 +17,7 @@ enum class SceneSampleFilterDirection : uint8_t {
 };
 
 void setScenePersistenceSampleIndex(const SampleIndex* index);
+void clearSceneSampleReferences();
 const SampleIndex* scenePersistenceSampleIndex();
 
 bool encodeSampleRefHex(SampleRef ref, char out[17]);
@@ -32,7 +33,8 @@ public:
                      const SampleIndex* index = nullptr);
 
   bool accept(char c, const char*& data, std::size_t& len);
-  bool finish();
+  bool finish(bool publishLoad = true);
+  void publishLoadedReferences();
   bool failed() const { return failed_; }
 
 private:
@@ -199,8 +201,17 @@ public:
         !outputCommitted_) {
       outputCommitted_ = true;
       if (!outputState_.commit()) failed_ = true;
+      if (!failed_) filter_.publishLoadedReferences();
     }
     return failed_ || filter_.failed() || outputState_.failed();
+  }
+  // Finalize and validate without publishing output modes or sample references.
+  // After this returns true, failed()'s publication path is infallible for the
+  // validated enum/reference state, so callers may commit an external pointer
+  // between validation and failed().
+  bool validateRead() {
+    finalizeFilter();
+    return !failed_ && !filter_.failed() && !outputState_.failed();
   }
   bool eof() const { return eof_; }
 
@@ -208,7 +219,7 @@ private:
   void finalizeFilter() {
     if (filterFinalized_) return;
     filterFinalized_ = true;
-    if (!filter_.finish()) failed_ = true;
+    if (!filter_.finish(false)) failed_ = true;
     if (!outputState_.finish()) failed_ = true;
   }
 

@@ -60,10 +60,21 @@ int main() {
         assert(f.keyboard.chordMode() == PerformanceChordMode::Memory);
         f.sink.clear();
         assert(f.keyboard.keyDown('s', 90));
-        assert(f.sink.events.size() == 3);
-        assert(f.sink.events[0].note == 38);
-        assert(f.sink.events[1].note == 41);
-        assert(f.sink.events[2].note == 45);
+        // Re-rooting an active memory voicing first releases the old generated
+        // notes, then starts the new memory voicing. Cleanup must precede attack.
+        assert(f.sink.events.size() == 6);
+        assert(count(f.sink.events, MusicalEventType::NoteOff) == 3);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 3);
+        for (std::size_t i = 0; i < 3; ++i) {
+            assert(f.sink.events[i].type == MusicalEventType::NoteOff);
+            assert(f.sink.events[i].source == MusicalEventSource::Arpeggiator);
+        }
+        assert(f.sink.events[3].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[3].note == 38);
+        assert(f.sink.events[4].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[4].note == 41);
+        assert(f.sink.events[5].type == MusicalEventType::NoteOn);
+        assert(f.sink.events[5].note == 45);
     }
 
     {
@@ -84,9 +95,10 @@ int main() {
     {
         Fixture f;
         f.keyboard.cycleRatchet(1);          // 2 hits per sixteenth
-        f.keyboard.cycleEuclideanPulses(1);  // 3 of 16
+        assert(f.keyboard.euclideanPulses() == 0);
+        f.keyboard.cycleEuclideanPulses(1);  // 1 of 16
         assert(f.keyboard.ratchetCount() == 2);
-        assert(f.keyboard.euclideanPulses() == 3);
+        assert(f.keyboard.euclideanPulses() == 1);
         f.sink.clear();
         f.keyboard.service(2000000u);
         assert(f.keyboard.keyDown('a', 100));
@@ -144,25 +156,22 @@ int main() {
         f.keyboard.service(4000000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
 
-        // 3.25 -> 4.0 is 0.75 of a 125 ms sixteenth. The event is prepared
-        // ahead of the boundary and remains silent until that deadline.
-        f.keyboard.service(4093000u);
+        // Project phase, not wall-clock time, authorizes preparation. Move the
+        // authoritative timeline into the half-pulse lead window for step 4.
+        timeline.publishBlock(11u, 512u, 3.55f, 120.0f, 22050.0f, true);
+        f.keyboard.service(4023219u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
-        f.keyboard.service(4093750u);
-        assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
+        assert(f.keyboard.scheduledDepth() > 0u);
 
-        // A coherent later block at phase 4.55 prepares step 5 after half of
-        // step 4 has drained. Delaying service past the 12 ms NoteOn window
-        // drops the stale hit instead of producing a catch-up burst.
-        timeline.publishBlock(17u, 512u, 4.55f, 120.0f, 22050.0f, true);
-        f.keyboard.service(4162533u);
-        f.keyboard.service(4235000u);
-        assert(count(f.sink.events, MusicalEventType::NoteOn) == 1);
-        assert(count(f.sink.events, MusicalEventType::NoteOff) >= 1);
+        // Delaying service beyond the 12 ms NoteOn window drops the stale hit
+        // instead of producing a wall-clock catch-up burst.
+        f.keyboard.service(4100000u);
+        assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
+        assert(f.keyboard.staleGeneratedNoteOnDrops() >= 1u);
 
         assert(f.keyboard.keyUp('a'));
         f.keyboard.setTransportPlaying(false);
-        timeline.publishBlock(18u, 512u, 4.75f, 120.0f, 22050.0f, false);
+        timeline.publishBlock(12u, 512u, 3.75f, 120.0f, 22050.0f, false);
     }
 
     {
@@ -188,10 +197,12 @@ int main() {
         f.keyboard.setTransportPlaying(true);
         f.sink.clear();
         f.keyboard.service(5000000u);
-        assert(f.keyboard.keyDown('a', 100));
-        f.keyboard.service(5000000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
-        f.keyboard.service(5093750u);
+
+        timeline.publishBlock(31u, 512u, 3.55f, 120.0f, 22050.0f, true);
+        f.keyboard.service(5023219u);
+        assert(f.keyboard.scheduledDepth() > 0u);
+        f.keyboard.service(5080000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 8);
         assert(count(f.sink.events, MusicalEventType::AllNotesOff) == 0);
     }

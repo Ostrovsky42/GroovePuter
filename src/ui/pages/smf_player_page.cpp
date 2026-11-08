@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include "../components/music_visuals.h"
+#include "smf_loop_keys.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/smf_track_inspector.h"
@@ -229,6 +230,13 @@ bool SmfPlayerPage::togglePlayerTransport() {
     }
 
     const bool wasActive = smfStateIsActive(state.state);
+    // While following MIDI IN the master owns Start/Stop. Once the file plays,
+    // Space silences all of GroovePuter in place, like on every other page;
+    // pausing would let the file fall out of step with the master.
+    if (wasActive && externalClockOwnsTransport()) {
+        UI::showToast(toggleFollowOutputMute(), 900);
+        return true;
+    }
     const TransportClockRuntimeSnapshot clock = transportClockRuntime().snapshot();
     if (!wasActive && state.tempoMode == SmfTempoMode::Project &&
         !miniAcid_.isPlaying() &&
@@ -242,10 +250,14 @@ bool SmfPlayerPage::togglePlayerTransport() {
     } else if (wasActive) {
         UI::showToast("MIDI: PAUSE", 700);
     } else if (state.tempoMode == SmfTempoMode::Project) {
+        // An armed file joins a running master on the next bar; only a
+        // stopped master needs its own Play.
         UI::showToast(clock.source == TransportClockSource::SeqtrakExternal
-                          ? (clock.externalFollowEnabled
-                                 ? "MIDI ARMED / PLAY SEQTRAK"
-                                 : "MIDI ARMED / FOLLOW OFF")
+                          ? (!clock.externalFollowEnabled
+                                 ? "MIDI ARMED / FOLLOW OFF"
+                                 : (clock.externalRunning
+                                        ? "MIDI: ARM NEXT BAR"
+                                        : "MIDI ARMED / PLAY MASTER"))
                           : "MIDI: ARM NEXT BAR",
                       900);
     } else {
@@ -487,11 +499,11 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
     }
 
     if (event.scancode == GROOVEPUTER_LEFT) {
-        player_->seekBars(event.shift ? -4 : -1);
+        player_->seekBars(event.ctrl ? -4 : -1);
         return true;
     }
     if (event.scancode == GROOVEPUTER_RIGHT) {
-        player_->seekBars(event.shift ? 4 : 1);
+        player_->seekBars(event.ctrl ? 4 : 1);
         return true;
     }
     if (event.scancode == GROOVEPUTER_UP ||
@@ -599,6 +611,20 @@ bool SmfPlayerPage::handleEvent(UIEvent& event) {
         GroovePuterUi::midiFileManager().open();
         return true;
     }
+    // Loop: L cycles OFF -> SONG -> A-B; S or A marks A (start), E marks B
+    // (end, and loops A-B). [ and ] stay global page navigation.
+    if (event.key == 'l' || event.key == 'L') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::CycleMode);
+        return true;
+    }
+    if (event.key == 's' || event.key == 'S' || event.key == 'a' || event.key == 'A') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::MarkStart);
+        return true;
+    }
+    if (event.key == 'e' || event.key == 'E') {
+        handleSmfLoopKey(*player_, state, SmfLoopKey::MarkEnd);
+        return true;
+    }
     if (event.key == 'm' || event.key == 'M') {
         const bool queued = player_->toggleRouting();
         UI::showToast(queued
@@ -660,7 +686,15 @@ void SmfPlayerPage::drawNowPlaying(IGfx& gfx) {
 
     char chip[20];
     std::snprintf(chip, sizeof(chip), "+%uV", static_cast<unsigned>(state.velocityBoost));
-    MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0);
+    x += MusicVisuals::drawChip(gfx, x, chipY, chip, state.velocityBoost > 0) + 3;
+    if (state.loopMode == SmfLoopMode::Song) {
+        MusicVisuals::drawChip(gfx, x, chipY, "LOOP", true, MusicVisuals::accentForStyle());
+    } else if (state.loopMode == SmfLoopMode::Section) {
+        std::snprintf(chip, sizeof(chip), "L%lu-%lu",
+                      static_cast<unsigned long>(state.loopStartBar),
+                      static_cast<unsigned long>(state.loopEndBar));
+        MusicVisuals::drawChip(gfx, x, chipY, chip, true, MusicVisuals::accentForStyle());
+    }
 
     gfx.setTextColor(COLOR_TEXT);
     char line[64];
@@ -1021,23 +1055,23 @@ void SmfPlayerPage::drawPerformance(IGfx& gfx) {
 void SmfPlayerPage::drawFooter(IGfx& gfx) {
     const bool seqMaster = transportClockRuntime().source() == TransportClockSource::SeqtrakExternal;
     if (browserVisible_) {
-        UI::drawStandardFooter(gfx, "ENT Open R Name X Delete",
-                               seqMaster ? "F Refresh C Master G Follow"
-                                         : "F Refresh C Master T Tempo");
+        UI::drawStandardFooter(gfx, "[ENT]OPEN R:NAME [X]DEL",
+                               seqMaster ? "F:REFRESH C:MSTR G:FOLLOW"
+                                         : "F:REFRESH C:MSTR T:TEMPO");
     } else if (muteMixerVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Select L/R Page",
-                               "1-9 Hot ENT/K Sel A AllOn");
+        UI::drawStandardFooter(gfx, "[U/D]SELECT [L/R]PAGE",
+                               "1-9:HOT [ENT]SEL A:ALLON");
     } else if (channelInspectorVisible_) {
-        UI::drawStandardFooter(gfx, "UP/DN Scroll I Player",
-                               "U Mutes D Perf B Files");
+        UI::drawStandardFooter(gfx, "[U/D]SCROLL I:PLAYER",
+                               "U:MUTES D:PERF B Files");
     } else if (performanceVisible_) {
-        UI::drawStandardFooter(gfx, "D Player B Files I Channels",
-                               seqMaster ? "U Mutes G Follow T Tempo"
-                                         : "U Mutes Space MIDI T Tempo");
+        UI::drawStandardFooter(gfx, "D:PLAYER B Files I:CHANNELS",
+                               seqMaster ? "U:MUTES G:FOLLOW T:TEMPO"
+                                         : "U:MUTES [SPC]MIDI T:TEMPO");
     } else {
         UI::drawStandardFooter(gfx,
-                               seqMaster ? "Space MIDI G Follow C Master"
-                                         : "Space MIDI C Master R RESTART",
-                               "1-9 SMF Mute U Table I Info");
+                               seqMaster ? "[SPC]MIDI G:FOLLOW C:MSTR"
+                                         : "[SPC]MIDI C:MSTR R RESTART",
+                               "1-9:MUTE U:TABLE I:INFO");
     }
 }

@@ -40,7 +40,7 @@ Expected:
 
 ### C. Selection v2 in Song Grid
 
-1. Create selection with `Shift/Ctrl + Arrows`
+1. Create selection with `Ctrl + Arrows`
 2. `Ctrl+C`
 3. Move locked frame with arrows
 4. `Ctrl+V`

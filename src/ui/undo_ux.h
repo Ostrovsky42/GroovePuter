@@ -7,7 +7,7 @@ namespace GroovePuterUndoUx {
 
 inline bool isUndoShortcut(const UIEvent& event) {
   if (event.event_type != GROOVEPUTER_KEY_DOWN || !event.ctrl ||
-      event.alt || event.meta || event.shift) {
+      event.alt || event.meta) {
     return false;
   }
   const unsigned char key = static_cast<unsigned char>(event.key);
