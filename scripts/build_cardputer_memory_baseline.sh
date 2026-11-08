@@ -23,6 +23,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse HEAD 2>/dev/null || printf 'unknown')"
 SOURCE_DIRTY="$(git -C "${PROJECT_ROOT}" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+# The copied build tree has no .git, so resolve the reproducible timestamp here.
+if [[ -z "${SOURCE_DATE_EPOCH:-}" ]]; then
+  export SOURCE_DATE_EPOCH="$(git -C "${PROJECT_ROOT}" log -1 --format=%ct HEAD)"
+fi
 TEMP_ROOT="$(mktemp -d /tmp/grooveputer-memory-baseline.XXXXXX)"
 SOURCE_ROOT="${TEMP_ROOT}/GroovePuter"
 
