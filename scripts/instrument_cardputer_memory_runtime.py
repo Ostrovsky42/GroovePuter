@@ -241,7 +241,9 @@ for path in (scene_storage_path, pattern_paging_path):
         if offset < 0 or line.lstrip().startswith("//"):
             instrumented.append(line)
             continue
-        if line.lstrip().startswith('LOG_DEBUG("[commitPageCandidate] SD.open('):
+        if line.lstrip().startswith((
+                'LOG_DEBUG("[commitPageCandidate] SD.open(',
+                'LOG_PLATFORM_DEBUG("[commitPageCandidate] SD.open(')):
             instrumented.append(line)
             continue
         if '"' in line[:offset]:

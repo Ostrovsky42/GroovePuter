@@ -129,8 +129,11 @@ with tempfile.TemporaryDirectory(prefix="memory-r1-closure-") as tmp:
             "Runtime telemetry must not add a timer call for every JSON byte",
         )
         staged_pattern_paging = (staged / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+        original_pattern_paging = (ROOT / "src/audio/pattern_paging.cpp").read_text(encoding="utf-8")
+        failure_log = next(line for line in original_pattern_paging.splitlines()
+                           if '[commitPageCandidate] SD.open(' in line)
         require(
-            'LOG_DEBUG("[commitPageCandidate] SD.open(' in staged_pattern_paging,
+            failure_log in staged_pattern_paging,
             "SD instrumentation must preserve the original failure message",
         )
         auto_start = staged_scene_storage.find(
