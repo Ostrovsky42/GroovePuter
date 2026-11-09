@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdint>
 
+#include "midi_realtime_word.h"
+
 namespace GroovePuterMidi {
 
 // CC74 (filter cutoff) sweep over a fixed musical span. Pure state machine: it
@@ -150,6 +152,36 @@ struct CutoffRequest {
     static uint8_t value(uint32_t word) { return static_cast<uint8_t>(word & 0x7Fu); }
     static uint32_t sequence(uint32_t word) { return word >> 9u; }
 };
+
+// Shared, portable channel between the UI and the MIDI dispatcher for CUTOFF.
+// The UI is the only writer of requests; the dispatcher is the only writer of the
+// published value. Both sides see the same words on the device and in SDL.
+class CutoffControlChannel {
+public:
+    // UI task only.
+    void request(CutoffRequest::Op op, uint8_t value) {
+        ++sequence_;
+        request_.storeRelease(CutoffRequest::encode(op, value, sequence_));
+    }
+
+    // Dispatcher only.
+    uint32_t loadRequest() const { return request_.loadAcquire(); }
+    void publish(uint8_t value, bool sweeping) {
+        published_.storeRelease(static_cast<uint32_t>(value & 0x7Fu) |
+                                (sweeping ? 0x80u : 0u));
+    }
+
+    // Any task.
+    uint8_t value() const { return static_cast<uint8_t>(published_.loadAcquire() & 0x7Fu); }
+    bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
+
+private:
+    MidiRealtimeWord request_;
+    MidiRealtimeWord published_;
+    uint32_t sequence_{0};
+};
+
+inline CutoffControlChannel gCutoffControl;
 
 }  // namespace GroovePuterMidi
 

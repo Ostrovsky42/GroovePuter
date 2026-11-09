@@ -1473,14 +1473,11 @@ void applyCardputerDinEnableRequest() {
     g_dinEnable.markApplied(enabled);
 }
 
-// CUTOFF / AUTO SWEEP (CC74, Synth A). The UI publishes one request word; only
-// the dispatcher applies it and only the dispatcher sends CC74, through the same
-// g_output that owns every other note and CC on the wire.
-MidiRealtimeWord g_cutoffRequest;
-uint32_t g_cutoffRequestApplied = 0;
+// CUTOFF / AUTO SWEEP (CC74, Synth A). The UI publishes requests through the
+// shared CutoffControlChannel; only the dispatcher applies them and sends CC74,
+// through the same g_output that owns every other note and CC on the wire.
 GroovePuterMidi::CutoffAutomation g_cutoff;
-// Published copy for the UI: value in bits 0..6, sweeping in bit 7.
-MidiRealtimeWord g_cutoffPublished;
+uint32_t g_cutoffRequestApplied = 0;
 
 void emitCutoff(uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
@@ -1490,7 +1487,7 @@ void emitCutoff(uint8_t value) {
 }
 
 void serviceCutoffAutomation() {
-    const uint32_t request = g_cutoffRequest.loadAcquire();
+    const uint32_t request = GroovePuterMidi::gCutoffControl.loadRequest();
     GroovePuterMidi::CutoffTransportView view;
     GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
     if (GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
@@ -1521,9 +1518,7 @@ void serviceCutoffAutomation() {
 
     uint8_t value = 0;
     if (g_cutoff.tick(view, value)) emitCutoff(value);
-    const uint32_t published = static_cast<uint32_t>(g_cutoff.value() & 0x7Fu) |
-                               (g_cutoff.sweepActive() ? 0x80u : 0u);
-    g_cutoffPublished.storeRelease(published);
+    GroovePuterMidi::gCutoffControl.publish(g_cutoff.value(), g_cutoff.sweepActive());
 }
 
 }  // namespace
@@ -1891,20 +1886,6 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
     snapshot.queuedSmfEvents = static_cast<uint16_t>(std::min<std::size_t>(
         g_smfQueue ? g_smfQueue->approximateSize() : 0u, UINT16_MAX));
     return snapshot;
-}
-
-void setCardputerCutoffRequest(GroovePuterMidi::CutoffRequest::Op op, uint8_t value) {
-    static uint32_t sequence = 0;
-    ++sequence;
-    g_cutoffRequest.storeRelease(GroovePuterMidi::CutoffRequest::encode(op, value, sequence));
-}
-
-uint8_t cardputerCutoffValue() {
-    return static_cast<uint8_t>(g_cutoffPublished.loadAcquire() & 0x7Fu);
-}
-
-bool cardputerCutoffSweeping() {
-    return (g_cutoffPublished.loadAcquire() & 0x80u) != 0u;
 }
 
 void setCardputerDinMidiEnabled(bool enabled) {
