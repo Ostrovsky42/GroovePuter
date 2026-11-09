@@ -191,13 +191,15 @@ void testStopCancelsAndHoldsValue() {
     for (double bar = 1.5; bar < 8.0; bar += 0.1) assert(!a.tick(playing(bar), v));
 }
 
-void testRestartEpochCancelsAndNeverResumes() {
+void testStopCancelsAndNeverResumes() {
+    // Stop (and pause) cancel; a sweep is never armed again by itself.
     CutoffAutomation a;
     uint8_t v = 0;
     a.manual(64, v);
     assert(a.startSweep(110, playing(0.0, 1), false));
     assert(a.tick(playing(1.0, 1), v));
-    assert(!a.tick(playing(1.2, 2), v));    // new Start/Continue epoch: cancelled
+    assert(!a.tick(stopped(1.2, 1), v));
+    assert(!a.sweepActive());
     for (double bar = 1.2; bar < 8.0; bar += 0.1) assert(!a.tick(playing(bar, 2), v));
 }
 
@@ -241,12 +243,22 @@ void testBarsElapsedAndPublishedLayout() {
     a.manual(64, v);
     assert(a.barsElapsed(0.0) == 0);             // no sweep: nothing elapsed
     assert(a.startSweep(110, playing(10.0), false));
-    assert(a.barsElapsed(10.5) == 0);
-    assert(a.barsElapsed(12.2) == 2);
-    assert(a.barsElapsed(14.0) == 4);
-    assert(a.barsElapsed(99.0) == 4);            // clamps at the span
+    uint8_t tick = 0;
+    // The dispatcher ticks before it publishes; progress is the bars really passed.
+    a.tick(playing(10.5), tick);
+    assert(a.barsElapsed(0.0) == 0);
+    a.tick(playing(12.2), tick);
+    assert(a.barsElapsed(0.0) == 2);
+    a.tick(playing(13.9), tick);
+    assert(a.barsElapsed(0.0) == 3);
+    a.tick(playing(14.0), tick);                 // the fourth bar completes the sweep
+    assert(!a.sweepActive() && a.barsElapsed(0.0) == 0);
+    assert(a.startSweep(110, playing(20.0), false));
+    a.tick(playing(21.0), tick);
+    a.tick(playing(99.0), tick);                 // a huge jump is a gap: not counted
+    assert(a.barsElapsed(0.0) == 1);
     a.cancelSweep();
-    assert(a.barsElapsed(12.2) == 0);            // cancelled: nothing elapsed
+    assert(a.barsElapsed(0.0) == 0);             // cancelled: nothing elapsed
 
     GroovePuterMidi::CutoffControlChannel channel;
     channel.publish(96, true, 3, true, 2, true);
@@ -337,14 +349,12 @@ void testSweepLengthIsChosenPerSweep() {
     a.manual(64, v);
     assert(a.startSweep(110, playing(0.0), false, 8));
     uint8_t out = 0;
-    assert(a.barsElapsed(4.0) == 4);             // half-way through eight bars
-    assert(a.barsElapsed(7.9) == 7);
-    assert(a.barsElapsed(8.0) == 8);             // completes at the eighth bar, not before
-    bool sentTarget = false;
-    for (double bar = 0.0; bar < 9.0; bar += 0.01) {
-        if (a.tick(playing(bar), out) && out == 110) sentTarget = true;
-    }
-    assert(sentTarget && !a.sweepActive());
+    a.tick(playing(4.0), out);
+    assert(a.barsElapsed(0.0) == 4);             // half-way through eight bars
+    a.tick(playing(7.9), out);
+    assert(a.barsElapsed(0.0) == 7);
+    const bool reached = a.tick(playing(8.0), out);  // completes at the eighth bar, not before
+    assert(reached && out == 110 && !a.sweepActive());
     // The codec and the published word carry the length index.
     using GroovePuterMidi::CutoffRequest;
     const uint32_t w = CutoffRequest::encode(CutoffRequest::kSetDuration, 3, 12);
@@ -352,6 +362,104 @@ void testSweepLengthIsChosenPerSweep() {
     GroovePuterMidi::CutoffControlChannel channel;
     channel.publish(70, true, 8, true, 1, false, 3);
     assert(channel.barsElapsed() == 8 && channel.durationIndex() == 3 && channel.controller() == 1);
+}
+
+}  // namespace
+
+namespace {
+void testSweepSurvivesTheBarCounterResetting() {
+    // A one-bar loop, or a transport epoch bump mid-play, can move the project's bar
+    // position backwards. The sweep counts the bars it has really passed, so it must
+    // keep going and reach the target, without freezing on the value it had.
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.startSweep(110, playing(10.0, 1), false, 2));
+    uint8_t out = 0;
+    // one bar of play, then the counter jumps back to the start of the project
+    for (double bar = 10.0; bar < 11.0; bar += 0.05) a.tick(playing(bar, 1), out);
+    a.tick(playing(0.25, 2), out);                   // reset: a new epoch, bar 0
+    assert(a.sweepActive());                         // not cancelled by the epoch
+    bool reachedTarget = false;
+    for (double bar = 0.25; bar < 3.0; bar += 0.05) {
+        if (a.tick(playing(bar, 2), out) && out == 110) reachedTarget = true;
+    }
+    assert(reachedTarget && !a.sweepActive());
+}
+
+}  // namespace
+
+namespace {
+using GroovePuterMidi::CutoffVoice;
+
+// Counts the levels of the given controller index among the voice's current levels.
+int levelsFor(const CutoffVoice& v, uint8_t index, uint8_t* value = nullptr) {
+    CutoffVoice::Level out[2];
+    const uint8_t n = v.levels(out);
+    int found = 0;
+    for (uint8_t i = 0; i < n; ++i) {
+        if (out[i].index == index) {
+            ++found;
+            if (value) *value = out[i].value;
+        }
+    }
+    return found;
+}
+
+void testSweepKeepsRunningWhenAnotherControllerIsEdited() {
+    // SWEEP on CUTOFF, then the user selects RESO and turns it: the CUTOFF sweep must
+    // keep going, and RESO's own value must reach the wire next to it.
+    CutoffVoice v;
+    v.manual(64);                                     // CUTOFF known at 64
+    assert(v.startSweep(110, playing(0.0), false, 4));
+    v.select(1);                                      // RESO: edited, not swept
+    v.manual(100);
+    assert(v.sweeping() && v.owner() == 0);           // the sweep was not cancelled
+    assert(v.selected() == 1 && v.value() == 100 && v.known());
+    uint8_t cutoff = 0;
+    uint8_t reso = 0;
+    v.tick(playing(2.0));
+    assert(levelsFor(v, 0, &cutoff) == 1 && cutoff > 64 && cutoff < 110);
+    assert(levelsFor(v, 1, &reso) == 1 && reso == 100);
+    // The sweep reaches its target; CUTOFF's final value is still a level, so the
+    // dispatcher delivers it, and RESO keeps its own value.
+    v.tick(playing(4.0));
+    assert(!v.sweeping());
+    assert(levelsFor(v, 0, &cutoff) == 1 && cutoff == 110);
+    assert(levelsFor(v, 1, &reso) == 1 && reso == 100);
+}
+
+void testManualOnTheSweptControllerStillCancels() {
+    CutoffVoice v;
+    v.manual(64);
+    assert(v.startSweep(110, playing(0.0), false, 4));
+    v.manual(20);                                     // editing the sweeping controller
+    assert(!v.sweeping() && v.value() == 20);
+}
+
+void testNewSweepOnAnotherControllerKeepsTheOldValue() {
+    CutoffVoice v;
+    v.manual(64);
+    assert(v.startSweep(110, playing(0.0), false, 4));
+    v.tick(playing(2.0));
+    const uint8_t mid = v.value();                    // CUTOFF mid-sweep
+    v.select(1);
+    v.manual(40);                                     // RESO set first
+    assert(v.startSweep(90, playing(2.0), false, 4)); // a sweep on RESO takes over
+    assert(v.sweeping() && v.owner() == 1);
+    v.select(0);                                      // back to CUTOFF: its value was kept
+    assert(v.value() == mid && v.known());
+    assert(levelsFor(v, 1) == 1);                     // RESO sweeps, CUTOFF is held
+}
+
+void testNothingIsSentBeforeAValueIsSet() {
+    CutoffVoice v;
+    CutoffVoice::Level out[2];
+    assert(v.levels(out) == 0);
+    v.select(1);
+    assert(v.levels(out) == 0);
+    v.manual(30);
+    assert(v.levels(out) == 1 && out[0].index == 1 && out[0].value == 30);
 }
 
 }  // namespace
@@ -369,7 +477,7 @@ int main() {
     testBeforeStartBarIsClampedToStart();
     testAutomationSweepsOverFourBarsAndCompletes();
     testStopCancelsAndHoldsValue();
-    testRestartEpochCancelsAndNeverResumes();
+    testStopCancelsAndNeverResumes();
     testStartWhileStoppedIsRefused();
     testManualEditDuringSweepTakesOver();
     testRequestCodecRoundTrips();
@@ -380,5 +488,10 @@ int main() {
     testRequestCodecCarriesControllerAndShape();
     testRestoreSelectsWithoutSending();
     testSweepLengthIsChosenPerSweep();
+    testSweepSurvivesTheBarCounterResetting();
+    testSweepKeepsRunningWhenAnotherControllerIsEdited();
+    testManualOnTheSweptControllerStillCancels();
+    testNewSweepOnAnotherControllerKeepsTheOldValue();
+    testNothingIsSentBeforeAValueIsSet();
     return 0;
 }

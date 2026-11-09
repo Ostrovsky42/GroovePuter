@@ -177,7 +177,6 @@ public:
     void restore(uint8_t value, bool known) {
         sweep_.restore(value);
         known_ = known;
-        epochKnown_ = false;
     }
 
     // The receiver's value is known only after the user has set one: a fresh
@@ -189,27 +188,34 @@ public:
     bool startSweep(uint8_t target, const CutoffTransportView& t, bool returning,
                     uint8_t bars = 4) {
         if (!known_ || !t.valid || !t.playing) return false;
-        sweep_.begin(target, t.bar, returning, bars);
-        epoch_ = t.epoch;
-        epochKnown_ = true;
+        // The sweep runs on its own bar axis: it starts at zero and advances only by
+        // the bars the transport really passes (see tick). The project's bar counter
+        // may reset (a loop, an epoch bump) and must not move the sweep backwards.
+        sweep_.begin(target, 0.0, returning, bars);
+        lastBar_ = t.bar;
+        elapsed_ = 0.0;
         return true;
     }
 
     void cancelSweep() { sweep_.cancel(); }
 
-    // Returns true and sets `send` when the held value changed on this pass.
+    // Returns true and sets `send` when the held value changed on this pass. STOP
+    // cancels; an epoch change during play does not, because the bar counter can
+    // reset without the transport stopping.
     bool tick(const CutoffTransportView& t, uint8_t& send) {
         if (!t.valid || !t.playing) {
             sweep_.cancel();
-            epochKnown_ = false;
             return false;
         }
-        if (epochKnown_ && t.epoch != epoch_) {
-            sweep_.cancel();           // a restart or Continue never resumes a sweep
-            epochKnown_ = false;
-            return false;
+        if (sweep_.active()) {
+            // Count forward progress only. A backwards jump is a reset of the bar
+            // counter, not time passing, so it is skipped. A forward jump is counted up
+            // to the sweep's own maximum (8 bars); anything more is a gap, not music.
+            const double delta = t.bar - lastBar_;
+            if (delta > 0.0 && delta < 8.0) elapsed_ += delta;
+            lastBar_ = t.bar;
         }
-        return sweep_.poll(t.bar, send);
+        return sweep_.poll(elapsed_, send);
     }
 
     bool sweepActive() const { return sweep_.active(); }
@@ -219,18 +225,109 @@ public:
     // Whole bars of the sweep that have passed at `nowBar`, 0..its length. Read
     // only: zero when no sweep is running.
     uint8_t barsElapsed(double nowBar) const {
+        (void)nowBar;  // progress comes from the sweep's own axis, not the bar counter
         if (!sweep_.active()) return 0;
-        double elapsed = nowBar - sweep_.startBar();
-        if (elapsed < 0.0) elapsed = 0.0;
-        if (elapsed >= static_cast<double>(sweep_.bars())) return sweep_.bars();
-        return static_cast<uint8_t>(elapsed);
+        if (elapsed_ >= static_cast<double>(sweep_.bars())) return sweep_.bars();
+        return static_cast<uint8_t>(elapsed_);
     }
 
 private:
     CutoffSweep sweep_;
-    uint32_t epoch_{0};
-    bool epochKnown_{false};
+    double lastBar_{0.0};
+    double elapsed_{0.0};
     bool known_{false};
+};
+
+// Controller state of one synth voice. Every controller keeps its own held value and
+// known flag. One CutoffAutomation runs at a time, on the controller it was started
+// for (the owner). The user edits the selected controller, which may differ from the
+// owner: then the sweep keeps running on the owner while the selected one is changed.
+// A new sweep or a manual edit of a controller that is not the owner takes ownership.
+class CutoffVoice {
+public:
+    struct Level {
+        uint8_t index;
+        uint8_t value;
+    };
+
+    // Chooses the controller the user edits. A running sweep keeps running.
+    void select(uint8_t next) {
+        if (next < kControllerCount) selected_ = next;
+    }
+    uint8_t selected() const { return selected_; }
+    uint8_t owner() const { return owner_; }
+    bool sweeping() const { return automation_.sweepActive(); }
+
+    // Manual edit of the selected controller. A sweep on another controller keeps going.
+    void manual(uint8_t value) {
+        const uint8_t v = clampForController(selected_, value);
+        if (sweeping() && selected_ != owner_) {
+            held_[selected_] = v;
+            known_[selected_] = true;
+            return;
+        }
+        claim();
+        uint8_t send = 0;
+        (void)automation_.manual(v, send);
+    }
+
+    // Starts a sweep on the selected controller. A sweep on another controller stops.
+    bool startSweep(uint8_t target, const CutoffTransportView& t, bool returning, uint8_t bars) {
+        claim();
+        return automation_.startSweep(target, t, returning, bars);
+    }
+
+    void cancelSweep() { automation_.cancelSweep(); }
+
+    // Advances the owner's sweep. Returns true when its level changed.
+    bool tick(const CutoffTransportView& t) {
+        uint8_t send = 0;
+        return automation_.tick(t, send);
+    }
+
+    // The selected controller's value and whether the user has set it.
+    uint8_t value() const { return heldValue(selected_); }
+    bool known() const { return heldKnown(selected_); }
+    uint8_t barsElapsed(double nowBar) const { return automation_.barsElapsed(nowBar); }
+
+    // Levels the wire must hold now: the owner's (a running sweep, or its last value
+    // once the sweep has finished, so its final step is still delivered), and the
+    // selected controller's when it is not the owner. Returns how many were written.
+    uint8_t levels(Level out[2]) const {
+        uint8_t n = 0;
+        if (automation_.known()) {
+            out[n++] = {owner_, clampForController(owner_, automation_.value())};
+        }
+        if (selected_ != owner_ && heldKnown(selected_)) {
+            out[n++] = {selected_, clampForController(selected_, held_[selected_])};
+        }
+        return n;
+    }
+
+private:
+    uint8_t heldValue(uint8_t index) const {
+        return index == owner_ ? automation_.value() : held_[index];
+    }
+    bool heldKnown(uint8_t index) const {
+        return index == owner_ ? automation_.known() : known_[index];
+    }
+
+    // Makes the automation serve the selected controller. A sweep on the old owner
+    // stops and keeps its value in that owner's slot.
+    void claim() {
+        if (owner_ == selected_) return;
+        held_[owner_] = automation_.value();
+        known_[owner_] = automation_.known();
+        automation_.cancelSweep();
+        owner_ = selected_;
+        automation_.restore(held_[owner_], known_[owner_]);
+    }
+
+    CutoffAutomation automation_;
+    uint8_t held_[kControllerCount]{};
+    bool known_[kControllerCount]{};
+    uint8_t selected_{0};
+    uint8_t owner_{0};
 };
 
 // UI-to-dispatcher request word. Only the UI writes requests; only the dispatcher
