@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "src/midi/usb_midi_output.h"
+#include "src/output/output_ownership.h"
 
 namespace {
 
@@ -170,12 +171,48 @@ void testSynthBUsesItsOwnChannelAndDedupe() {
 
 }  // namespace
 
+void testCutoffFollowsTrackOutputMode() {
+    RecordingTransport usb;
+    UsbMidiOutput out(usb, route());
+    assert(out.begin());
+    out.pollConnection();
+    GroovePuterOutput::setMode(GroovePuterOutput::Track::SynthA, GroovePuterOutput::Mode::Internal);
+    out.handleMusicalEvent(cc(74, 40));
+    assert(usb.ccs.empty());        // INTERNAL: the external synth must not hear CC74
+    GroovePuterOutput::setMode(GroovePuterOutput::Track::SynthA, GroovePuterOutput::Mode::Midi);
+    out.handleMusicalEvent(cc(74, 40));
+    assert(usb.ccs.size() == 1 && usb.ccs[0].value == 40);  // back to MIDI: sent
+}
+
+namespace {
+void testDeliveredMeansOnTheWire() {
+    RecordingTransport usb;
+    UsbMidiOutput out(usb, route());
+    assert(out.begin());
+    out.pollConnection();
+    usb.refuseCc = 1;
+    out.handleMusicalEvent(cc(74, 50));
+    assert(!out.cutoffDelivered(0, 50));    // refused: not on the wire
+    out.handleMusicalEvent(cc(74, 50));
+    assert(out.cutoffDelivered(0, 50));     // the level check's retry lands it
+    assert(!out.cutoffDelivered(0, 51));    // another value is not delivered
+    usb.mountedFlag = false;
+    out.pollConnection();
+    usb.mountedFlag = true;
+    out.pollConnection();
+    assert(!out.cutoffDelivered(0, 50));    // reconnect: the held value must be resent
+}
+
+}  // namespace
+
 int main() {
     testEncodesCutoffOnSynthAChannel8();
     testClampsOutOfRangeValues();
     testDeduplicatesUnchangedValue();
     testOnlyCutoffOnSynthsReachesTheWire();
     testSynthBUsesItsOwnChannelAndDedupe();
+    testCutoffFollowsTrackOutputMode();
+    testDeliveredMeansOnTheWire();
     testDoesNotTouchNoteOwnership();
     testRefusedCcIsRetriedByTheNextEvent();
     testNothingWhileUnmountedAndResendAfterReconnect();

@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "midi_pattern_startup_routes.h"
+#include "../output/output_ownership.h"
 
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
@@ -1494,6 +1495,9 @@ void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
     if (event.target == MusicalEventTarget::SynthB) slot = 1;
     if (slot < 0) return;
     if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
+    // The track's output mode decides whether the external synth may hear it.
+    // INTERNAL or LAYER mute this path just as they mute the notes of the track.
+    if (!GroovePuterOutput::allowsMidi(event.target, GroovePuterOutput::SourceClass::Performance)) return;
 
     const uint8_t value = event.velocity > 127u ? 127u : event.velocity;
     if (cutoffSent_[slot] && cutoffLast_[slot] == value) return;

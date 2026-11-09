@@ -41,6 +41,7 @@ void SynthMidiPage::draw(IGfx& gfx) {
   auto& channel = GroovePuterMidi::gCutoffControl[voice_index_];
   const bool sweeping = channel.sweeping();
   const int barsDone = channel.barsElapsed();
+  const bool known = channel.known();
 
   // Identity: the synth is the title, the external device is secondary.
   const int headerY = content.y + 2;
@@ -80,9 +81,11 @@ void SynthMidiPage::draw(IGfx& gfx) {
   drawFocus(0);
   gfx.setTextColor(focus_ == 0 ? palette.accent : palette.text);
   gfx.drawText(x + 8, rowY(0) + 2, "CUTOFF");
-  drawBar(0, channel.value(), palette.accent);
+  if (known) drawBar(0, channel.value(), palette.accent);
+  // Until the user sets a value the receiver's value is unknown: show it so.
   char value[8]{};
-  std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(channel.value()));
+  if (known) std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(channel.value()));
+  else std::snprintf(value, sizeof(value), "--");
   gfx.setTextColor(palette.text);
   gfx.drawText(valueRight - gfx.textWidth(value), rowY(0) + 2, value);
 
@@ -177,7 +180,8 @@ void SynthMidiPage::adjust(int direction, bool fine) {
   const int step = fine ? kStepFine : kStepCoarse;
   if (focus_ == 0) {
     // A manual value takes over from a running sweep, by design.
-    const int base = GroovePuterMidi::gCutoffControl[voice_index_].value();
+    const auto& control = GroovePuterMidi::gCutoffControl[voice_index_];
+    const int base = control.known() ? control.value() : kStandardCutoff;
     int next = base + direction * step;
     next = next < 0 ? 0 : next > 127 ? 127 : next;
     GroovePuterMidi::gCutoffControl[voice_index_].request(
@@ -198,6 +202,10 @@ void SynthMidiPage::toggleSweep() {
     return;
   }
   // The sweep is musical: it needs the transport running and never arms itself.
+  if (!channel.known()) {
+    UI::showToast("SET CUTOFF FIRST", 1200);
+    return;
+  }
   if (!mini_acid_.isPlaying()) {
     UI::showToast("PLAY FIRST", 1000);
     return;

@@ -101,13 +101,21 @@ struct CutoffTransportView {
 // or restarts by itself. The dispatcher calls tick() once per pass.
 class CutoffAutomation {
 public:
-    // Manual edit: cancels any sweep and sends the value if it changed.
-    bool manual(uint8_t value, uint8_t& send) { return sweep_.setManual(value, send); }
+    // Manual edit: cancels any sweep and makes the value known. The value is
+    // delivered by the dispatcher's level check, not by this return value.
+    bool manual(uint8_t value, uint8_t& send) {
+        known_ = true;
+        return sweep_.setManual(value, send);
+    }
 
-    // Starts a sweep from the held value. Only while the transport plays; a sweep
-    // is never armed for a later Start. Returns false when it cannot start.
+    // The receiver's value is known only after the user has set one: a fresh
+    // device never gets an unsolicited CC74.
+    bool known() const { return known_; }
+
+    // Starts a sweep from the held value. Only while the transport plays and the
+    // value is known; a sweep is never armed for a later Start.
     bool startSweep(uint8_t target, const CutoffTransportView& t) {
-        if (!t.valid || !t.playing) return false;
+        if (!known_ || !t.valid || !t.playing) return false;
         sweep_.begin(target, t.bar);
         epoch_ = t.epoch;
         epochKnown_ = true;
@@ -149,6 +157,7 @@ private:
     CutoffSweep sweep_;
     uint32_t epoch_{0};
     bool epochKnown_{false};
+    bool known_{false};
 };
 
 // UI-to-dispatcher request word. The UI publishes one request; only the dispatcher
@@ -170,8 +179,7 @@ struct CutoffRequest {
 // published value. Both sides see the same words on the device and in SDL.
 class CutoffControlChannel {
 public:
-    // Until the dispatcher publishes, show the sweep's own starting value.
-    CutoffControlChannel() { published_.storeRelaxed(64u); }
+    CutoffControlChannel() = default;
 
     // UI task only.
     void request(CutoffRequest::Op op, uint8_t value) {
@@ -181,17 +189,20 @@ public:
 
     // Dispatcher only.
     uint32_t loadRequest() const { return request_.loadAcquire(); }
-    // Layout: bits 0..6 value, bit 7 sweeping, bits 8..10 whole bars elapsed.
-    void publish(uint8_t value, bool sweeping, uint8_t barsElapsed = 0) {
+    // Layout: bits 0..6 value, bit 7 sweeping, bits 8..10 whole bars elapsed,
+    // bit 11 known (the user has set a value on this voice).
+    void publish(uint8_t value, bool sweeping, uint8_t barsElapsed, bool known) {
         published_.storeRelease(static_cast<uint32_t>(value & 0x7Fu) |
                                 (sweeping ? 0x80u : 0u) |
-                                (static_cast<uint32_t>(barsElapsed & 0x7u) << 8u));
+                                (static_cast<uint32_t>(barsElapsed & 0x7u) << 8u) |
+                                (known ? 0x800u : 0u));
     }
 
     // Any task.
     uint8_t value() const { return static_cast<uint8_t>(published_.loadAcquire() & 0x7Fu); }
     bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
     uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0x7u); }
+    bool known() const { return (published_.loadAcquire() & 0x800u) != 0u; }
 
 private:
     MidiRealtimeWord request_;

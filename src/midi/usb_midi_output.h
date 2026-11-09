@@ -100,6 +100,11 @@ public:
     bool servicePendingReleases(uint32_t nowUs);
     // Channels on which this output currently holds a wire-sounding note.
     uint16_t wireOwnedChannelMask() const { return owners_.channelMask(); }
+    // True when `value` is on the wire for this slot on this connection. A refused
+    // write is not recorded, so the dispatcher's level check retries it.
+    bool cutoffDelivered(uint8_t slot, uint8_t value) const {
+        return slot < 2 && cutoffSent_[slot] && cutoffLast_[slot] == value;
+    }
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,

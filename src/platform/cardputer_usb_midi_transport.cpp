@@ -1479,6 +1479,7 @@ void applyCardputerDinEnableRequest() {
 // every other note and CC on the wire.
 GroovePuterMidi::CutoffAutomation g_cutoff[2];
 uint32_t g_cutoffRequestApplied[2] = {0, 0};
+uint32_t g_cutoffNextTryMs[2] = {0, 0};
 
 void emitCutoff(int voice, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
@@ -1508,7 +1509,7 @@ void serviceCutoffAutomation() {
             uint8_t value = 0;
             switch (Request::op(request)) {
                 case Request::kManual:
-                    if (automation.manual(Request::value(request), value)) emitCutoff(voice, value);
+                    (void)automation.manual(Request::value(request), value);
                     break;
                 case Request::kStartSweep:
                     (void)automation.startSweep(Request::value(request), view);
@@ -1522,9 +1523,23 @@ void serviceCutoffAutomation() {
         }
 
         uint8_t value = 0;
-        if (automation.tick(view, value)) emitCutoff(voice, value);
+        (void)automation.tick(view, value);
+
+        // Level delivery: the wire must hold the automation's value. A refused or
+        // unplugged send is not recorded by the output, so it is retried here, at
+        // most every 20 ms, and a reconnect resends the held value by itself. Before
+        // the user has set a value nothing is sent.
+        if (automation.known()) {
+            const uint8_t held = automation.value();
+            const uint32_t nowMs = millis();
+            if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice), held) &&
+                static_cast<int32_t>(nowMs - g_cutoffNextTryMs[voice]) >= 0) {
+                emitCutoff(voice, held);
+                g_cutoffNextTryMs[voice] = nowMs + 20u;
+            }
+        }
         channel.publish(automation.value(), automation.sweepActive(),
-                        automation.barsElapsed(view.bar));
+                        automation.barsElapsed(view.bar), automation.known());
     }
 }
 

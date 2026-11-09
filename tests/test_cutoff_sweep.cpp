@@ -249,10 +249,23 @@ void testBarsElapsedAndPublishedLayout() {
     assert(a.barsElapsed(12.2) == 0);            // cancelled: nothing elapsed
 
     GroovePuterMidi::CutoffControlChannel channel;
-    channel.publish(96, true, 3);
-    assert(channel.value() == 96 && channel.sweeping() && channel.barsElapsed() == 3);
-    channel.publish(40, false, 0);
-    assert(channel.value() == 40 && !channel.sweeping() && channel.barsElapsed() == 0);
+    channel.publish(96, true, 3, true);
+    assert(channel.value() == 96 && channel.sweeping() && channel.barsElapsed() == 3 && channel.known());
+    channel.publish(40, false, 0, false);
+    assert(channel.value() == 40 && !channel.sweeping() && channel.barsElapsed() == 0 && !channel.known());
+}
+
+}  // namespace
+
+namespace {
+void testSweepNeedsAKnownValue() {
+    CutoffAutomation a;
+    assert(!a.known());
+    assert(!a.startSweep(110, playing(0.0)));  // a fresh device has no known value
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.known());
+    assert(a.startSweep(110, playing(0.0)));
 }
 
 }  // namespace
@@ -275,5 +288,6 @@ int main() {
     testManualEditDuringSweepTakesOver();
     testRequestCodecRoundTrips();
     testBarsElapsedAndPublishedLayout();
+    testSweepNeedsAKnownValue();
     return 0;
 }
