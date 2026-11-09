@@ -2416,8 +2416,11 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     const uint32_t now = millis();
     if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) return true;
     last_tab_switch_ms_ = now;
-    const int previous = (static_cast<int>(synth_tab_) + 3) % 4;
-    setSynthTab(static_cast<SynthTab>(previous));
+    // Paging covers NOTES, KNOBS and MORE only; the MIDI tab is reached by Alt+Tab.
+    const SynthTab previous = (synth_tab_ == SynthTab::More || synth_tab_ == SynthTab::Midi)
+        ? SynthTab::Knobs
+        : SynthTab::Notes;
+    setSynthTab(previous);
     char toast[40];
     std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
                   voice_index_ == 0 ? 'A' : 'B', activeTabName());
@@ -2451,8 +2454,11 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
     last_tab_switch_ms_ = now;
 
-    const int next = (static_cast<int>(synth_tab_) + 1) % 4;
-    setSynthTab(static_cast<SynthTab>(next));
+    // Paging covers NOTES, KNOBS and MORE only; the MIDI tab is reached by Alt+Tab.
+    const SynthTab next = synth_tab_ == SynthTab::Notes ? SynthTab::Knobs
+                        : synth_tab_ == SynthTab::Knobs ? SynthTab::More
+                                                        : SynthTab::Notes;
+    setSynthTab(next);
 
     char toast[40];
     std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",

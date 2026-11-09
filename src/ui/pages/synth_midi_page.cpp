@@ -48,6 +48,10 @@ void SynthMidiPage::draw(IGfx& gfx) {
   // The dispatcher has caught up with this page's last request: stop stepping from it.
   if (requested_ >= 0 && known && channel.value() == requested_) requested_ = -1;
   const char* controllerName = GroovePuterMidi::kControllers[controller].name;
+  // The sweep belongs to its owner, which may not be the controller shown on row 0.
+  const int owner = channel.owner() < GroovePuterMidi::kControllerCount ? channel.owner() : controller;
+  const bool foreignSweep = sweeping && owner != controller;
+  const char* ownerName = GroovePuterMidi::kControllers[owner].name;
 
   // Identity: the synth leads, the route is secondary and sits left of the tab strip.
   const int headerY = content.y + 2;
@@ -70,12 +74,15 @@ void SynthMidiPage::draw(IGfx& gfx) {
   const int barX = x + 70;
 
   auto rowY = [&](int row) { return rowsY + row * kRowStep; };
+  // Focus: a band across the row with a 3 px accent marker on its left edge. The band
+  // uses gridDim, not selectBg: in CLEAN selectBg is almost black and vanishes on the
+  // black background. Drawn before the row's text and bars, so they sit on top of it.
   auto drawFocus = [&](int row) {
     if (row != focus_) return;
-    gfx.drawRect(x - 1, rowY(row) - 1, width + 2, kRowH, palette.accent);
-    gfx.setTextColor(palette.accent);
-    gfx.drawText(x + 1, rowY(row) + 2, ">");
+    gfx.fillRect(x - 1, rowY(row) - 1, width + 2, kRowH, palette.gridDim);
+    gfx.fillRect(x - 1, rowY(row) - 1, 3, kRowH, palette.accent);
   };
+  auto labelColor = [&](int row) { return row == focus_ ? palette.selectBright : palette.secondary; };
   auto drawBar = [&](int row, int value, IGfxColor color) {
     const int y = rowY(row) + (kRowH - kBarH) / 2;
     gfx.drawRect(barX, y, kBarW, kBarH, palette.dim);
@@ -85,7 +92,7 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   // Controller row: its name, its value (-- until the user sets one), its bar.
   drawFocus(0);
-  gfx.setTextColor(focus_ == 0 ? palette.accent : palette.text);
+  gfx.setTextColor(labelColor(0));
   gfx.drawText(x + 8, rowY(0) + 2, controllerName);
   if (known) drawBar(0, channel.value(), palette.accent);
   char value[8]{};
@@ -96,7 +103,7 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   // SWEEP row: the shape when idle (RAMP or RETURN), four segments while running.
   drawFocus(1);
-  gfx.setTextColor(focus_ == 1 ? palette.accent : palette.text);
+  gfx.setTextColor(labelColor(1));
   gfx.drawText(x + 8, rowY(1) + 2, "SWEEP");
   const int bars = GroovePuterMidi::kDurations[channel.durationIndex()];
   if (sweeping && bars <= 4) {
@@ -107,11 +114,14 @@ void SynthMidiPage::draw(IGfx& gfx) {
       if (i < barsDone) gfx.fillRect(sx, sy, segW, kBarH, palette.accent2);
       else gfx.drawRect(sx, sy, segW, kBarH, palette.dim);
     }
+    // A sweep on another controller is named, so RUNNING is never read as "this one".
+    const char* state = foreignSweep ? ownerName : "RUNNING";
     gfx.setTextColor(palette.accent2);
-    gfx.drawText(valueRight - gfx.textWidth("RUNNING"), rowY(1) + 2, "RUNNING");
+    gfx.drawText(valueRight - gfx.textWidth(state), rowY(1) + 2, state);
   } else if (sweeping) {
-    char count[12]{};
-    std::snprintf(count, sizeof(count), "%d/%d", barsDone, bars);
+    char count[20]{};
+    if (foreignSweep) std::snprintf(count, sizeof(count), "%s %d/%d", ownerName, barsDone, bars);
+    else std::snprintf(count, sizeof(count), "%d/%d", barsDone, bars);
     gfx.setTextColor(palette.accent2);
     gfx.drawText(valueRight - gfx.textWidth(count), rowY(1) + 2, count);
   } else {
@@ -122,7 +132,7 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   // TARGET: the value the sweep reaches, on the same scale.
   drawFocus(2);
-  gfx.setTextColor(focus_ == 2 ? palette.accent : palette.text);
+  gfx.setTextColor(labelColor(2));
   gfx.drawText(x + 8, rowY(2) + 2, "TARGET");
   drawBar(2, target_, palette.secondary);
   char target[8]{};
@@ -130,9 +140,9 @@ void SynthMidiPage::draw(IGfx& gfx) {
   gfx.setTextColor(palette.text);
   gfx.drawText(valueRight - gfx.textWidth(target), rowY(2) + 2, target);
 
-  // TIME: how long the sweep takes; Left and Right choose 1, 2, 4 or 8 bars.
+  // TIME: how long the sweep takes; Left and Right choose 1, 2, 4, 8, 16 or 32 bars.
   drawFocus(3);
-  gfx.setTextColor(focus_ == 3 ? palette.accent : palette.text);
+  gfx.setTextColor(labelColor(3));
   gfx.drawText(x + 8, rowY(3) + 2, "TIME");
   char length[12]{};
   std::snprintf(length, sizeof(length), bars == 1 ? "1 BAR" : "%d BARS", bars);
@@ -141,9 +151,13 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   // Context hint: what Enter does right now.
   gfx.setTextColor(palette.secondary);
-  const char* hint = sweeping ? "ENTER: CANCEL SWEEP"
-      : focus_ == 0 ? "ENTER: CONTROLLER  CTRL+A: STANDARD"
-      : focus_ == 1 ? "ENTER: START  L/R: RAMP/RETURN"
+  // Enter acts on the focused row, so the hint follows the focus even during a sweep.
+  char sweepHint[40]{};
+  if (foreignSweep) std::snprintf(sweepHint, sizeof(sweepHint), "ENTER: START, STOPS %s", ownerName);
+  const char* hint = focus_ == 0 ? "ENTER: CONTROLLER  CTRL+A: STANDARD"
+      : focus_ == 1 ? (foreignSweep ? sweepHint
+                       : sweeping ? "ENTER: CANCEL SWEEP"
+                       : "ENTER: START  L/R: RAMP/RETURN")
       : focus_ == 2 ? "L/R: TARGET  CTRL+A: STANDARD"
       : "L/R: LENGTH";
   gfx.drawText(x + 8, rowY(3) + kRowStep + 3, hint);
@@ -245,6 +259,9 @@ void SynthMidiPage::adjust(int direction, bool fine) {
                    : channel.known() ? channel.value() : kStandardValue;
     int next = base + direction * step;
     next = next < 0 ? 0 : next > 127 ? 127 : next;
+    // Clamp as the dispatcher will (PAN starts at 1), or the published value never
+    // equals the request and later steps keep starting from a stale base.
+    next = GroovePuterMidi::clampForController(channel.controller(), static_cast<uint8_t>(next));
     requested_ = next;
     channel.request(Request::kManual, static_cast<uint8_t>(next), channel.controller());
     return;
@@ -257,7 +274,9 @@ void SynthMidiPage::adjust(int direction, bool fine) {
 
 void SynthMidiPage::toggleSweep() {
   auto& channel = GroovePuterMidi::gCutoffControl[voice_index_];
-  if (channel.sweeping()) {
+  // Enter cancels the sweep of the controller on screen. A sweep on another
+  // controller is not this row's to cancel: Enter starts one here, which takes over.
+  if (channel.sweeping() && channel.owner() == channel.controller()) {
     channel.request(Request::kCancelSweep, 0);
     UI::showToast("SWEEP STOPPED", 900);
     return;

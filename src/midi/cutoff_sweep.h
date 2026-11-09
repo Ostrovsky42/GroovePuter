@@ -20,20 +20,23 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // and receiver mode, owned by the Pattern slide path), CC27..29 (the arpeggiator
 // makes its own notes), CC116..119 (DX only, channel 10) and CC102..115 (assigned
 // effect parameters on the master channels).
-inline constexpr uint8_t kControllerCount = 8;
+// RESO (CC71) is not offered: it was not audible on the SEQTRAK patch under test.
+inline constexpr uint8_t kControllerCount = 7;
 struct CutoffController {
     uint8_t number;
     const char* name;
     uint8_t minValue;  // Yamaha's usable range; PAN is 1..127
 };
 inline constexpr CutoffController kControllers[kControllerCount] = {
-    {74, "CUTOFF", 0},  {71, "RESO", 0},   {73, "ATTACK", 0}, {75, "RELEASE", 0},
-    {91, "REVERB", 0},  {94, "DELAY", 0},  {7, "VOLUME", 0},  {10, "PAN", 1},
+    {74, "CUTOFF", 0},  {73, "ATTACK", 0}, {75, "RELEASE", 0}, {91, "REVERB", 0},
+    {94, "DELAY", 0},   {7, "VOLUME", 0},  {10, "PAN", 1},
 };
 
-// Sweep lengths the user can choose, in bars. Musically they divide a phrase evenly.
-inline constexpr uint8_t kDurationCount = 4;
-inline constexpr uint8_t kDurations[kDurationCount] = {1, 2, 4, 8};
+// Sweep lengths the user can choose, in bars. Musically they divide a phrase evenly;
+// 16 and 32 bars are for long passes.
+inline constexpr uint8_t kDurationCount = 6;
+inline constexpr uint8_t kDurations[kDurationCount] = {1, 2, 4, 8, 16, 32};
+inline constexpr uint8_t kMaxSweepBars = 32;
 inline constexpr uint8_t kDefaultDurationIndex = 2;   // four bars
 
 // The value a controller can carry on the wire: clamped to its usable range. The
@@ -210,9 +213,9 @@ public:
         if (sweep_.active()) {
             // Count forward progress only. A backwards jump is a reset of the bar
             // counter, not time passing, so it is skipped. A forward jump is counted up
-            // to the sweep's own maximum (8 bars); anything more is a gap, not music.
+            // to the sweep's own maximum (kMaxSweepBars); anything more is a gap, not music.
             const double delta = t.bar - lastBar_;
-            if (delta > 0.0 && delta < 8.0) elapsed_ += delta;
+            if (delta > 0.0 && delta < static_cast<double>(kMaxSweepBars)) elapsed_ += delta;
             lastBar_ = t.bar;
         }
         return sweep_.poll(elapsed_, send);
@@ -369,28 +372,34 @@ public:
     // Dispatcher only.
     uint32_t loadRequest() const { return request_.loadAcquire(); }
 
-    // Layout: bits 0..6 value, bit 7 sweeping, bits 8..11 bars elapsed (0..8),
-    // bit 12 known, bits 13..15 selected controller index, bit 16 RETURN shape,
-    // bits 17..18 duration index.
+    // Layout: bits 0..6 value, bit 7 sweeping, bits 8..13 bars elapsed (0..32),
+    // bit 14 known, bits 15..17 selected controller index, bit 18 RETURN shape,
+    // bits 19..21 duration index, bits 22..24 sweep owner index. value and known
+    // belong to the selected controller; sweeping and bars elapsed belong to the
+    // owner, which may be another controller.
     void publish(uint8_t value, bool sweeping, uint8_t barsElapsed, bool known,
-                 uint8_t controller, bool returning, uint8_t durationIndex = kDefaultDurationIndex) {
+                 uint8_t controller, bool returning, uint8_t durationIndex = kDefaultDurationIndex,
+                 uint8_t owner = 0xFFu) {
+        if (owner == 0xFFu) owner = controller;
         published_.storeRelease(static_cast<uint32_t>(value & 0x7Fu) |
                                 (sweeping ? 0x80u : 0u) |
-                                (static_cast<uint32_t>(barsElapsed & 0xFu) << 8u) |
-                                (known ? 0x1000u : 0u) |
-                                (static_cast<uint32_t>(controller & 0x7u) << 13u) |
-                                (returning ? 0x10000u : 0u) |
-                                (static_cast<uint32_t>(durationIndex & 0x3u) << 17u));
+                                (static_cast<uint32_t>(barsElapsed & 0x3Fu) << 8u) |
+                                (known ? 0x4000u : 0u) |
+                                (static_cast<uint32_t>(controller & 0x7u) << 15u) |
+                                (returning ? 0x40000u : 0u) |
+                                (static_cast<uint32_t>(durationIndex & 0x7u) << 19u) |
+                                (static_cast<uint32_t>(owner & 0x7u) << 22u));
     }
 
     // Any task.
     uint8_t value() const { return static_cast<uint8_t>(published_.loadAcquire() & 0x7Fu); }
     bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
-    uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0xFu); }
-    bool known() const { return (published_.loadAcquire() & 0x1000u) != 0u; }
-    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 13u) & 0x7u); }
-    bool returning() const { return (published_.loadAcquire() & 0x10000u) != 0u; }
-    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 17u) & 0x3u); }
+    uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0x3Fu); }
+    bool known() const { return (published_.loadAcquire() & 0x4000u) != 0u; }
+    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 15u) & 0x7u); }
+    bool returning() const { return (published_.loadAcquire() & 0x40000u) != 0u; }
+    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 19u) & 0x7u); }
+    uint8_t owner() const { return static_cast<uint8_t>((published_.loadAcquire() >> 22u) & 0x7u); }
 
 private:
     MidiRealtimeWord request_;

@@ -1503,14 +1503,20 @@ void serviceCutoffAutomation() {
         const uint32_t request = channel.loadRequest();
         GroovePuterMidi::CutoffTransportView view;
         GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
-        if (GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+        // The timeline is a seqlock: a read can lose to the audio task publishing a
+        // block. That is not a STOP. Without a view this pass applies no request and
+        // advances no sweep (an invalid view would cancel it); the request stays in
+        // its word and the next pass takes it. Levels are still delivered below.
+        const bool haveView =
+            GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot);
+        if (haveView) {
             view.valid = snapshot.valid;
             view.playing = snapshot.playing;
             view.epoch = snapshot.transportEpoch;
             view.bar = snapshot.absoluteSteps() / GroovePuterMidi::kProjectStepsPerBar;
         }
 
-        if (request != 0u && request != g_cutoffRequestApplied[voice]) {
+        if (haveView && request != 0u && request != g_cutoffRequestApplied[voice]) {
             g_cutoffRequestApplied[voice] = request;
             using Request = GroovePuterMidi::CutoffRequest;
             const uint8_t wanted = Request::controller(request);
@@ -1543,7 +1549,7 @@ void serviceCutoffAutomation() {
             }
         }
 
-        (void)state.control.tick(view);
+        if (haveView) (void)state.control.tick(view);
         // Level delivery: the wire must hold each level the voice owns now (the sweep's
         // controller while it runs, and the selected one). A refused or unplugged send
         // is not recorded by the output, so it is retried here, at most every 20 ms per
@@ -1564,7 +1570,8 @@ void serviceCutoffAutomation() {
         }
         channel.publish(state.control.value(), state.control.sweeping(),
                         state.control.barsElapsed(view.bar), state.control.known(),
-                        state.control.selected(), state.returning, state.durationIndex);
+                        state.control.selected(), state.returning, state.durationIndex,
+                        state.control.owner());
     }
 }
 
