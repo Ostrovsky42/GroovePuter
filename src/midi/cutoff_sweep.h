@@ -158,6 +158,9 @@ struct CutoffRequest {
 // published value. Both sides see the same words on the device and in SDL.
 class CutoffControlChannel {
 public:
+    // Until the dispatcher publishes, show the sweep's own starting value.
+    CutoffControlChannel() { published_.storeRelaxed(64u); }
+
     // UI task only.
     void request(CutoffRequest::Op op, uint8_t value) {
         ++sequence_;

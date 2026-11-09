@@ -389,7 +389,7 @@ void TB303ParamsPage::initComponents() {
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   preset_control_ = std::make_shared<LabelValueComponent>("PRESET", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE MELODY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
-  ext_cc74_control_ = std::make_shared<LabelValueComponent>("EXT CC74", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
+  ext_cc74_control_ = std::make_shared<LabelValueComponent>("CC74", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   ext_target_control_ = std::make_shared<LabelValueComponent>("TO", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
@@ -539,8 +539,11 @@ void TB303ParamsPage::layoutComponents() {
   make_phrase_control_->setEnabled(!onPhrase);
   {
     auto& cutoff = GroovePuterMidi::gCutoffControl;
-    char cc[12]{};
-    std::snprintf(cc, sizeof(cc), cutoff.sweeping() ? "SWP %u" : "%u", cutoff.value());
+    // The label shows the sweep state; the value stays a plain number so the
+    // stepper never has to shorten it.
+    ext_cc74_control_->setLabel(cutoff.sweeping() ? "SWP" : "CC74");
+    char cc[8]{};
+    std::snprintf(cc, sizeof(cc), "%u", static_cast<unsigned>(cutoff.value()));
     ext_cc74_control_->setValue(cc);
     char to[8]{};
     std::snprintf(to, sizeof(to), "%u", static_cast<unsigned>(cutoff_target_));
@@ -573,9 +576,9 @@ void TB303ParamsPage::layoutComponents() {
                                         knobRowY - kMainKnobRadius,
                                         kMainKnobRadius * 2,
                                         kMainKnobRadius * 2});
-    // Top strip above the knobs (y 17..27): free space, no knob or summary moves.
-    ext_cc74_control_->setBoundaries(Rect{x0 + 4, content.y + 1, 84, 11});
-    ext_target_control_->setBoundaries(Rect{x0 + 92, content.y + 1, 76, 11});
+    // Top strip above the knobs (y 17..25): leaves a few pixels above the knob values.
+    ext_cc74_control_->setBoundaries(Rect{x0 + 4, content.y + 1, 84, 9});
+    ext_target_control_->setBoundaries(Rect{x0 + 92, content.y + 1, 74, 9});
   } else {
     // Empty boxes are not drawn, which hides the strip on MORE.
     ext_cc74_control_->setBoundaries(Rect{0, 0, 0, 0});
