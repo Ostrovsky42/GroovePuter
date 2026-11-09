@@ -141,6 +141,99 @@ void testBeforeStartBarIsClampedToStart() {
 
 }  // namespace
 
+
+// ---- CutoffAutomation: musical time, stop, restart and requests ----
+
+namespace {
+
+using GroovePuterMidi::CutoffAutomation;
+using GroovePuterMidi::CutoffRequest;
+using GroovePuterMidi::CutoffTransportView;
+
+CutoffTransportView playing(double bar, uint32_t epoch = 1) {
+    CutoffTransportView t;
+    t.valid = true;
+    t.playing = true;
+    t.epoch = epoch;
+    t.bar = bar;
+    return t;
+}
+
+CutoffTransportView stopped(double bar, uint32_t epoch = 1) {
+    CutoffTransportView t = playing(bar, epoch);
+    t.playing = false;
+    return t;
+}
+
+void testAutomationSweepsOverFourBarsAndCompletes() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    assert(a.manual(64, v) && v == 64);
+    assert(a.startSweep(110, playing(20.0)));
+    std::vector<uint8_t> sent;
+    for (double bar = 20.0; bar <= 25.0; bar += 0.01) {
+        if (a.tick(playing(bar), v)) sent.push_back(v);
+    }
+    assert(!sent.empty() && sent.back() == 110);
+    assert(!a.sweepActive());
+}
+
+void testStopCancelsAndHoldsValue() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.startSweep(110, playing(0.0)));
+    assert(a.tick(playing(1.0), v));
+    const uint8_t held = a.value();
+    assert(!a.tick(stopped(1.5), v));       // stop: nothing sent
+    assert(!a.sweepActive());
+    assert(a.value() == held);              // no snap back to 64
+    for (double bar = 1.5; bar < 8.0; bar += 0.1) assert(!a.tick(playing(bar), v));
+}
+
+void testRestartEpochCancelsAndNeverResumes() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.startSweep(110, playing(0.0, 1)));
+    assert(a.tick(playing(1.0, 1), v));
+    assert(!a.tick(playing(1.2, 2), v));    // new Start/Continue epoch: cancelled
+    for (double bar = 1.2; bar < 8.0; bar += 0.1) assert(!a.tick(playing(bar, 2), v));
+}
+
+void testStartWhileStoppedIsRefused() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(!a.startSweep(110, stopped(0.0)));
+    assert(!a.sweepActive());
+}
+
+void testManualEditDuringSweepTakesOver() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.startSweep(110, playing(0.0)));
+    assert(a.tick(playing(1.0), v));
+    assert(a.manual(70, v) && v == 70);
+    assert(!a.sweepActive());
+    for (double bar = 1.0; bar < 6.0; bar += 0.1) assert(!a.tick(playing(bar), v));
+}
+
+void testRequestCodecRoundTrips() {
+    const uint32_t w = CutoffRequest::encode(CutoffRequest::kManual, 110, 5);
+    assert(CutoffRequest::op(w) == CutoffRequest::kManual);
+    assert(CutoffRequest::value(w) == 110);
+    assert(CutoffRequest::sequence(w) == 5);
+    const uint32_t c = CutoffRequest::encode(CutoffRequest::kCancelSweep, 0, 6);
+    assert(CutoffRequest::op(c) == CutoffRequest::kCancelSweep);
+    assert(CutoffRequest::sequence(c) == 6);
+    // A zero sequence is coerced to 1, so no encoded request equals "none".
+    assert(CutoffRequest::encode(CutoffRequest::kManual, 1, 0) != 0u);
+}
+
+}  // namespace
+
 int main() {
     testManualMapsValuesAndClamps();
     testSweepStartsFromHeldValueAndEndsOnTarget();
@@ -152,5 +245,11 @@ int main() {
     testStopCancelsAndKeepsValue();
     testNoAutoRestartAfterCompletion();
     testBeforeStartBarIsClampedToStart();
+    testAutomationSweepsOverFourBarsAndCompletes();
+    testStopCancelsAndHoldsValue();
+    testRestartEpochCancelsAndNeverResumes();
+    testStartWhileStoppedIsRefused();
+    testManualEditDuringSweepTakesOver();
+    testRequestCodecRoundTrips();
     return 0;
 }

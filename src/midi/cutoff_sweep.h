@@ -85,6 +85,72 @@ private:
     bool sentOnce_{false};
 };
 
+// Transport facts the automation needs, copied from the project timeline snapshot.
+struct CutoffTransportView {
+    bool valid{false};
+    bool playing{false};
+    uint32_t epoch{0};   // changes on every Start, restart or Continue
+    double bar{0.0};    // absolute bar position of the project
+};
+
+// Drives a CutoffSweep from musical time. Stop cancels the sweep and keeps the
+// held value; a new epoch (Start or Continue) cancels it too, so nothing resumes
+// or restarts by itself. The dispatcher calls tick() once per pass.
+class CutoffAutomation {
+public:
+    // Manual edit: cancels any sweep and sends the value if it changed.
+    bool manual(uint8_t value, uint8_t& send) { return sweep_.setManual(value, send); }
+
+    // Starts a sweep from the held value. Only while the transport plays; a sweep
+    // is never armed for a later Start. Returns false when it cannot start.
+    bool startSweep(uint8_t target, const CutoffTransportView& t) {
+        if (!t.valid || !t.playing) return false;
+        sweep_.begin(target, t.bar);
+        epoch_ = t.epoch;
+        epochKnown_ = true;
+        return true;
+    }
+
+    void cancelSweep() { sweep_.cancel(); }
+
+    // Returns true and sets `send` when a CC74 value must go out this pass.
+    bool tick(const CutoffTransportView& t, uint8_t& send) {
+        if (!t.valid || !t.playing) {
+            sweep_.cancel();
+            epochKnown_ = false;
+            return false;
+        }
+        if (epochKnown_ && t.epoch != epoch_) {
+            sweep_.cancel();           // a restart or Continue never resumes a sweep
+            epochKnown_ = false;
+            return false;
+        }
+        return sweep_.poll(t.bar, send);
+    }
+
+    bool sweepActive() const { return sweep_.active(); }
+    uint8_t value() const { return sweep_.value(); }
+
+private:
+    CutoffSweep sweep_;
+    uint32_t epoch_{0};
+    bool epochKnown_{false};
+};
+
+// UI-to-dispatcher request word. The UI publishes one request; only the dispatcher
+// reads it. Layout: bits 0..6 value, bits 7..8 op, bits 9..31 sequence (non-zero).
+struct CutoffRequest {
+    enum Op : uint8_t { kNone = 0, kManual = 1, kStartSweep = 2, kCancelSweep = 3 };
+
+    static uint32_t encode(Op op, uint8_t value, uint32_t sequence) {
+        const uint32_t seq = (sequence & 0x7FFFFFu) == 0u ? 1u : (sequence & 0x7FFFFFu);
+        return (seq << 9u) | (static_cast<uint32_t>(op) << 7u) | (value & 0x7Fu);
+    }
+    static Op op(uint32_t word) { return static_cast<Op>((word >> 7u) & 0x3u); }
+    static uint8_t value(uint32_t word) { return static_cast<uint8_t>(word & 0x7Fu); }
+    static uint32_t sequence(uint32_t word) { return word >> 9u; }
+};
+
 }  // namespace GroovePuterMidi
 
 #endif  // GROOVEPUTER_CUTOFF_SWEEP_H
