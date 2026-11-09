@@ -78,6 +78,19 @@ inline void adjustOctave(SynthPattern& pattern, int stepIndex, int octaveDelta) 
   adjustNote(pattern, stepIndex, octaveDelta * 12);
 }
 
+// Pitch edit of one step inside a selection. A selection changes notes only: rests
+// and ties (note < 0) keep their content, and a note never becomes a rest. An edit
+// that would push a note below the range leaves that step as it was, so moving a
+// selection down and up again cannot lose notes.
+template <typename Edit>
+inline void editSelectedNote(SynthPattern& pattern, int stepIndex, Edit&& edit) {
+  const int index = clampStep(stepIndex);
+  if (pattern.steps[index].note < 0) return;
+  const SynthStep before = pattern.steps[index];
+  edit(pattern, index);
+  if (pattern.steps[index].note < 0) pattern.steps[index] = before;
+}
+
 inline void toggleAccent(SynthPattern& pattern, int stepIndex) {
   SynthStep& step = pattern.steps[clampStep(stepIndex)];
   step.accent = !step.accent;

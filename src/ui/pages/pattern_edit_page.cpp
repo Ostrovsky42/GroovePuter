@@ -432,7 +432,10 @@ bool PatternEditPage::handleEventLegacy(UIEvent& ui_event) {
       return commitPatternMutation([&](SynthPattern& pattern) {
         for (int r = min_row; r <= max_row; ++r) {
           for (int c = min_col; c <= max_col; ++c) {
-            edit(pattern, r * kPatternStepColumns + c);
+            // A selection changes notes only: rests and ties keep their content, and
+            // a note is never pushed out of range into a rest (editSelectedNote).
+            GroovePuterUndo::PatternEdit::editSelectedNote(
+                pattern, r * kPatternStepColumns + c, edit);
           }
         }
       });
