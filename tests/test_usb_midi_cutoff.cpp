@@ -223,11 +223,11 @@ void testAllowedControllersOnlyAndPanRange() {
     UsbMidiOutput out(usb, route());
     assert(out.begin());
     out.pollConnection();
-    const uint8_t allowed[] = {71, 73, 75, 91, 94, 7, 10};
+    const uint8_t allowed[] = {74, 73, 75, 91, 94, 7, 10};
     for (uint8_t number : allowed) out.handleMusicalEvent(cc(number, 64));
     assert(usb.ccs.size() == 7);            // every documented synth control reaches the wire
     // Not allowed: portamento, arpeggiator, DX-only, master effect parameters.
-    const uint8_t refused[] = {5, 65, 27, 116, 102};
+    const uint8_t refused[] = {71, 5, 65, 27, 116, 102};
     for (uint8_t number : refused) out.handleMusicalEvent(cc(number, 64));
     assert(usb.ccs.size() == 7);
     // PAN has a usable range of 1..127: zero is sent as 1, and delivery agrees.

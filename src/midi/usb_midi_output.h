@@ -225,6 +225,9 @@ private:
     // lanes, so it shares a channel/note with PERFORM or Pattern safely.
     void handleAnswerLaneEvent(const MusicalEvent& event);
     bool releaseAnswerLane();
+    void handleLoopLaneEvent(const MusicalEvent& event);
+    bool releaseLoopNote(uint8_t channel, uint8_t note, uint8_t velocity = 0);
+    bool releaseLoopNotes(bool pendingOnly = false);
     // One pass over every pending release; false at the first refusal.
     bool retryPendingReleasesOnce();
 
@@ -234,6 +237,8 @@ private:
     // Kept out of lanes_ so laneFor() never resolves a (source, target) to it.
     // Set up in configureLanes(); its channel follows the event at NoteOn.
     MidiVoiceLane answerLane_;
+    struct LoopNote { uint8_t channel; uint8_t note; uint8_t count; bool pending; };
+    LoopNote loopNotes_[64]{};
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];

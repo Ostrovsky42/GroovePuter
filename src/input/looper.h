@@ -62,6 +62,15 @@ public:
     void setNowFunction(NowFn fn) { nowFn_ = fn; }
     void setPlayer(ResponsePlayer* player) { player_ = player; }
 
+    bool recordSound() const { return (layerFlags_ & 0x20u) != 0; }
+    bool setRecordSound(bool sound) {
+        if (state_ == State::Armed || state_ == State::Record || state_ == State::Overdub)
+            return false;
+        layerFlags_ = static_cast<uint8_t>(sound ? layerFlags_ | 0x20u : layerFlags_ & ~0x20u);
+        soundMono_ = 0xff;
+        return true;
+    }
+
     // ---- settings (session only, never saved)
     uint8_t bars() const { return bars_; }
     uint8_t passSteps() const { return static_cast<uint8_t>(bars_ * kStepsPerBar); }
@@ -324,6 +333,32 @@ public:
 
     // ---- input (PerformanceKeyboard observer; input pitch before Smart Play)
     void onPerformanceInputNote(bool on, uint16_t tag, uint8_t note, uint8_t velocity) override {
+        if (recordSound()) return;
+        recordInput(on, tag, note, velocity);
+    }
+
+    void onPerformanceOutput(const MusicalEvent& event) override {
+        if (!recordSound() || event.target == MusicalEventTarget::Drums) return;
+        if (event.type == MusicalEventType::AllNotesOff) {
+            if (clock_.running()) layer_.closeOpenAt(relAt(nowMicros()), passSteps());
+            soundMono_ = 0xff;
+            return;
+        }
+        if (event.type != MusicalEventType::NoteOn && event.type != MusicalEventType::NoteOff) return;
+        const bool on = event.type == MusicalEventType::NoteOn && event.velocity != 0;
+        if (event.source == MusicalEventSource::PerformanceKeyboard) {
+            if (on && soundMono_ != 0xff && clock_.running())
+                (void)layer_.noteOff(static_cast<uint16_t>(0x4000u | soundMono_), relAt(nowMicros()), passSteps());
+            if (on) soundMono_ = event.note;
+            else if (soundMono_ == event.note) soundMono_ = 0xff;
+        }
+        // PerformanceKeyboard collapses overlapping owners of the same sounding
+        // pitch before emitting output; pitch therefore identifies its voice.
+        recordInput(on,
+                    static_cast<uint16_t>(0x4000u | event.note), event.note, event.velocity);
+    }
+
+    void recordInput(bool on, uint16_t tag, uint8_t note, uint8_t velocity) {
         const uint32_t now = nowMicros();
         if (!on) {
             if (clock_.running()) (void)layer_.noteOff(tag, relAt(now), passSteps());
@@ -422,7 +457,7 @@ public:
     }
 
 private:
-    // layerFlags_: bit l HOLD of layer l, bit 2+l MUTE of layer l, bit 4 = layer 2 active.
+    // layerFlags_: bit l HOLD of layer l, bit 2+l MUTE, bit 4 active layer, bit 5 SOUND capture.
     static constexpr uint8_t kLayerHold = 0x01u;
     static constexpr uint8_t kLayerMute = 0x04u;
     static constexpr uint8_t kLayerActive = 0x10u;
@@ -541,7 +576,7 @@ private:
         // stored in the shared player is put back right away.
         const uint8_t partnerChannel = player_->wireChannel();
         player_->setWireChannel(channel_);
-        const bool started = player_->start(plan, originMicros, clock_.sixteenthMicros());
+        const bool started = player_->start(plan, originMicros, clock_.sixteenthMicros(), true);
         player_->setWireChannel(partnerChannel);
         player_->service(now);
         return started;
@@ -724,6 +759,7 @@ private:
     uint8_t flags_{0};
     uint8_t nextSegment_{0};   // step of the next plan of this pass, 0 = none
     uint8_t layerFlags_{0};    // HOLD / MUTE per layer, the active layer (phase 3)
+    uint8_t soundMono_{0xff};  // current MONO performance pitch, or none
     LoopClock clock_{};
     ResponsePlayer* player_{nullptr};
     NowFn nowFn_{nullptr};

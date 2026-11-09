@@ -83,6 +83,128 @@ void expectPacket(const Packet& packet,
     assert(packet.velocity == velocity);
 }
 
+void testLoopLanePolyphony() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto on = event(MusicalEventType::NoteOn, 60, 100,
+                    MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 3);
+    on.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(on);
+    on.note = 64;
+    output.handleMusicalEvent(on);
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 3, 60, 100);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 3, 64, 100);
+    on.type = MusicalEventType::NoteOff;
+    on.velocity = 0;
+    output.handleMusicalEvent(on);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 3, 64, 0);
+}
+
+void testLoopLaneRetryAndPanic() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    transport.noteOffFailuresRemaining = 1;
+    output.handleMusicalEvent(note);
+    assert(output.wireOwnerCount(5, 64) == 1);
+    assert(output.servicePendingReleases(1000000));
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 5, 64, 0);
+    assert(output.wireOwnerCount(5, 64) == 0);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::Dx));
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    assert(output.wireOwnerCount(4, 60) == 0);
+}
+
+void testMultipleFailedLoopReleases() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    output.handleMusicalEvent(note);
+    transport.noteOffFailuresRemaining = 3;
+    note.type = MusicalEventType::NoteOff;
+    note.note = 60;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    output.handleMusicalEvent(note);
+    assert(output.wireOwnerCount(4, 60) == 1);
+    assert(output.wireOwnerCount(4, 64) == 1);
+    assert(output.servicePendingReleases(1000000));
+    assert(output.wireOwnerCount(4, 60) == 0);
+    assert(output.wireOwnerCount(4, 64) == 0);
+}
+
+void testLoopAndGeneratedRetrigger() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto loop = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    loop.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(loop);
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 4, 60, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 4, 60, 90);
+    loop.type = MusicalEventType::NoteOff;
+    loop.velocity = 0;
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 3);
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 4);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    transport.clear();
+    auto generated = event(MusicalEventType::NoteOn, 65, 90,
+                           MusicalEventSource::Arpeggiator, MusicalEventTarget::SynthA);
+    output.handleMusicalEvent(generated);
+    output.handleMusicalEvent(generated);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 65, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 7, 65, 90);
+}
+
+void testHelperStillMono() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto helper = event(MusicalEventType::NoteOn, 60, 90,
+                        MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    helper.flags = kMusicalEventWireChannel;
+    output.handleMusicalEvent(helper);
+    helper.note = 64;
+    output.handleMusicalEvent(helper);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 4, 60, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 4, 64, 90);
+}
+
 void testPerformanceTransformMidiPolyphony() {
     FakeUsbMidiTransport transport;
     transport.mountedState = true;
@@ -354,6 +476,11 @@ void testPendingNoteOffRetriedWithoutNewEvent() {
 }
 
 int main() {
+    testLoopLanePolyphony();
+    testLoopLaneRetryAndPanic();
+    testMultipleFailedLoopReleases();
+    testLoopAndGeneratedRetrigger();
+    testHelperStillMono();
     testPendingNoteOffRetriedWithoutNewEvent();
     testMidiInputReachesWire();
     FakeUsbMidiTransport transport;

@@ -294,6 +294,7 @@ private:
     bool latchedArpContinues() const;
     void releaseHeldKeepingLatch();
     static bool drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel);
+    void routePerformanceOutput(const MusicalEvent& event);
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
     void emitPolyNoteOn(const HeldNote& held);

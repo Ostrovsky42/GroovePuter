@@ -44,6 +44,47 @@ void testSixteenthAndStepConversion() {
     assert(answerStepDueMicros(origin, 125000, 1) == static_cast<uint32_t>(origin + 125000u));
 }
 
+void testReleaseBeforeRetrigger() {
+    MusicalEventRouter router;
+    TimedSink sink;
+    assert(router.addSink(sink));
+    ResponsePlayer player;
+    player.setRouter(&router);
+    ResponsePlan plan;
+    plan.count = 2;
+    // The later onset occupies the earlier slot, as can happen in a layered plan.
+    plan.notes[0] = ResponseNote{1, 1, 60, 100};
+    plan.notes[1] = ResponseNote{0, 1, 60, 100};
+    assert(player.start(plan, 1000, 100));
+    player.service(1000);
+    player.service(1100);
+    assert(sink.events.size() == 3);
+    assert(sink.events[1].type == MusicalEventType::NoteOff);
+    assert(sink.events[2].type == MusicalEventType::NoteOn);
+    for (const auto& e : sink.events) assert((e.flags & kMusicalEventLoopLane) == 0);
+}
+
+void testOverlappingSamePitchDoesNotReleaseNewerNote() {
+    MusicalEventRouter router;
+    TimedSink sink;
+    assert(router.addSink(sink));
+    ResponsePlayer player;
+    player.setRouter(&router);
+    ResponsePlan plan;
+    plan.count = 2;
+    plan.notes[0] = ResponseNote{0, 2, 60, 100};
+    plan.notes[1] = ResponseNote{1, 3, 60, 100};
+    assert(player.start(plan, 1000, 100, true));
+    player.service(1000);
+    player.service(1100);
+    const auto afterRetrigger = sink.events.size();
+    player.service(1200);
+    assert(sink.events.size() == afterRetrigger);
+    player.service(1400);
+    assert(sink.events.back().type == MusicalEventType::NoteOff);
+    assert(sink.events.size() == afterRetrigger + 1);
+}
+
 // Free clock: the first NoteOn of the answer is due at CALL start + 32 steps
 // (two bars, on the grid - phase 9 removed the 1/16 DELAY) and the following
 // ones on their own steps. The loop sees the boundary 3 ms late, so the first
@@ -147,6 +188,8 @@ void testTransportClock() {
 }  // namespace
 
 int main() {
+    testReleaseBeforeRetrigger();
+    testOverlappingSamePitchDoesNotReleaseNewerNote();
     testSixteenthAndStepConversion();
     runFreeClock(90.0, 1000);
     runFreeClock(120.0, 50000);

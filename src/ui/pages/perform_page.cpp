@@ -414,7 +414,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::ToMelody):
                     exportTarget_ = static_cast<int8_t>(exportVoiceNow() == 1 ? 0 : 1);  // A <-> B
                     break;
-                case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
+                case ir(InRow::RecordSource): case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
                 case ir(InRow::HoldLayer): case ir(InRow::Layer): case ir(InRow::MuteLayer):
                     cycleLooperSetting(row, direction);
                     break;
@@ -567,6 +567,10 @@ void PerformPage::cyclePartnerMode(int direction) {
 void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
     auto& loop = GroovePuterLooper::looper();
     switch (row) {
+        case ir(InRow::RecordSource):
+            if (!loop.setRecordSound(!loop.recordSound()))
+                UI::showToast("LOOP: STOP REC TO CHANGE", 1600);
+            break;
         case ir(InRow::LoopBars): {
             const bool notes = !loop.empty();
             const Looper::Result result = loop.cycleBars(direction);
@@ -847,6 +851,7 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
+                case ir(InRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
                 case ir(InRow::LoopBars): return GroovePuterLooper::looper().empty()
                     ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
                 case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
@@ -1166,6 +1171,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawHeading(inputLine(kLooperRowFirst) - 1u, "--- LOOPER ---");
             formatLooperState(value, sizeof(value));
             drawRow(ir(InRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            drawRow(ir(InRow::RecordSource), "REC", loop.recordSound() ? "SOUND" : "KEYS", true);
             std::snprintf(value, sizeof(value), "%u BAR%s",
                           static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
             drawRow(ir(InRow::LoopBars), "LOOP BARS", value,

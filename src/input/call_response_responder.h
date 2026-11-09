@@ -51,7 +51,8 @@ public:
     uint8_t activeWireChannel() const { return activeWireChannel_; }
 
     // originMicros = time of answer step 0. Replaces (cancels) a running answer.
-    bool start(const ResponsePlan& plan, uint32_t originMicros, uint32_t sixteenthMicros) {
+    bool start(const ResponsePlan& plan, uint32_t originMicros, uint32_t sixteenthMicros,
+               bool loopLane = false) {
         (void)cancel();
         if (plan.count == 0 || sixteenthMicros == 0) return false;
         for (uint8_t i = 0; i < plan.count && i < ResponsePlan::kCapacity; ++i) {
@@ -66,15 +67,23 @@ public:
         }
         count_ = plan.count;
         activeWireChannel_ = wireChannel_;
+        activeLoopLane_ = loopLane;
         playedThisAnswer_ = 0;
         ++answersStarted_;
         return true;
     }
 
-    // Main loop, once per pass. Sends due NoteOn/NoteOff in time order per note.
+    // Release due notes first, before starting any new notes in this pass.
     void service(uint32_t nowMicros) {
         if (count_ == 0) return;
         bool anyLeft = false;
+        for (uint8_t i = 0; i < count_; ++i) {
+            Slot& slot = slots_[i];
+            if (slot.state == State::Sounding && due(nowMicros, slot.offMicros)) {
+                emit(MusicalEventType::NoteOff, slot.note, 0);
+                slot.state = State::Done;
+            }
+        }
         for (uint8_t i = 0; i < count_; ++i) {
             Slot& slot = slots_[i];
             if (slot.state == State::Pending && due(nowMicros, slot.onMicros)) {
@@ -82,14 +91,20 @@ public:
                     slot.state = State::Done;  // too late to have any length: skip
                     ++staleDrops_;
                 } else {
+                    // A later instance of the same pitch replaces the old one.
+                    // Retire its slot so its scheduled release cannot cut the
+                    // new note short, including when layers overlap.
+                    for (uint8_t j = 0; j < count_; ++j) {
+                        Slot& previous = slots_[j];
+                        if (previous.state == State::Sounding && previous.note == slot.note) {
+                            emit(MusicalEventType::NoteOff, previous.note, 0);
+                            previous.state = State::Done;
+                        }
+                    }
                     emit(MusicalEventType::NoteOn, slot.note, slot.velocity);
                     slot.state = State::Sounding;
                     ++playedThisAnswer_;
                 }
-            }
-            if (slot.state == State::Sounding && due(nowMicros, slot.offMicros)) {
-                emit(MusicalEventType::NoteOff, slot.note, 0);
-                slot.state = State::Done;
             }
             if (slot.state != State::Done) anyLeft = true;
         }
@@ -151,7 +166,8 @@ private:
         router_->route(MusicalEvent{type, MusicalEventSource::Arpeggiator, target_,
                                     static_cast<uint8_t>(lane ? activeWireChannel_ - 1u : 0u),
                                     note, velocity,
-                                    lane ? kMusicalEventWireChannel : kMusicalEventAnswerFollowDx});
+                                    static_cast<uint8_t>((lane ? kMusicalEventWireChannel : kMusicalEventAnswerFollowDx) |
+                                                         (activeLoopLane_ ? kMusicalEventLoopLane : 0u))});
     }
 
     MusicalEventRouter* router_{nullptr};
@@ -164,6 +180,7 @@ private:
     uint8_t lastCancelPlayed_{0};
     uint8_t wireChannel_{kFollowDx};
     uint8_t activeWireChannel_{kFollowDx};
+    bool activeLoopLane_{false};
     // Non-zero default: the owning singleton is in .dram0.data instead of .bss
     // (same DRAM, a few hundred bytes of flash for the initial image).
     MusicalEventTarget target_{MusicalEventTarget::Dx};

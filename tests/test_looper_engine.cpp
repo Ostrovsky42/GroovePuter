@@ -69,6 +69,7 @@ class BalanceSink final : public IMusicalEventSink {
 public:
     void handleMusicalEvent(const MusicalEvent& e) override {
         if (e.type != MusicalEventType::NoteOn && e.type != MusicalEventType::NoteOff) return;
+        CHECK((e.flags & kMusicalEventLoopLane) != 0);
         const bool lane = (e.flags & kMusicalEventWireChannel) != 0;
         const int key = (lane ? 4096 : 0) + e.channel * 128 + e.note;
         int& n = sounding[key];

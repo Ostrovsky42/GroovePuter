@@ -2,13 +2,12 @@
 """LOOPER phases 0-1 (+ BARS 8 / 64 events): source contracts (docs/design/LOOPER_PLAN.md).
 
 - looper*.h: no allocation, no String/vector, no FS, no locks;
-- the PARTNER files, the keyboard, the observer contract and src/audio are
-  untouched (git, when available);
+- unrelated PARTNER files and src/audio are untouched (git, when available);
 - GroovePuter.ino: the looper and the PARTNER both observe PERFORM input
   (fixed two-way fan-out), the looper borrows the PARTNER player,
   serviceLooper() runs after serviceCallResponseLog();
-- the PARTNER stays: its INPUT group (HELPER 13..NEW RIFF IF 18), its
-  mode/settings handlers; the LOOPER group sits above it at 5..12 (variant A:
+- the PARTNER stays: its INPUT group (HELPER 14..NEW RIFF IF 19), its
+  mode/settings handlers; the LOOPER group sits above it at 5..13 (variant A:
   PerformInputRow, group headings are not rows; HELPER shows RIFF for Mode::Loop);
 - PERFORM: Ctrl+Z (APP_EVENT_UNDO) is passed on when the looper has nothing to
   undo (the global "UNDO: EMPTY / NOT HERE" toast stays), Del clears only on
@@ -52,14 +51,13 @@ assert "bars != 1 && bars != 4 && bars != 8" in looper
 assert "bars_ == 1 ? 2 : bars_ == 2 ? 4 : bars_ == 4 ? 8 : 1" in looper
 assert "startSegment(now, position)" in looper
 
-# Untouched files (port base: feature/0.9.21-rhythm-browser @ 6ad1d60f).
+# Untouched files (looper polyphony base: 44bc76b3).
 try:
     changed = subprocess.run(
-        ["git", "diff", "--name-only", "6ad1d60f", "--",
-         "src/input/call_response_listener.h", "src/input/call_response_responder.h",
+        ["git", "diff", "--name-only", "44bc76b3", "--",
+         "src/input/call_response_listener.h",
          "src/input/call_response_phrase_capture.h", "src/input/call_response_planner.h",
-         "src/input/call_response_performance_plan.h", "src/input/performance_keyboard.h",
-         "src/input/performance_keyboard.cpp", "src/input/performance_input_observer.h",
+         "src/input/call_response_performance_plan.h",
          "src/audio", "platform_sdl", "src/ui/undo_ux.h"],
         cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
     assert changed == [], f"must stay untouched: {changed}"
@@ -100,7 +98,7 @@ assert "kLooperRowFirst = performInputRow(PerformInputRow::Looper);" in header
 assert "kLooperRowLast = performInputRow(PerformInputRow::ToMelody);" in header
 enum_body = header[header.index("enum class PerformInputRow"):header.index("Count,", header.index("enum class PerformInputRow"))]
 order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
-assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Looper", "LoopBars",
+assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Looper", "RecordSource", "LoopBars",
                  "LoopChannel", "NoteLength", "HoldLayer", "Layer", "MuteLayer", "ToMelody", "Helper",
                  "ReplyBars", "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf"], order
 assert "kPartnerRowFirst = performInputRow(PerformInputRow::Helper);" in header

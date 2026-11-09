@@ -237,28 +237,33 @@ bool PerformanceKeyboard::isPitchClassHeld(uint8_t pitchClass) const {
     return false;
 }
 
+void PerformanceKeyboard::routePerformanceOutput(const MusicalEvent& event) {
+    router_.route(event);
+    if (inputObserver_) inputObserver_->onPerformanceOutput(event);
+}
+
 void PerformanceKeyboard::emitNoteOn(const HeldNote& held) {
-    router_.route(MusicalEvent{MusicalEventType::NoteOn,
+    routePerformanceOutput(MusicalEvent{MusicalEventType::NoteOn,
                                MusicalEventSource::PerformanceKeyboard,
                                target_, held.channel, held.note, held.velocity});
 }
 void PerformanceKeyboard::emitNoteOff(uint8_t note, uint8_t channel) {
-    router_.route(MusicalEvent{MusicalEventType::NoteOff,
+    routePerformanceOutput(MusicalEvent{MusicalEventType::NoteOff,
                                MusicalEventSource::PerformanceKeyboard,
                                target_, channel, note, 0});
 }
 void PerformanceKeyboard::emitPolyNoteOn(const HeldNote& held) {
-    router_.route(MusicalEvent{MusicalEventType::NoteOn,
+    routePerformanceOutput(MusicalEvent{MusicalEventType::NoteOn,
                                MusicalEventSource::PerformanceKeyboardPoly,
                                target_, held.channel, held.note, held.velocity});
 }
 void PerformanceKeyboard::emitPolyNoteOff(uint8_t note) {
-    router_.route(MusicalEvent{MusicalEventType::NoteOff,
+    routePerformanceOutput(MusicalEvent{MusicalEventType::NoteOff,
                                MusicalEventSource::PerformanceKeyboardPoly,
                                target_, 0, note, 0});
 }
 void PerformanceKeyboard::emitAllNotesOff() {
-    router_.route(MusicalEvent{MusicalEventType::AllNotesOff,
+    routePerformanceOutput(MusicalEvent{MusicalEventType::AllNotesOff,
                                MusicalEventSource::PerformanceKeyboard,
                                target_, 0, 0, 0});
 }
@@ -266,7 +271,7 @@ void PerformanceKeyboard::routeGenerated(MusicalEventType type,
                                          uint8_t note,
                                          uint8_t velocity,
                                          uint8_t channel) {
-    router_.route(MusicalEvent{type, MusicalEventSource::Arpeggiator,
+    routePerformanceOutput(MusicalEvent{type, MusicalEventSource::Arpeggiator,
                                target_, channel, note, velocity});
 }
 
@@ -333,7 +338,7 @@ void PerformanceKeyboard::processScheduled(uint32_t nowMicros) {
             ++staleGeneratedNoteOnDrops_;
             continue;
         }
-        router_.route(event);
+        routePerformanceOutput(event);
         if (event.type == MusicalEventType::NoteOn) rememberGeneratedOn(event.note);
         else if (event.type == MusicalEventType::NoteOff) forgetGenerated(event.note);
     }

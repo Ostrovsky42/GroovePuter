@@ -47,6 +47,12 @@ constexpr uint8_t kMusicalEventChord = 1u << 1;
 constexpr uint8_t kMusicalEventWireChannel = 1u << 2;
 // Partner owns a distinct voice while following the configured DX channel.
 constexpr uint8_t kMusicalEventAnswerFollowDx = 1u << 3;
+// LOOPER lane: the note belongs to the looper's own polyphonic lane in the USB
+// MIDI output, not to the one-note answer lane. Always combined with
+// kMusicalEventWireChannel (channel = zero-based wire channel) or
+// kMusicalEventAnswerFollowDx (the configured DX channel). Carried by NoteOn
+// AND NoteOff. Internal synth outputs ignore it.
+constexpr uint8_t kMusicalEventLoopLane = 1u << 4;
 
 // channel is a zero-based logical channel. Internal synth outputs ignore it.
 // USB MIDI synth targets map to configured physical channels. For Drums,
