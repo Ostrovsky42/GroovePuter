@@ -184,7 +184,8 @@ private:
     uint32_t sequence_{0};
 };
 
-inline CutoffControlChannel gCutoffControl;
+// One channel per synth voice: index 0 is Synth A, 1 is Synth B.
+inline CutoffControlChannel gCutoffControl[2];
 
 }  // namespace GroovePuterMidi
 

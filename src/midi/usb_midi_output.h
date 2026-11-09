@@ -81,9 +81,9 @@ public:
 
     void handleMusicalEvent(const MusicalEvent& event) override;
     void servicePitchBendRetries();
-    // CC74 filter cutoff on Synth A (channel of the live Synth A route). Only this
-    // controller and target reach the wire; the value is deduplicated against the
-    // last one sent on this connection.
+    // CC74 filter cutoff on Synth A and Synth B (each on its own performance
+    // route channel). Only this controller and these two targets reach the wire;
+    // each target is deduplicated against its own last value on this connection.
     static constexpr uint8_t kCutoffController = 74;
     void handleCutoffControlChange(const MusicalEvent& event);
     // D5: a NoteOff the wire refused stays owned here and used to be retried
@@ -252,8 +252,8 @@ private:
     uint32_t nextPendingReleaseUs_{0};
     uint32_t pendingReleaseIntervalUs_{kPendingReleaseMinIntervalUs};
     // Last CC74 value sent on this connection; cleared on (re)connect.
-    bool cutoffSent_{false};
-    uint8_t cutoffLast_{0};
+    bool cutoffSent_[2]{false, false};
+    uint8_t cutoffLast_[2]{0, 0};
     uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;

@@ -100,13 +100,12 @@ void testDeduplicatesUnchangedValue() {
     assert(usb.ccs.size() == 2 && usb.ccs[1].value == 91);
 }
 
-void testOnlyCutoffOnSynthAReachesTheWire() {
+void testOnlyCutoffOnSynthsReachesTheWire() {
     RecordingTransport usb;
     UsbMidiOutput out(usb, route());
     assert(out.begin());
     out.pollConnection();
     out.handleMusicalEvent(cc(71, 60));                        // resonance: not in scope
-    out.handleMusicalEvent(cc(74, 60, MusicalEventTarget::SynthB));  // other target
     out.handleMusicalEvent(cc(74, 60, MusicalEventTarget::Drums));   // drums: no CC74
     assert(usb.ccs.empty());
 }
@@ -154,13 +153,29 @@ void testNothingWhileUnmountedAndResendAfterReconnect() {
     assert(usb.ccs.size() == 2 && usb.ccs[1].value == 100);  // receiver state unknown: resend
 }
 
+void testSynthBUsesItsOwnChannelAndDedupe() {
+    RecordingTransport usb;
+    UsbMidiOutput out(usb, route());
+    assert(out.begin());
+    out.pollConnection();
+    out.handleMusicalEvent(cc(74, 64));
+    out.handleMusicalEvent(cc(74, 90, MusicalEventTarget::SynthB));
+    out.handleMusicalEvent(cc(74, 90, MusicalEventTarget::SynthB));   // same value: no resend
+    assert(usb.ccs.size() == 2);
+    assert(usb.ccs[0].channel == 7 && usb.ccs[0].value == 64);        // SYNTH A: CH8
+    assert(usb.ccs[1].channel == 8 && usb.ccs[1].value == 90);        // SYNTH B: CH9
+    out.handleMusicalEvent(cc(74, 64));                              // A unchanged since its last send
+    assert(usb.ccs.size() == 2);
+}
+
 }  // namespace
 
 int main() {
     testEncodesCutoffOnSynthAChannel8();
     testClampsOutOfRangeValues();
     testDeduplicatesUnchangedValue();
-    testOnlyCutoffOnSynthAReachesTheWire();
+    testOnlyCutoffOnSynthsReachesTheWire();
+    testSynthBUsesItsOwnChannelAndDedupe();
     testDoesNotTouchNoteOwnership();
     testRefusedCcIsRetriedByTheNextEvent();
     testNothingWhileUnmountedAndResendAfterReconnect();

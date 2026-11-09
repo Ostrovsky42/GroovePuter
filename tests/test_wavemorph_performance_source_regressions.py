@@ -181,9 +181,9 @@ def test_compact_synth_controls_fit_the_cardputer_screen() -> None:
     require("kMainSummaryY + kMainSummaryH <=" in page and
             "synth summary must stay above the performance HUD" in page,
             "summary must remain above the global performance HUD")
-    require('"[N]KM"' in synth_page and '"N[K]M"' in synth_page and
-            '"NK[M]"' in synth_page,
-            "SynthSequencerPage must own the single visible NOTES/KNOBS/MORE switcher")
+    require('"[N]KMI"' in synth_page and '"N[K]MI"' in synth_page and
+            '"NK[M]I"' in synth_page and '"NKM[I]"' in synth_page,
+            "SynthSequencerPage must own the single visible NOTES/KNOBS/MORE/MIDI switcher")
     require("drawTabSwitcher" not in page and '"TAB >"' not in page,
             "params page must not duplicate the parent tab affordance")
     require("const Rect contentRect{content.x, content.y, content.w, content.h}" in page and

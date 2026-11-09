@@ -1473,52 +1473,58 @@ void applyCardputerDinEnableRequest() {
     g_dinEnable.markApplied(enabled);
 }
 
-// CUTOFF / AUTO SWEEP (CC74, Synth A). The UI publishes requests through the
-// shared CutoffControlChannel; only the dispatcher applies them and sends CC74,
-// through the same g_output that owns every other note and CC on the wire.
-GroovePuterMidi::CutoffAutomation g_cutoff;
-uint32_t g_cutoffRequestApplied = 0;
+// CUTOFF / AUTO SWEEP (CC74) per synth voice. Each voice has its own control
+// channel (UI requests, published state) and its own automation. Only the
+// dispatcher applies requests and sends CC74, through the same g_output that owns
+// every other note and CC on the wire.
+GroovePuterMidi::CutoffAutomation g_cutoff[2];
+uint32_t g_cutoffRequestApplied[2] = {0, 0};
 
-void emitCutoff(uint8_t value) {
+void emitCutoff(int voice, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
                        MusicalEventSource::PerformanceKeyboard,
-                       MusicalEventTarget::SynthA, 0, 74, value, 0};
+                       voice == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+                       0, 74, value, 0};
     g_output.handleMusicalEvent(event);
 }
 
 void serviceCutoffAutomation() {
-    const uint32_t request = GroovePuterMidi::gCutoffControl.loadRequest();
-    GroovePuterMidi::CutoffTransportView view;
-    GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
-    if (GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
-        view.valid = snapshot.valid;
-        view.playing = snapshot.playing;
-        view.epoch = snapshot.transportEpoch;
-        view.bar = snapshot.absoluteSteps() / GroovePuterMidi::kProjectStepsPerBar;
-    }
-
-    if (request != 0u && request != g_cutoffRequestApplied) {
-        g_cutoffRequestApplied = request;
-        using Request = GroovePuterMidi::CutoffRequest;
-        uint8_t value = 0;
-        switch (Request::op(request)) {
-            case Request::kManual:
-                if (g_cutoff.manual(Request::value(request), value)) emitCutoff(value);
-                break;
-            case Request::kStartSweep:
-                (void)g_cutoff.startSweep(Request::value(request), view);
-                break;
-            case Request::kCancelSweep:
-                g_cutoff.cancelSweep();
-                break;
-            case Request::kNone:
-                break;
+    for (int voice = 0; voice < 2; ++voice) {
+        auto& channel = GroovePuterMidi::gCutoffControl[voice];
+        auto& automation = g_cutoff[voice];
+        const uint32_t request = channel.loadRequest();
+        GroovePuterMidi::CutoffTransportView view;
+        GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
+        if (GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) {
+            view.valid = snapshot.valid;
+            view.playing = snapshot.playing;
+            view.epoch = snapshot.transportEpoch;
+            view.bar = snapshot.absoluteSteps() / GroovePuterMidi::kProjectStepsPerBar;
         }
-    }
 
-    uint8_t value = 0;
-    if (g_cutoff.tick(view, value)) emitCutoff(value);
-    GroovePuterMidi::gCutoffControl.publish(g_cutoff.value(), g_cutoff.sweepActive());
+        if (request != 0u && request != g_cutoffRequestApplied[voice]) {
+            g_cutoffRequestApplied[voice] = request;
+            using Request = GroovePuterMidi::CutoffRequest;
+            uint8_t value = 0;
+            switch (Request::op(request)) {
+                case Request::kManual:
+                    if (automation.manual(Request::value(request), value)) emitCutoff(voice, value);
+                    break;
+                case Request::kStartSweep:
+                    (void)automation.startSweep(Request::value(request), view);
+                    break;
+                case Request::kCancelSweep:
+                    automation.cancelSweep();
+                    break;
+                case Request::kNone:
+                    break;
+            }
+        }
+
+        uint8_t value = 0;
+        if (automation.tick(view, value)) emitCutoff(voice, value);
+        channel.publish(automation.value(), automation.sweepActive());
+    }
 }
 
 }  // namespace

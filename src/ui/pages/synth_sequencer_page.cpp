@@ -15,6 +15,7 @@
 
 #include "pattern_edit_page.h"
 #include "tb303_params_page.h"
+#include "synth_midi_page.h"
 #include "../melody_playhead.h"
 #include "../help_dialog_frames.h"
 #include "../key_normalize.h"
@@ -55,7 +56,7 @@
 namespace {
 constexpr int kNotesTabStripX = 190;
 constexpr int kParamsTabStripX = 172;
-constexpr int kTabStripW = 32;
+constexpr int kTabStripW = 38;  // fits a six-letter label such as NKM[I]
 constexpr int kTabStripH = 11;
 constexpr int kPatternNumbersX = 106;
 constexpr int kPatternNumbersEndX = kPatternNumbersX + 8 * 10 - 1;
@@ -168,6 +169,8 @@ SynthSequencerPage::SynthSequencerPage(IGfx& gfx,
   params_page_ = std::make_shared<TB303ParamsPage>(gfx, mini_acid, audio_guard, voice_index_);
   addPage(pattern_page_);
   addPage(params_page_);
+  midi_page_ = std::make_shared<SynthMidiPage>(gfx, mini_acid, audio_guard, voice_index_);
+  addPage(midi_page_);
   setSynthTab(SynthTab::Notes);
 }
 
@@ -186,24 +189,30 @@ void SynthSequencerPage::setSynthTab(SynthTab tab) {
       setActivePageIndex(1);
       if (params_page_) params_page_->showMoreTab(true);
       break;
+    case SynthTab::Midi:
+      setActivePageIndex(2);
+      if (params_page_) params_page_->showMoreTab(false);
+      break;
   }
 }
 
 const char* SynthSequencerPage::activeTabName() const {
   switch (synth_tab_) {
-    case SynthTab::Notes: return "[N]KM";
-    case SynthTab::Knobs: return "N[K]M";
-    case SynthTab::More: return "NK[M]";
+    case SynthTab::Notes: return "[N]KMI";
+    case SynthTab::Knobs: return "N[K]MI";
+    case SynthTab::More: return "NK[M]I";
+    case SynthTab::Midi: return "NKM[I]";
   }
-  return "[N]KM";
+  return "[N]KMI";
 }
 
 void SynthSequencerPage::drawTabIndicator(IGfx& gfx) const {
-  const char* label = "[N]KM";
+  const char* label = "[N]KMI";
   switch (synth_tab_) {
-    case SynthTab::Notes: label = "[N]KM"; break;
-    case SynthTab::Knobs: label = "N[K]M"; break;
-    case SynthTab::More: label = "NK[M]"; break;
+    case SynthTab::Notes: label = "[N]KMI"; break;
+    case SynthTab::Knobs: label = "N[K]MI"; break;
+    case SynthTab::More: label = "NK[M]I"; break;
+    case SynthTab::Midi: label = "NKM[I]"; break;
   }
 
   const bool notesTab = synth_tab_ == SynthTab::Notes;
@@ -2401,7 +2410,7 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     }
     last_tab_switch_ms_ = now;
 
-    const int next = (static_cast<int>(synth_tab_) + 1) % 3;
+    const int next = (static_cast<int>(synth_tab_) + 1) % 4;
     setSynthTab(static_cast<SynthTab>(next));
 
     char toast[40];
@@ -2423,6 +2432,7 @@ const std::string& SynthSequencerPage::getTitle() const {
   if (synth_tab_ == SynthTab::Notes && pattern_page_) {
     return pattern_page_->getTitle();
   }
+  if (synth_tab_ == SynthTab::Midi && midi_page_) return midi_page_->getTitle();
   if (params_page_) return params_page_->getTitle();
   return fallback_title_;
 }

@@ -1256,7 +1256,8 @@ void UsbMidiOutput::clearActiveState() {
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
     // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
-    cutoffSent_ = false;
+    cutoffSent_[0] = false;
+    cutoffSent_[1] = false;
 }
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
@@ -1484,21 +1485,25 @@ bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
 }
 
 void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
-    // Scope is one controller on one target. Other controllers never reach the wire
-    // through this path, so the event type cannot become a generic CC channel.
-    if (event.target != MusicalEventTarget::SynthA) return;
+    // Scope is one controller on the two synth targets. Other controllers never
+    // reach the wire through this path, so the event type cannot become a generic
+    // CC channel.
     if (event.note != kCutoffController) return;
+    int slot = -1;
+    if (event.target == MusicalEventTarget::SynthA) slot = 0;
+    if (event.target == MusicalEventTarget::SynthB) slot = 1;
+    if (slot < 0) return;
     if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
 
     const uint8_t value = event.velocity > 127u ? 127u : event.velocity;
-    if (cutoffSent_ && cutoffLast_ == value) return;
+    if (cutoffSent_[slot] && cutoffLast_[slot] == value) return;
     if (!transport_.sendControlChange(generatedChannel(event.target),
                                       kCutoffController, value)) {
         return;  // not recorded: the next event retries the same value
     }
     transport_.flush();
-    cutoffSent_ = true;
-    cutoffLast_ = value;
+    cutoffSent_[slot] = true;
+    cutoffLast_[slot] = value;
 }
 
 void UsbMidiOutput::servicePitchBendRetries() {
