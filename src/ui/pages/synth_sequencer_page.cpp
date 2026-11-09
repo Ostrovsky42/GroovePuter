@@ -2401,6 +2401,23 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Backspace steps back one synth tab, as PERFORM does. NOTES keeps Backspace for
+  // deleting notes, so the step back starts from KNOBS, MORE or MIDI.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && synth_tab_ != SynthTab::Notes &&
+      !ui_event.ctrl && !ui_event.alt && !ui_event.meta &&
+      (ui_event.key == '\b' || ui_event.key == 0x7F)) {
+    const uint32_t now = millis();
+    if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) return true;
+    last_tab_switch_ms_ = now;
+    const int previous = (static_cast<int>(synth_tab_) + 3) % 4;
+    setSynthTab(static_cast<SynthTab>(previous));
+    char toast[40];
+    std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
+                  voice_index_ == 0 ? 'A' : 'B', activeTabName());
+    UI::showToast(toast, 700);
+    return true;
+  }
+
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
     if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
 

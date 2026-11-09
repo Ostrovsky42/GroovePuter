@@ -16,6 +16,8 @@ constexpr int kFocusableRows = 3;   // DURATION is fixed: 4 bars
 constexpr int kRowHeight = 14;
 constexpr int kStepCoarse = 5;
 constexpr int kStepFine = 1;
+constexpr uint8_t kStandardCutoff = 64;
+constexpr uint8_t kStandardTarget = 110;
 }  // namespace
 
 SynthMidiPage::SynthMidiPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voiceIndex)
@@ -147,6 +149,21 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
       return true;
     default:
       break;
+  }
+  // Ctrl+A returns the focused value to its standard setting, as the TB303 knobs do.
+  const char key = ui_event.ctrl && ui_event.key >= 1 && ui_event.key <= 26
+      ? static_cast<char>('a' + ui_event.key - 1)
+      : ui_event.key;
+  if (ui_event.ctrl && !ui_event.alt && !ui_event.meta && (key == 'a' || key == 'A')) {
+    if (focus_ == 0) {
+      GroovePuterMidi::gCutoffControl[voice_index_].request(GroovePuterMidi::CutoffRequest::kManual, kStandardCutoff);
+      return true;
+    }
+    if (focus_ == 2) {
+      target_ = kStandardTarget;
+      return true;
+    }
+    return false;
   }
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == '\n' || ui_event.key == '\r') && focus_ == 1) {
