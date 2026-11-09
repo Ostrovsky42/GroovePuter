@@ -2425,6 +2425,23 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
     return true;
   }
 
+  // Alt+Tab flips between the internal KNOBS and the external MIDI tab. Ctrl+Tab is
+  // swallowed here too: left alone it would step the page underneath and leave the
+  // synth tab out of step with the page.
+  if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event) &&
+      (ui_event.alt || ui_event.ctrl) && !ui_event.meta) {
+    if (ui_event.ctrl) return true;
+    const uint32_t now = millis();
+    if (last_tab_switch_ms_ != 0 && (now - last_tab_switch_ms_) < 250u) return true;
+    last_tab_switch_ms_ = now;
+    setSynthTab(synth_tab_ == SynthTab::Midi ? SynthTab::Knobs : SynthTab::Midi);
+    char toast[40];
+    std::snprintf(toast, sizeof(toast), "SYNTH %c: %s",
+                  voice_index_ == 0 ? 'A' : 'B',
+                  synth_tab_ == SynthTab::Midi ? "MIDI" : "KNOBS");
+    UI::showToast(toast, 700);
+    return true;
+  }
   if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && UIInput::isTab(ui_event)) {
     if (ui_event.ctrl || ui_event.alt || ui_event.meta) return false;
 
