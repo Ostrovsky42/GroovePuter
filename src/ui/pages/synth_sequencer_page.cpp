@@ -2234,10 +2234,13 @@ bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
   if (GroovePuterMaterialDevelopmentUx::isDiscardEvent(ui_event)) {
     return GroovePuterMaterialDevelopmentUx::handleDiscard(mini_acid_, voice_index_);
   }
-  if (GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
+  // On the MIDI tab Enter and Esc belong to the MIDI page (SWEEP and its
+  // cancel), so the material GO and Cancel do not take them there.
+  const bool midiTab = synth_tab_ == SynthTab::Midi;
+  if (!midiTab && GroovePuterMaterialDevelopmentUx::isCancelEvent(ui_event, mini_acid_, voice_index_)) {
     return GroovePuterMaterialDevelopmentUx::handleCancel(mini_acid_, voice_index_);
   }
-  if (GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
+  if (!midiTab && GroovePuterMaterialDevelopmentUx::isGoEvent(ui_event, mini_acid_, voice_index_)) {
     return GroovePuterMaterialDevelopmentUx::handleGo(mini_acid_, voice_index_);
   }
   // Plain D is DEVELOP only on NOTES; KNOBS and MORE own D (Env Amount +).
