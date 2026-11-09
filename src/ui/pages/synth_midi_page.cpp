@@ -12,7 +12,6 @@
 #include "src/midi/cutoff_sweep.h"
 
 namespace {
-constexpr int kRowCount = 4;        // CUTOFF, SWEEP, TARGET, DURATION
 constexpr int kFocusableRows = 3;   // DURATION is fixed: 4 bars
 constexpr int kRowHeight = 14;
 constexpr int kStepCoarse = 5;
@@ -36,35 +35,97 @@ void SynthMidiPage::draw(IGfx& gfx) {
   const auto& content = Layout::CONTENT;
   const int x = content.x + Layout::CONTENT_PAD_X;
   const int width = content.w - 2 * Layout::CONTENT_PAD_X;
+  const UI::ThemePalette palette = UI::themePalette();
   auto& channel = GroovePuterMidi::gCutoffControl[voice_index_];
   const bool sweeping = channel.sweeping();
+  const int barsDone = channel.barsElapsed();
 
-  // Which SEQTRAK part this page drives: SYNTH 1 is CH8, SYNTH 2 is CH9.
-  char route[40]{};
-  std::snprintf(route, sizeof(route), "SEQTRAK SYNTH %d  CH%02d  CC74",
-                voice_index_ == 0 ? 1 : 2, voice_index_ == 0 ? 8 : 9);
-  gfx.setTextColor(UI::themePalette().voice(voice_index_));
-  gfx.drawText(x, content.y + 2, route);
+  // Identity: the synth is the title, the external device is secondary.
+  const int headerY = content.y + 2;
+  const char* synthName = voice_index_ == 0 ? "SYNTH A" : "SYNTH B";
+  gfx.setTextColor(palette.voice(voice_index_));
+  gfx.drawText(x, headerY, synthName);
+  // Left of the synth tab strip (which starts at x 172), so the two never overlap.
+  char route[24]{};
+  std::snprintf(route, sizeof(route), "SEQTRAK CH%02d", voice_index_ == 0 ? 8 : 9);
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(x + gfx.textWidth(synthName) + 10, headerY, route);
+  gfx.fillRect(x, content.y + 13, width, 1, palette.grid);
 
-  const char* labels[kRowCount] = {"CUTOFF", "SWEEP", "TARGET", "DURATION"};
-  char values[kRowCount][24]{};
-  std::snprintf(values[0], sizeof(values[0]), "<  %u  >", static_cast<unsigned>(channel.value()));
-  std::snprintf(values[1], sizeof(values[1]), "%s", sweeping ? "RUNNING" : "OFF");
-  std::snprintf(values[2], sizeof(values[2]), "<  %u  >", static_cast<unsigned>(target_));
-  std::snprintf(values[3], sizeof(values[3]), "4 BAR");
+  constexpr int kRowH = 13;
+  constexpr int kRowStep = 15;
+  constexpr int kBarW = 84;
+  constexpr int kBarH = 6;
+  const int rowsY = content.y + 17;
+  const int valueRight = x + width - 2;
+  const int barX = x + 70;
 
-  for (int row = 0; row < kRowCount; ++row) {
-    const int y = content.y + 18 + row * kRowHeight;
-    const bool focused = row == focus_ && row < kFocusableRows;
-    if (focused) gfx.fillRect(x - 2, y - 1, width + 4, kRowHeight, UI::themePalette().voice(voice_index_));
-    gfx.setTextColor(focused ? IGfxColor::Black() : IGfxColor::White());
-    gfx.drawText(x + 2, y + 2, labels[row]);
-    gfx.drawText(x + width - gfx.textWidth(values[row]) - 2, y + 2, values[row]);
+  auto rowY = [&](int row) { return rowsY + row * kRowStep; };
+  auto drawFocus = [&](int row) {
+    if (row != focus_) return;
+    gfx.drawRect(x - 1, rowY(row) - 1, width + 2, kRowH, palette.accent);
+    gfx.setTextColor(palette.accent);
+    gfx.drawText(x + 1, rowY(row) + 2, ">");
+  };
+  auto drawBar = [&](int row, int value, IGfxColor color) {
+    const int y = rowY(row) + (kRowH - kBarH) / 2;
+    gfx.drawRect(barX, y, kBarW, kBarH, palette.dim);
+    const int filled = value * kBarW / 127;
+    if (filled > 0) gfx.fillRect(barX + 1, y + 1, filled > kBarW - 2 ? kBarW - 2 : filled, kBarH - 2, color);
+  };
+
+  // CUTOFF: the held value, as a bar over 0..127 and the number.
+  drawFocus(0);
+  gfx.setTextColor(focus_ == 0 ? palette.accent : palette.text);
+  gfx.drawText(x + 8, rowY(0) + 2, "CUTOFF");
+  drawBar(0, channel.value(), palette.accent);
+  char value[8]{};
+  std::snprintf(value, sizeof(value), "%u", static_cast<unsigned>(channel.value()));
+  gfx.setTextColor(palette.text);
+  gfx.drawText(valueRight - gfx.textWidth(value), rowY(0) + 2, value);
+
+  // SWEEP: OFF, or four segments showing the bars passed plus the state.
+  drawFocus(1);
+  gfx.setTextColor(focus_ == 1 ? palette.accent : palette.text);
+  gfx.drawText(x + 8, rowY(1) + 2, "SWEEP");
+  if (sweeping) {
+    const int segW = (kBarW - 3) / 4;
+    for (int i = 0; i < 4; ++i) {
+      const int sx = barX + i * (segW + 1);
+      const int sy = rowY(1) + (kRowH - kBarH) / 2;
+      if (i < barsDone) {
+        gfx.fillRect(sx, sy, segW, kBarH, palette.accent2);
+      } else {
+        gfx.drawRect(sx, sy, segW, kBarH, palette.dim);
+      }
+    }
+    gfx.setTextColor(palette.accent2);
+    gfx.drawText(valueRight - gfx.textWidth("RUNNING"), rowY(1) + 2, "RUNNING");
+  } else {
+    gfx.setTextColor(palette.secondary);
+    gfx.drawText(valueRight - gfx.textWidth("OFF"), rowY(1) + 2, "OFF");
   }
 
-  gfx.setTextColor(IGfxColor(0x808080));
-  gfx.drawText(x, content.y + 18 + kRowCount * kRowHeight + 4,
-               sweeping ? "ENTER STOPS SWEEP" : "ENTER STARTS 4-BAR SWEEP");
+  // TARGET: the value the sweep will reach, on the same 0..127 scale.
+  drawFocus(2);
+  gfx.setTextColor(focus_ == 2 ? palette.accent : palette.text);
+  gfx.drawText(x + 8, rowY(2) + 2, "TARGET");
+  drawBar(2, target_, palette.secondary);
+  char target[8]{};
+  std::snprintf(target, sizeof(target), "%u", static_cast<unsigned>(target_));
+  gfx.setTextColor(palette.text);
+  gfx.drawText(valueRight - gfx.textWidth(target), rowY(2) + 2, target);
+
+  // TIME: fixed and shown without edit arrows, so it promises nothing editable.
+  gfx.setTextColor(palette.text);
+  gfx.drawText(x + 8, rowY(3) + 2, "TIME");
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(valueRight - gfx.textWidth("4 BAR"), rowY(3) + 2, "4 BAR");
+
+  // Context hint: what Enter does right now.
+  gfx.setTextColor(palette.secondary);
+  gfx.drawText(x + 8, rowY(3) + kRowStep + 3,
+               sweeping ? "ENTER: CANCEL SWEEP" : "ENTER: START 4-BAR SWEEP");
 }
 
 bool SynthMidiPage::handleEvent(UIEvent& ui_event) {

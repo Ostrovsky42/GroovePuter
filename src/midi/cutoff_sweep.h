@@ -38,6 +38,7 @@ public:
 
     bool active() const { return active_; }
     uint8_t value() const { return value_; }
+    double startBar() const { return startBar_; }
 
     // Called with the current bar position. Returns true and sets `send` when the
     // rounded value changed since the last value sent. Finishing sends the target
@@ -131,6 +132,17 @@ public:
     }
 
     bool sweepActive() const { return sweep_.active(); }
+    // Whole bars of the sweep that have passed at `nowBar`, 0..kDurationBars. Read
+    // only: it never changes the sweep and is zero when no sweep is running.
+    uint8_t barsElapsed(double nowBar) const {
+        if (!sweep_.active()) return 0;
+        double elapsed = nowBar - sweep_.startBar();
+        if (elapsed < 0.0) elapsed = 0.0;
+        if (elapsed >= static_cast<double>(CutoffSweep::kDurationBars)) {
+            return CutoffSweep::kDurationBars;
+        }
+        return static_cast<uint8_t>(elapsed);
+    }
     uint8_t value() const { return sweep_.value(); }
 
 private:
@@ -169,14 +181,17 @@ public:
 
     // Dispatcher only.
     uint32_t loadRequest() const { return request_.loadAcquire(); }
-    void publish(uint8_t value, bool sweeping) {
+    // Layout: bits 0..6 value, bit 7 sweeping, bits 8..10 whole bars elapsed.
+    void publish(uint8_t value, bool sweeping, uint8_t barsElapsed = 0) {
         published_.storeRelease(static_cast<uint32_t>(value & 0x7Fu) |
-                                (sweeping ? 0x80u : 0u));
+                                (sweeping ? 0x80u : 0u) |
+                                (static_cast<uint32_t>(barsElapsed & 0x7u) << 8u));
     }
 
     // Any task.
     uint8_t value() const { return static_cast<uint8_t>(published_.loadAcquire() & 0x7Fu); }
     bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
+    uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0x7u); }
 
 private:
     MidiRealtimeWord request_;

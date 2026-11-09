@@ -1523,7 +1523,8 @@ void serviceCutoffAutomation() {
 
         uint8_t value = 0;
         if (automation.tick(view, value)) emitCutoff(voice, value);
-        channel.publish(automation.value(), automation.sweepActive());
+        channel.publish(automation.value(), automation.sweepActive(),
+                        automation.barsElapsed(view.bar));
     }
 }
 

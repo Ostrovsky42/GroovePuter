@@ -234,6 +234,29 @@ void testRequestCodecRoundTrips() {
 
 }  // namespace
 
+namespace {
+void testBarsElapsedAndPublishedLayout() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.barsElapsed(0.0) == 0);             // no sweep: nothing elapsed
+    assert(a.startSweep(110, playing(10.0)));
+    assert(a.barsElapsed(10.5) == 0);
+    assert(a.barsElapsed(12.2) == 2);
+    assert(a.barsElapsed(14.0) == 4);
+    assert(a.barsElapsed(99.0) == 4);            // clamps at the span
+    a.cancelSweep();
+    assert(a.barsElapsed(12.2) == 0);            // cancelled: nothing elapsed
+
+    GroovePuterMidi::CutoffControlChannel channel;
+    channel.publish(96, true, 3);
+    assert(channel.value() == 96 && channel.sweeping() && channel.barsElapsed() == 3);
+    channel.publish(40, false, 0);
+    assert(channel.value() == 40 && !channel.sweeping() && channel.barsElapsed() == 0);
+}
+
+}  // namespace
+
 int main() {
     testManualMapsValuesAndClamps();
     testSweepStartsFromHeldValueAndEndsOnTarget();
@@ -251,5 +274,6 @@ int main() {
     testStartWhileStoppedIsRefused();
     testManualEditDuringSweepTakesOver();
     testRequestCodecRoundTrips();
+    testBarsElapsedAndPublishedLayout();
     return 0;
 }
