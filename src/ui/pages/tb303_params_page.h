@@ -50,7 +50,6 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   void layoutComponents();
   void setActiveTab(bool more);
   void updateTabFocusability();
-  void toggleCutoffSweep();
   void rememberFocusedSlot();
   void restoreFocusedSlot();
   void focusComponent(Component* component);
@@ -70,17 +69,13 @@ class TB303ParamsPage : public IPage, public IMultiHelpFramesProvider {
   std::shared_ptr<KnobComponent> env_decay_knob_;
   std::shared_ptr<LabelValueComponent> preset_control_;
   std::shared_ptr<LabelValueComponent> make_phrase_control_;
-  // CUTOFF / AUTO SWEEP strip (Synth A, KNOBS tab): external CC74 and sweep target.
-  std::shared_ptr<LabelValueComponent> ext_cc74_control_;
-  std::shared_ptr<LabelValueComponent> ext_target_control_;
-  uint8_t cutoff_target_ = 110;
   std::shared_ptr<LabelValueComponent> engine_type_control_;
   std::shared_ptr<LabelValueComponent> osc_control_;
   std::shared_ptr<LabelValueComponent> filter_control_;
   std::shared_ptr<LabelValueComponent> delay_control_;
   std::shared_ptr<LabelValueComponent> distortion_control_;
   bool more_tab_ = false;
-  uint8_t main_focus_slot_ = 0;  // 0..5: four knobs, then EXT CC74, TO
+  uint8_t main_focus_slot_ = 0;
   uint8_t more_focus_slot_ = 0;
   std::string title_;
 };

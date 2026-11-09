@@ -30,7 +30,6 @@
 #include "../screen_geometry.h"
 #include "../ui_colors.h"
 #include "../ui_input.h"
-#include "src/midi/cutoff_sweep.h"
 
 namespace {
 constexpr int kMainKnobCenterY = 41;
@@ -389,8 +388,6 @@ void TB303ParamsPage::initComponents() {
   delay_control_ = std::make_shared<LabelValueComponent>("DLY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Toggle);
   preset_control_ = std::make_shared<LabelValueComponent>("PRESET", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
   make_phrase_control_ = std::make_shared<LabelValueComponent>("MAKE MELODY", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
-  ext_cc74_control_ = std::make_shared<LabelValueComponent>("CC74", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
-  ext_target_control_ = std::make_shared<LabelValueComponent>("TO", IGfxColor::White(), focusColor, focusColor, LabelValueComponent::Style::Stepper);
 
   addChild(cutoff_knob_);
   addChild(resonance_knob_);
@@ -403,8 +400,6 @@ void TB303ParamsPage::initComponents() {
   addChild(delay_control_);
   addChild(preset_control_);
   addChild(make_phrase_control_);
-  addChild(ext_cc74_control_);
-  addChild(ext_target_control_);
 
   initialized_ = true;
 }
@@ -537,18 +532,6 @@ void TB303ParamsPage::layoutComponents() {
   make_phrase_control_->setLabel("MAKE MELODY");
   make_phrase_control_->setValue(">");
   make_phrase_control_->setEnabled(!onPhrase);
-  {
-    auto& cutoff = GroovePuterMidi::gCutoffControl;
-    // The label shows the sweep state; the value stays a plain number so the
-    // stepper never has to shorten it.
-    ext_cc74_control_->setLabel(cutoff.sweeping() ? "SWP" : "CC74");
-    char cc[8]{};
-    std::snprintf(cc, sizeof(cc), "%u", static_cast<unsigned>(cutoff.value()));
-    ext_cc74_control_->setValue(cc);
-    char to[8]{};
-    std::snprintf(to, sizeof(to), "%u", static_cast<unsigned>(cutoff_target_));
-    ext_target_control_->setValue(to);
-  }
 
   distortion_control_->setEnabled(true);
   delay_control_->setEnabled(true);
@@ -576,13 +559,7 @@ void TB303ParamsPage::layoutComponents() {
                                         knobRowY - kMainKnobRadius,
                                         kMainKnobRadius * 2,
                                         kMainKnobRadius * 2});
-    // Top strip above the knobs (y 17..25): leaves a few pixels above the knob values.
-    ext_cc74_control_->setBoundaries(Rect{x0 + 4, content.y + 1, 84, 9});
-    ext_target_control_->setBoundaries(Rect{x0 + 92, content.y + 1, 74, 9});
   } else {
-    // Empty boxes are not drawn, which hides the strip on MORE.
-    ext_cc74_control_->setBoundaries(Rect{0, 0, 0, 0});
-    ext_target_control_->setBoundaries(Rect{0, 0, 0, 0});
     LabelValueComponent* rows[kMoreRowCount] = {
         engine_type_control_.get(),
         osc_control_.get(),
@@ -617,13 +594,11 @@ void TB303ParamsPage::focusComponent(Component* component) {
 
 void TB303ParamsPage::rememberFocusedSlot() {
   Component* focused = focusedChild();
-  Component* mainControls[6] = {
+  Component* mainControls[4] = {
       cutoff_knob_.get(),
       resonance_knob_.get(),
       env_amount_knob_.get(),
       env_decay_knob_.get(),
-      ext_cc74_control_.get(),
-      ext_target_control_.get(),
   };
   Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
@@ -636,7 +611,7 @@ void TB303ParamsPage::rememberFocusedSlot() {
   };
 
   if (!more_tab_) {
-    for (uint8_t i = 0; i < 6; ++i) {
+    for (uint8_t i = 0; i < 4; ++i) {
       if (focused == mainControls[i]) {
         main_focus_slot_ = i;
         return;
@@ -654,13 +629,11 @@ void TB303ParamsPage::rememberFocusedSlot() {
 }
 
 void TB303ParamsPage::restoreFocusedSlot() {
-  Component* mainControls[6] = {
+  Component* mainControls[4] = {
       cutoff_knob_.get(),
       resonance_knob_.get(),
       env_amount_knob_.get(),
       env_decay_knob_.get(),
-      ext_cc74_control_.get(),
-      ext_target_control_.get(),
   };
   Component* moreControls[kMoreRowCount] = {
       engine_type_control_.get(),
@@ -673,7 +646,7 @@ void TB303ParamsPage::restoreFocusedSlot() {
   };
 
   if (!more_tab_) {
-    const uint8_t slot = std::min<uint8_t>(main_focus_slot_, 5);
+    const uint8_t slot = std::min<uint8_t>(main_focus_slot_, 3);
     focusComponent(mainControls[slot]);
     return;
   }
@@ -701,11 +674,6 @@ void TB303ParamsPage::updateTabFocusability() {
   resonance_knob_->setFocusable(main);
   env_amount_knob_->setFocusable(main);
   env_decay_knob_->setFocusable(main);
-  const bool synthA = voice_index_ == 0;
-  ext_cc74_control_->setEnabled(synthA);
-  ext_target_control_->setEnabled(synthA);
-  ext_cc74_control_->setFocusable(main && synthA);
-  ext_target_control_->setFocusable(main && synthA);
 
   engine_type_control_->setFocusable(more_tab_ && engine_type_control_->enabled());
   osc_control_->setFocusable(more_tab_ && osc_control_->enabled());
@@ -787,38 +755,8 @@ void TB303ParamsPage::drawMainSummary(IGfx& gfx, const Rect& content) {
   drawBadge(dlyX, "DLY", mini_acid_.is303DelayEnabled(voice_index_));
 }
 
-void TB303ParamsPage::toggleCutoffSweep() {
-  auto& cutoff = GroovePuterMidi::gCutoffControl;
-  if (cutoff.sweeping()) {
-    cutoff.request(GroovePuterMidi::CutoffRequest::kCancelSweep, 0);
-    UI::showToast("SWEEP STOPPED", 900);
-    return;
-  }
-  // The sweep is musical: it needs the transport running, and never arms itself.
-  if (!mini_acid_.isPlaying()) {
-    UI::showToast("PLAY FIRST", 1000);
-    return;
-  }
-  cutoff.request(GroovePuterMidi::CutoffRequest::kStartSweep, cutoff_target_);
-  UI::showToast("SWEEP 4 BARS", 900);
-}
-
 void TB303ParamsPage::adjustFocusedElement(int direction, bool fine) {
   const int step = fine ? kKnobStepFine : kKnobStepCoarse;
-  if (ext_cc74_control_ && ext_cc74_control_->isFocused()) {
-    // A manual value takes over from a running sweep, by design.
-    const int base = GroovePuterMidi::gCutoffControl.value();
-    int next = base + direction * step;
-    next = next < 0 ? 0 : next > 127 ? 127 : next;
-    GroovePuterMidi::gCutoffControl.request(GroovePuterMidi::CutoffRequest::kManual,
-                                            static_cast<uint8_t>(next));
-    return;
-  }
-  if (ext_target_control_ && ext_target_control_->isFocused()) {
-    int next = cutoff_target_ + direction * step;
-    cutoff_target_ = static_cast<uint8_t>(next < 0 ? 0 : next > 127 ? 127 : next);
-    return;
-  }
 
   if (cutoff_knob_ && cutoff_knob_->isFocused()) {
     // DUAL OSC: this knob is its Preset (a list of 13): one preset per key, not a coarse step of 5
@@ -1011,12 +949,6 @@ bool TB303ParamsPage::handleEvent(UIEvent& ui_event) {
                                MiniAcid::SequencedSource::Phrase
                            ? "SOURCE: MELODY" : "SOURCE: STEPS", 1000);
     return true;
-  }
-  if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
-      (ui_event.key == '\n' || ui_event.key == '\r') &&
-      ((ext_cc74_control_ && ext_cc74_control_->isFocused()) ||
-       (ext_target_control_ && ext_target_control_->isFocused()))) {
-    toggleCutoffSweep(); return true;
   }
   if (!ui_event.alt && !ui_event.ctrl && !ui_event.meta &&
       (ui_event.key == '\n' || ui_event.key == '\r') &&
