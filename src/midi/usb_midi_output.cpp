@@ -949,6 +949,8 @@ void UsbMidiOutput::handleAnswerLaneEvent(const MusicalEvent& event) {
         case MusicalEventType::AllNotesOff:
         case MusicalEventType::PitchBend:
             break;
+        case MusicalEventType::ControlChange:
+            break;
     }
 }
 
@@ -1253,6 +1255,8 @@ void UsbMidiOutput::clearActiveState() {
     owners_.clear();
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
+    // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
+    cutoffSent_ = false;
 }
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
@@ -1262,6 +1266,12 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     if (event.type == MusicalEventType::AllNotesOff) {
         releaseTargetAllNotes(event.source, event.target);
+        return;
+    }
+
+    if (event.type == MusicalEventType::ControlChange) {
+        handleCutoffControlChange(event);
+        releasePendingChannelPanics();
         return;
     }
 
@@ -1312,6 +1322,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
                 break;
             case MusicalEventType::PitchBend:
                 break;
+            case MusicalEventType::ControlChange:
+                break;
         }
         releasePendingChannelPanics();
         return;
@@ -1341,6 +1353,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::AllNotesOff:
                 break;
             case MusicalEventType::PitchBend:
+                break;
+            case MusicalEventType::ControlChange:
                 break;
         }
         releasePendingChannelPanics();
@@ -1390,6 +1404,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         case MusicalEventType::AllNotesOff:
             break;
         case MusicalEventType::PitchBend:
+            break;
+        case MusicalEventType::ControlChange:
             break;
     }
     releasePendingChannelPanics();
@@ -1465,6 +1481,24 @@ bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
     }
     nextPendingReleaseUs_ = nowUs + pendingReleaseIntervalUs_;
     return false;
+}
+
+void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
+    // Scope is one controller on one target. Other controllers never reach the wire
+    // through this path, so the event type cannot become a generic CC channel.
+    if (event.target != MusicalEventTarget::SynthA) return;
+    if (event.note != kCutoffController) return;
+    if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
+
+    const uint8_t value = event.velocity > 127u ? 127u : event.velocity;
+    if (cutoffSent_ && cutoffLast_ == value) return;
+    if (!transport_.sendControlChange(generatedChannel(event.target),
+                                      kCutoffController, value)) {
+        return;  // not recorded: the next event retries the same value
+    }
+    transport_.flush();
+    cutoffSent_ = true;
+    cutoffLast_ = value;
 }
 
 void UsbMidiOutput::servicePitchBendRetries() {

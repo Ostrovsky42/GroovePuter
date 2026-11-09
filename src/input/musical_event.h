@@ -9,6 +9,10 @@ enum class MusicalEventType : uint8_t {
     NoteOff,
     AllNotesOff,
     PitchBend,
+    // Channel control change. For this type `note` carries the controller number and
+    // `velocity` the 0..127 value. Only the CC74 cutoff on Synth A reaches the wire;
+    // every other combination is ignored by the output that receives it.
+    ControlChange,
 };
 
 enum class MusicalEventSource : uint8_t {
