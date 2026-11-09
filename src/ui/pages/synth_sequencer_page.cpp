@@ -2195,6 +2195,10 @@ bool SynthSequencerPage::toggleSource() {
 }
 
 bool SynthSequencerPage::handleEvent(UIEvent& ui_event) {
+  // The controller list on the MIDI tab is modal: it takes every key until closed.
+  if (synth_tab_ == SynthTab::Midi && midi_page_ && midi_page_->popupOpen()) {
+    return midi_page_->handleEvent(ui_event);
+  }
   if (ui_event.event_type == GROOVEPUTER_APPLICATION_EVENT &&
       ui_event.app_event_type == GROOVEPUTER_APP_EVENT_TOGGLE_SOURCE) {
     // STEP SETTINGS is modal: Opt is ignored while it is open.

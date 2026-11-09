@@ -107,7 +107,7 @@ void testOnlyCutoffOnSynthsReachesTheWire() {
     UsbMidiOutput out(usb, route());
     assert(out.begin());
     out.pollConnection();
-    out.handleMusicalEvent(cc(71, 60));                        // resonance: not in scope
+    out.handleMusicalEvent(cc(5, 60));                         // portamento: not in scope
     out.handleMusicalEvent(cc(74, 60, MusicalEventTarget::Drums));   // drums: no CC74
     assert(usb.ccs.empty());
 }
@@ -193,15 +193,15 @@ void testDeliveredMeansOnTheWire() {
     out.pollConnection();
     usb.refuseCc = 1;
     out.handleMusicalEvent(cc(74, 50));
-    assert(!out.cutoffDelivered(0, 50));    // refused: not on the wire
+    assert(!out.cutoffDelivered(0, 74, 50));    // refused: not on the wire
     out.handleMusicalEvent(cc(74, 50));
-    assert(out.cutoffDelivered(0, 50));     // the level check's retry lands it
-    assert(!out.cutoffDelivered(0, 51));    // another value is not delivered
+    assert(out.cutoffDelivered(0, 74, 50));     // the level check's retry lands it
+    assert(!out.cutoffDelivered(0, 74, 51));    // another value is not delivered
     usb.mountedFlag = false;
     out.pollConnection();
     usb.mountedFlag = true;
     out.pollConnection();
-    assert(!out.cutoffDelivered(0, 50));    // reconnect: the held value must be resent
+    assert(!out.cutoffDelivered(0, 74, 50));    // reconnect: the held value must be resent
 }
 
 }  // namespace
@@ -217,6 +217,27 @@ void testChannelConstantsMatchTheRoute() {
 
 }  // namespace
 
+namespace {
+void testAllowedControllersOnlyAndPanRange() {
+    RecordingTransport usb;
+    UsbMidiOutput out(usb, route());
+    assert(out.begin());
+    out.pollConnection();
+    const uint8_t allowed[] = {71, 73, 75, 91, 94, 7, 10};
+    for (uint8_t number : allowed) out.handleMusicalEvent(cc(number, 64));
+    assert(usb.ccs.size() == 7);            // every documented synth control reaches the wire
+    // Not allowed: portamento, arpeggiator, DX-only, master effect parameters.
+    const uint8_t refused[] = {5, 65, 27, 116, 102};
+    for (uint8_t number : refused) out.handleMusicalEvent(cc(number, 64));
+    assert(usb.ccs.size() == 7);
+    // PAN has a usable range of 1..127: zero is sent as 1, and delivery agrees.
+    out.handleMusicalEvent(cc(10, 0));
+    assert(usb.ccs.size() == 8 && usb.ccs[7].controller == 10 && usb.ccs[7].value == 1);
+    assert(out.cutoffDelivered(0, 10, 0));
+}
+
+}  // namespace
+
 int main() {
     testEncodesCutoffOnSynthAChannel8();
     testClampsOutOfRangeValues();
@@ -225,6 +246,7 @@ int main() {
     testSynthBUsesItsOwnChannelAndDedupe();
     testCutoffFollowsTrackOutputMode();
     testDeliveredMeansOnTheWire();
+    testAllowedControllersOnlyAndPanRange();
     testChannelConstantsMatchTheRoute();
     testDoesNotTouchNoteOwnership();
     testRefusedCcIsRetriedByTheNextEvent();

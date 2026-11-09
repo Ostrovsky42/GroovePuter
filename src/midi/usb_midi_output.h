@@ -8,6 +8,7 @@
 #include "src/input/musical_event_router.h"
 #include "midi_note_ownership_table.h"
 #include "usb_midi_transport.h"
+#include "cutoff_sweep.h"
 
 struct UsbMidiRouteConfig {
     // Channels are zero-based internally and displayed as 1..16 externally.
@@ -84,7 +85,6 @@ public:
     // CC74 filter cutoff on Synth A and Synth B (each on its own performance
     // route channel). Only this controller and these two targets reach the wire;
     // each target is deduplicated against its own last value on this connection.
-    static constexpr uint8_t kCutoffController = 74;
     void handleCutoffControlChange(const MusicalEvent& event);
     // D5: a NoteOff the wire refused stays owned here and used to be retried
     // only by the next event on the same lane or target. A lane's last NoteOff
@@ -102,8 +102,10 @@ public:
     uint16_t wireOwnedChannelMask() const { return owners_.channelMask(); }
     // True when `value` is on the wire for this slot on this connection. A refused
     // write is not recorded, so the dispatcher's level check retries it.
-    bool cutoffDelivered(uint8_t slot, uint8_t value) const {
-        return slot < 2 && cutoffSent_[slot] && cutoffLast_[slot] == value;
+    bool cutoffDelivered(uint8_t slot, uint8_t controller, uint8_t value) const {
+        const int index = GroovePuterMidi::controllerIndex(controller);
+        return slot < 2 && index >= 0 && cutoffSent_[slot][index] &&
+               cutoffLast_[slot][index] == GroovePuterMidi::clampForController(index, value);
     }
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
@@ -257,8 +259,8 @@ private:
     uint32_t nextPendingReleaseUs_{0};
     uint32_t pendingReleaseIntervalUs_{kPendingReleaseMinIntervalUs};
     // Last CC74 value sent on this connection; cleared on (re)connect.
-    bool cutoffSent_[2]{false, false};
-    uint8_t cutoffLast_[2]{0, 0};
+    bool cutoffSent_[2][GroovePuterMidi::kControllerCount]{};
+    uint8_t cutoffLast_[2][GroovePuterMidi::kControllerCount]{};
     uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;

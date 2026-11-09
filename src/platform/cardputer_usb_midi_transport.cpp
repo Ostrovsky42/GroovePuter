@@ -1473,26 +1473,50 @@ void applyCardputerDinEnableRequest() {
     g_dinEnable.markApplied(enabled);
 }
 
-// CUTOFF / AUTO SWEEP (CC74) per synth voice. Each voice has its own control
-// channel (UI requests, published state) and its own automation. Only the
-// dispatcher applies requests and sends CC74, through the same g_output that owns
-// every other note and CC on the wire.
+// CUTOFF / AUTO SWEEP per synth voice. Each voice has one selected controller
+// (one of GroovePuterMidi::kControllers) with its own held value, its own known
+// flag, and one sweep. The UI only publishes requests; only the dispatcher applies
+// them and sends controller values, through the same g_output that owns every
+// other note and CC on the wire.
+struct VoiceControl {
+    uint8_t selected = 0;                         // index into kControllers
+    uint8_t value[GroovePuterMidi::kControllerCount]{};
+    bool known[GroovePuterMidi::kControllerCount]{};
+    bool returning = false;                       // sweep shape for the next start
+    uint8_t durationIndex = GroovePuterMidi::kDefaultDurationIndex;  // into kDurations
+};
 GroovePuterMidi::CutoffAutomation g_cutoff[2];
+VoiceControl g_voice[2];
 uint32_t g_cutoffRequestApplied[2] = {0, 0};
 uint32_t g_cutoffNextTryMs[2] = {0, 0};
 
-void emitCutoff(int voice, uint8_t value) {
+void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
                        MusicalEventSource::PerformanceKeyboard,
                        voice == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
-                       0, 74, value, 0};
+                       0, GroovePuterMidi::kControllers[controllerIndex].number, value, 0};
     g_output.handleMusicalEvent(event);
+}
+
+// Moves the voice to another controller: the current value is kept for the old one,
+// the sweep stops, and the new controller's own value becomes the held value. Nothing
+// is sent here; the level check below delivers the new value when it is known.
+void selectController(int voice, uint8_t next) {
+    VoiceControl& state = g_voice[voice];
+    auto& automation = g_cutoff[voice];
+    if (next >= GroovePuterMidi::kControllerCount || next == state.selected) return;
+    state.value[state.selected] = automation.value();
+    state.known[state.selected] = automation.known();
+    automation.cancelSweep();
+    state.selected = next;
+    automation.restore(state.value[next], state.known[next]);
 }
 
 void serviceCutoffAutomation() {
     for (int voice = 0; voice < 2; ++voice) {
         auto& channel = GroovePuterMidi::gCutoffControl[voice];
         auto& automation = g_cutoff[voice];
+        VoiceControl& state = g_voice[voice];
         const uint32_t request = channel.loadRequest();
         GroovePuterMidi::CutoffTransportView view;
         GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
@@ -1506,40 +1530,60 @@ void serviceCutoffAutomation() {
         if (request != 0u && request != g_cutoffRequestApplied[voice]) {
             g_cutoffRequestApplied[voice] = request;
             using Request = GroovePuterMidi::CutoffRequest;
-            uint8_t value = 0;
+            const uint8_t wanted = Request::controller(request);
             switch (Request::op(request)) {
+                case Request::kSelectController:
+                    selectController(voice, wanted);
+                    break;
                 case Request::kManual:
-                    (void)automation.manual(Request::value(request), value);
+                    selectController(voice, wanted);
+                    {
+                        uint8_t value = 0;
+                        (void)automation.manual(GroovePuterMidi::clampForController(
+                            state.selected, Request::value(request)), value);
+                    }
                     break;
                 case Request::kStartSweep:
-                    (void)automation.startSweep(Request::value(request), view);
+                    selectController(voice, wanted);
+                    (void)automation.startSweep(Request::value(request), view, state.returning,
+                        GroovePuterMidi::kDurations[state.durationIndex]);
                     break;
                 case Request::kCancelSweep:
                     automation.cancelSweep();
                     break;
+                case Request::kSetShape:
+                    state.returning = Request::value(request) != 0;
+                    break;
+                case Request::kSetDuration: {
+                    const uint8_t index = Request::value(request);
+                    if (index < GroovePuterMidi::kDurationCount) state.durationIndex = index;
+                    break;
+                }
                 case Request::kNone:
                     break;
             }
         }
 
-        uint8_t value = 0;
-        (void)automation.tick(view, value);
-
-        // Level delivery: the wire must hold the automation's value. A refused or
-        // unplugged send is not recorded by the output, so it is retried here, at
-        // most every 20 ms, and a reconnect resends the held value by itself. Before
-        // the user has set a value nothing is sent.
+        uint8_t ticked = 0;
+        (void)automation.tick(view, ticked);
+        // Level delivery: the wire must hold the selected controller's value. A
+        // refused or unplugged send is not recorded by the output, so it is retried
+        // here, at most every 20 ms, and a reconnect resends it. Nothing is sent
+        // before the user has set the value.
         if (automation.known()) {
-            const uint8_t held = automation.value();
+            const uint8_t index = state.selected;
+            const uint8_t held = GroovePuterMidi::clampForController(index, automation.value());
             const uint32_t nowMs = millis();
-            if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice), held) &&
+            if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice),
+                                          GroovePuterMidi::kControllers[index].number, held) &&
                 static_cast<int32_t>(nowMs - g_cutoffNextTryMs[voice]) >= 0) {
-                emitCutoff(voice, held);
+                emitControl(voice, index, held);
                 g_cutoffNextTryMs[voice] = nowMs + 20u;
             }
         }
         channel.publish(automation.value(), automation.sweepActive(),
-                        automation.barsElapsed(view.bar), automation.known());
+                        automation.barsElapsed(view.bar), automation.known(),
+                        state.selected, state.returning, state.durationIndex);
     }
 }
 

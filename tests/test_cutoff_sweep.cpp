@@ -35,7 +35,7 @@ void testSweepStartsFromHeldValueAndEndsOnTarget() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 10.0);
+    s.begin(110, 10.0, false);
     const std::vector<uint8_t> sent = runSweep(s, 10.0, 15.0, 0.01);
     assert(!sent.empty());
     assert(sent.front() >= 64 && sent.front() <= 66);  // starts from the held value
@@ -47,7 +47,7 @@ void testSweepIsMonotonicWithoutRepeats() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     const std::vector<uint8_t> sent = runSweep(s, 0.0, 5.0, 0.001);
     for (std::size_t i = 1; i < sent.size(); ++i) {
         assert(sent[i] > sent[i - 1]);  // rising target: strictly rising, no repeats
@@ -59,7 +59,7 @@ void testSweepDownwardAlsoMonotonic() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(110, v);
-    s.begin(40, 0.0);
+    s.begin(40, 0.0, false);
     const std::vector<uint8_t> sent = runSweep(s, 0.0, 5.0, 0.001);
     assert(!sent.empty() && sent.back() == 40);
     for (std::size_t i = 1; i < sent.size(); ++i) assert(sent[i] < sent[i - 1]);
@@ -69,7 +69,7 @@ void testCompletesExactlyAtFourBarsAndStaysQuiet() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     uint8_t out = 0;
     assert(s.poll(3.999, out));     // still inside the sweep
     assert(out < 110);
@@ -84,7 +84,7 @@ void testNoSendWhenTargetEqualsStart() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(110, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     const std::vector<uint8_t> sent = runSweep(s, 0.0, 5.0, 0.05);
     assert(sent.empty());                        // unchanged value: no CC at all
     assert(!s.active());                         // and the sweep still finishes
@@ -94,7 +94,7 @@ void testManualChangeCancelsSweep() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     uint8_t out = 0;
     assert(s.poll(1.0, out));
     assert(s.setManual(90, v) && v == 90);   // manual edit takes full control
@@ -108,7 +108,7 @@ void testStopCancelsAndKeepsValue() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     uint8_t out = 0;
     assert(s.poll(2.0, out));
     const uint8_t held = s.value();
@@ -122,7 +122,7 @@ void testNoAutoRestartAfterCompletion() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 0.0);
+    s.begin(110, 0.0, false);
     uint8_t out = 0;
     s.poll(4.0, out);
     assert(!s.active());
@@ -134,7 +134,7 @@ void testBeforeStartBarIsClampedToStart() {
     CutoffSweep s;
     uint8_t v = 0;
     s.setManual(64, v);
-    s.begin(110, 5.0);
+    s.begin(110, 5.0, false);
     uint8_t out = 0;
     assert(!s.poll(4.0, out) || out == 64);  // a stale bar before the start is not motion
 }
@@ -169,7 +169,7 @@ void testAutomationSweepsOverFourBarsAndCompletes() {
     CutoffAutomation a;
     uint8_t v = 0;
     assert(a.manual(64, v) && v == 64);
-    assert(a.startSweep(110, playing(20.0)));
+    assert(a.startSweep(110, playing(20.0), false));
     std::vector<uint8_t> sent;
     for (double bar = 20.0; bar <= 25.0; bar += 0.01) {
         if (a.tick(playing(bar), v)) sent.push_back(v);
@@ -182,7 +182,7 @@ void testStopCancelsAndHoldsValue() {
     CutoffAutomation a;
     uint8_t v = 0;
     a.manual(64, v);
-    assert(a.startSweep(110, playing(0.0)));
+    assert(a.startSweep(110, playing(0.0), false));
     assert(a.tick(playing(1.0), v));
     const uint8_t held = a.value();
     assert(!a.tick(stopped(1.5), v));       // stop: nothing sent
@@ -195,7 +195,7 @@ void testRestartEpochCancelsAndNeverResumes() {
     CutoffAutomation a;
     uint8_t v = 0;
     a.manual(64, v);
-    assert(a.startSweep(110, playing(0.0, 1)));
+    assert(a.startSweep(110, playing(0.0, 1), false));
     assert(a.tick(playing(1.0, 1), v));
     assert(!a.tick(playing(1.2, 2), v));    // new Start/Continue epoch: cancelled
     for (double bar = 1.2; bar < 8.0; bar += 0.1) assert(!a.tick(playing(bar, 2), v));
@@ -205,7 +205,7 @@ void testStartWhileStoppedIsRefused() {
     CutoffAutomation a;
     uint8_t v = 0;
     a.manual(64, v);
-    assert(!a.startSweep(110, stopped(0.0)));
+    assert(!a.startSweep(110, stopped(0.0), false));
     assert(!a.sweepActive());
 }
 
@@ -213,7 +213,7 @@ void testManualEditDuringSweepTakesOver() {
     CutoffAutomation a;
     uint8_t v = 0;
     a.manual(64, v);
-    assert(a.startSweep(110, playing(0.0)));
+    assert(a.startSweep(110, playing(0.0), false));
     assert(a.tick(playing(1.0), v));
     assert(a.manual(70, v) && v == 70);
     assert(!a.sweepActive());
@@ -240,7 +240,7 @@ void testBarsElapsedAndPublishedLayout() {
     uint8_t v = 0;
     a.manual(64, v);
     assert(a.barsElapsed(0.0) == 0);             // no sweep: nothing elapsed
-    assert(a.startSweep(110, playing(10.0)));
+    assert(a.startSweep(110, playing(10.0), false));
     assert(a.barsElapsed(10.5) == 0);
     assert(a.barsElapsed(12.2) == 2);
     assert(a.barsElapsed(14.0) == 4);
@@ -249,9 +249,10 @@ void testBarsElapsedAndPublishedLayout() {
     assert(a.barsElapsed(12.2) == 0);            // cancelled: nothing elapsed
 
     GroovePuterMidi::CutoffControlChannel channel;
-    channel.publish(96, true, 3, true);
+    channel.publish(96, true, 3, true, 2, true);
     assert(channel.value() == 96 && channel.sweeping() && channel.barsElapsed() == 3 && channel.known());
-    channel.publish(40, false, 0, false);
+    assert(channel.controller() == 2 && channel.returning());
+    channel.publish(40, false, 0, false, 0, false);
     assert(channel.value() == 40 && !channel.sweeping() && channel.barsElapsed() == 0 && !channel.known());
 }
 
@@ -261,11 +262,96 @@ namespace {
 void testSweepNeedsAKnownValue() {
     CutoffAutomation a;
     assert(!a.known());
-    assert(!a.startSweep(110, playing(0.0)));  // a fresh device has no known value
+    assert(!a.startSweep(110, playing(0.0), false));  // a fresh device has no known value
     uint8_t v = 0;
     a.manual(64, v);
     assert(a.known());
-    assert(a.startSweep(110, playing(0.0)));
+    assert(a.startSweep(110, playing(0.0), false));
+}
+
+}  // namespace
+
+namespace {
+void testReturnShapeGoesThereAndBack() {
+    CutoffSweep s;
+    uint8_t v = 0;
+    s.setManual(64, v);
+    s.begin(110, 0.0, true);
+    uint8_t out = 0;
+    std::vector<uint8_t> sent;
+    for (double bar = 0.0; bar <= 5.0; bar += 0.001) {
+        if (s.poll(bar, out)) sent.push_back(out);
+    }
+    assert(!sent.empty() && sent.back() == 64);  // ends where it started
+    uint8_t peak = 0;
+    for (uint8_t x : sent) if (x > peak) peak = x;
+    assert(peak == 110);                         // reaches the target at the midpoint
+    // First leg rises, second leg falls, with no repeats inside a leg.
+    std::size_t turn = 0;
+    while (turn < sent.size() && sent[turn] < 110) ++turn;
+    for (std::size_t i = 1; i < turn; ++i) assert(sent[i] > sent[i - 1]);
+    for (std::size_t i = turn + 1; i < sent.size(); ++i) assert(sent[i] < sent[i - 1]);
+    assert(!s.active());
+    for (double bar = 4.0; bar < 9.0; bar += 0.25) assert(!s.poll(bar, out));
+}
+
+void testControllerTableAndIndex() {
+    using GroovePuterMidi::controllerIndex;
+    using GroovePuterMidi::kControllerCount;
+    assert(kControllerCount == 8);
+    assert(controllerIndex(74) == 0);       // CUTOFF is the default
+    assert(controllerIndex(71) == 1);
+    assert(controllerIndex(10) == 7);       // PAN
+    assert(controllerIndex(5) == -1);       // portamento: owned by the slide path
+    assert(controllerIndex(65) == -1);
+    assert(controllerIndex(27) == -1);      // arpeggiator
+    assert(controllerIndex(116) == -1);     // DX only
+    assert(GroovePuterMidi::kControllers[7].minValue == 1);  // PAN starts at 1
+}
+
+void testRequestCodecCarriesControllerAndShape() {
+    using GroovePuterMidi::CutoffRequest;
+    const uint32_t w = CutoffRequest::encode(CutoffRequest::kSelectController, 0, 9, 6);
+    assert(CutoffRequest::op(w) == CutoffRequest::kSelectController);
+    assert(CutoffRequest::controller(w) == 6);
+    assert(CutoffRequest::sequence(w) == 9);
+    const uint32_t shape = CutoffRequest::encode(CutoffRequest::kSetShape, 1, 10);
+    assert(CutoffRequest::op(shape) == CutoffRequest::kSetShape && CutoffRequest::value(shape) == 1);
+}
+
+void testRestoreSelectsWithoutSending() {
+    CutoffAutomation a;
+    a.restore(90, true);
+    assert(a.known() && a.value() == 90 && !a.sweepActive());
+    a.restore(0, false);
+    assert(!a.known());
+    assert(!a.startSweep(110, playing(0.0), false));  // unknown controller: no sweep
+}
+
+}  // namespace
+
+namespace {
+void testSweepLengthIsChosenPerSweep() {
+    CutoffAutomation a;
+    uint8_t v = 0;
+    a.manual(64, v);
+    assert(a.startSweep(110, playing(0.0), false, 8));
+    uint8_t out = 0;
+    assert(a.barsElapsed(4.0) == 4);             // half-way through eight bars
+    assert(a.barsElapsed(7.9) == 7);
+    assert(a.barsElapsed(8.0) == 8);             // completes at the eighth bar, not before
+    bool sentTarget = false;
+    for (double bar = 0.0; bar < 9.0; bar += 0.01) {
+        if (a.tick(playing(bar), out) && out == 110) sentTarget = true;
+    }
+    assert(sentTarget && !a.sweepActive());
+    // The codec and the published word carry the length index.
+    using GroovePuterMidi::CutoffRequest;
+    const uint32_t w = CutoffRequest::encode(CutoffRequest::kSetDuration, 3, 12);
+    assert(CutoffRequest::op(w) == CutoffRequest::kSetDuration && CutoffRequest::value(w) == 3);
+    GroovePuterMidi::CutoffControlChannel channel;
+    channel.publish(70, true, 8, true, 1, false, 3);
+    assert(channel.barsElapsed() == 8 && channel.durationIndex() == 3 && channel.controller() == 1);
 }
 
 }  // namespace
@@ -289,5 +375,10 @@ int main() {
     testRequestCodecRoundTrips();
     testBarsElapsedAndPublishedLayout();
     testSweepNeedsAKnownValue();
+    testReturnShapeGoesThereAndBack();
+    testControllerTableAndIndex();
+    testRequestCodecCarriesControllerAndShape();
+    testRestoreSelectsWithoutSending();
+    testSweepLengthIsChosenPerSweep();
     return 0;
 }

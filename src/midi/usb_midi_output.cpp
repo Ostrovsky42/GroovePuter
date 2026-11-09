@@ -1257,8 +1257,11 @@ void UsbMidiOutput::clearActiveState() {
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
     // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
-    cutoffSent_[0] = false;
-    cutoffSent_[1] = false;
+    // The receiver's values are unknown after a (re)connect: every controller is
+    // re-sent by the level check once its value is known.
+    for (auto& slotSent : cutoffSent_) {
+        for (bool& sent : slotSent) sent = false;
+    }
 }
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
@@ -1486,10 +1489,10 @@ bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
 }
 
 void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
-    // Scope is one controller on the two synth targets. Other controllers never
-    // reach the wire through this path, so the event type cannot become a generic
-    // CC channel.
-    if (event.note != kCutoffController) return;
+    // Scope: the documented synth controllers of kControllers, on the two synth
+    // targets. Anything else never reaches the wire through this path.
+    const int index = GroovePuterMidi::controllerIndex(event.note);
+    if (index < 0) return;
     int slot = -1;
     if (event.target == MusicalEventTarget::SynthA) slot = 0;
     if (event.target == MusicalEventTarget::SynthB) slot = 1;
@@ -1499,15 +1502,15 @@ void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
     // INTERNAL or LAYER mute this path just as they mute the notes of the track.
     if (!GroovePuterOutput::allowsMidi(event.target, GroovePuterOutput::SourceClass::Performance)) return;
 
-    const uint8_t value = event.velocity > 127u ? 127u : event.velocity;
-    if (cutoffSent_[slot] && cutoffLast_[slot] == value) return;
+    const uint8_t value = GroovePuterMidi::clampForController(index, event.velocity);
+    if (cutoffSent_[slot][index] && cutoffLast_[slot][index] == value) return;
     if (!transport_.sendControlChange(generatedChannel(event.target),
-                                      kCutoffController, value)) {
-        return;  // not recorded: the next event retries the same value
+                                      GroovePuterMidi::kControllers[index].number, value)) {
+        return;  // not recorded: the next level check retries the same value
     }
     transport_.flush();
-    cutoffSent_[slot] = true;
-    cutoffLast_[slot] = value;
+    cutoffSent_[slot][index] = true;
+    cutoffLast_[slot][index] = value;
 }
 
 void UsbMidiOutput::servicePitchBendRetries() {
