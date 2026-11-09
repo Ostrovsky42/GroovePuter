@@ -1,4 +1,5 @@
 #pragma once
+#include "src/midi/cutoff_sweep.h"
 
 #include <cstdint>
 
@@ -182,5 +183,9 @@ private:
 // The link is write-only: enabling it is not evidence that anything is
 // listening.
 void setCardputerDinMidiEnabled(bool enabled);
+// CUTOFF / AUTO SWEEP. The UI requests; the dispatcher applies and sends CC74.
+void setCardputerCutoffRequest(GroovePuterMidi::CutoffRequest::Op op, uint8_t value);
+uint8_t cardputerCutoffValue();
+bool cardputerCutoffSweeping();
 bool cardputerDinMidiEnabled();
 
