@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <vector>
 
+#include "src/midi/cutoff_sweep.h"
 #include "src/midi/usb_midi_output.h"
 #include "src/output/output_ownership.h"
 
@@ -205,6 +206,17 @@ void testDeliveredMeansOnTheWire() {
 
 }  // namespace
 
+namespace {
+void testChannelConstantsMatchTheRoute() {
+    // The dispatcher's route is UsbMidiRouteConfig{7, 7, 8, true, true}; the UI
+    // label and the CC go to the same channels only while these agree.
+    UsbMidiRouteConfig r = route();
+    assert(r.performanceSynthAChannel == GroovePuterMidi::kSynthAChannel);
+    assert(r.performanceSynthBChannel == GroovePuterMidi::kSynthBChannel);
+}
+
+}  // namespace
+
 int main() {
     testEncodesCutoffOnSynthAChannel8();
     testClampsOutOfRangeValues();
@@ -213,6 +225,7 @@ int main() {
     testSynthBUsesItsOwnChannelAndDedupe();
     testCutoffFollowsTrackOutputMode();
     testDeliveredMeansOnTheWire();
+    testChannelConstantsMatchTheRoute();
     testDoesNotTouchNoteOwnership();
     testRefusedCcIsRetriedByTheNextEvent();
     testNothingWhileUnmountedAndResendAfterReconnect();

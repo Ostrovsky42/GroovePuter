@@ -28,4 +28,5 @@ class SynthMidiPage : public IPage {
   std::string title_;
   int focus_ = 0;          // 0 CUTOFF, 1 SWEEP, 2 TARGET
   uint8_t target_ = 110;   // sweep target, held here until the sweep is requested
+  int requested_ = -1;    // last CUTOFF value requested by this page, -1 when caught up
 };

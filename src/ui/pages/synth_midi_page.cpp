@@ -42,6 +42,7 @@ void SynthMidiPage::draw(IGfx& gfx) {
   const bool sweeping = channel.sweeping();
   const int barsDone = channel.barsElapsed();
   const bool known = channel.known();
+  if (requested_ >= 0 && channel.known() && channel.value() == requested_) requested_ = -1;
 
   // Identity: the synth is the title, the external device is secondary.
   const int headerY = content.y + 2;
@@ -50,7 +51,8 @@ void SynthMidiPage::draw(IGfx& gfx) {
   gfx.drawText(x, headerY, synthName);
   // Left of the synth tab strip (which starts at x 172), so the two never overlap.
   char route[24]{};
-  std::snprintf(route, sizeof(route), "SEQTRAK CH%02d", voice_index_ == 0 ? 8 : 9);
+  const uint8_t routeChannel = voice_index_ == 0 ? GroovePuterMidi::kSynthAChannel : GroovePuterMidi::kSynthBChannel;
+  std::snprintf(route, sizeof(route), "SEQTRAK CH%02d", routeChannel + 1);
   gfx.setTextColor(palette.secondary);
   gfx.drawText(x + gfx.textWidth(synthName) + 10, headerY, route);
   gfx.fillRect(x, content.y + 13, width, 1, palette.grid);
@@ -159,6 +161,7 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
       : ui_event.key;
   if (ui_event.ctrl && !ui_event.alt && !ui_event.meta && (key == 'a' || key == 'A')) {
     if (focus_ == 0) {
+      requested_ = kStandardCutoff;
       GroovePuterMidi::gCutoffControl[voice_index_].request(GroovePuterMidi::CutoffRequest::kManual, kStandardCutoff);
       return true;
     }
@@ -181,9 +184,14 @@ void SynthMidiPage::adjust(int direction, bool fine) {
   if (focus_ == 0) {
     // A manual value takes over from a running sweep, by design.
     const auto& control = GroovePuterMidi::gCutoffControl[voice_index_];
-    const int base = control.known() ? control.value() : kStandardCutoff;
+    // Step from the last value this page requested, not from the published one: the
+    // dispatcher publishes once per pass, so two quick presses would otherwise step
+    // from the same base and add only one step.
+    const int base = requested_ >= 0 ? requested_
+                   : control.known() ? control.value() : kStandardCutoff;
     int next = base + direction * step;
     next = next < 0 ? 0 : next > 127 ? 127 : next;
+    requested_ = next;
     GroovePuterMidi::gCutoffControl[voice_index_].request(
         GroovePuterMidi::CutoffRequest::kManual, static_cast<uint8_t>(next));
     return;

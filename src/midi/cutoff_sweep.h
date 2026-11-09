@@ -210,6 +210,12 @@ private:
     uint32_t sequence_{0};
 };
 
+// Zero-based MIDI channels of the two synth performance routes. They must match
+// the UsbMidiRouteConfig fields used by the dispatcher (performanceSynthAChannel,
+// performanceSynthBChannel); a host test checks that they agree.
+inline constexpr uint8_t kSynthAChannel = 7;   // MIDI channel 8, SEQTRAK SYNTH 1
+inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 2
+
 // One channel per synth voice: index 0 is Synth A, 1 is Synth B.
 inline CutoffControlChannel gCutoffControl[2];
 
