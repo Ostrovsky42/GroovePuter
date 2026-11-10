@@ -88,6 +88,61 @@ inline Result prepareSelectedBy(const Buffer& live,
   return Result::Ready;
 }
 
+// Transpose every event starting in `bar` using `mapPitch(uint8_t note) -> int`
+// as one atomic edit (Ctrl+A bar selection). If any event in the bar hits the
+// MIDI boundary, the whole edit is rejected so interval relationships hold.
+template <typename PitchMapper>
+inline Result prepareBarMapped(const Buffer& live,
+                               uint8_t bar,
+                               PitchMapper&& mapPitch,
+                               Prepared& out) {
+  out.before = live;
+  out.after = live;
+  if (!RuntimePhraseEdit::validate(live)) return Result::Rejected;
+
+  const uint32_t barStart =
+      static_cast<uint32_t>(bar) * PhraseRuntime::kTicksPerBar;
+  const uint32_t barEnd = barStart + PhraseRuntime::kTicksPerBar;
+  uint16_t count = 0;
+  for (uint16_t i = 0; i < live.count; ++i) {
+    if (live.events[i].startTick >= barStart &&
+        live.events[i].startTick < barEnd) {
+      ++count;
+    }
+  }
+  if (count == 0) return Result::NoTarget;
+
+  bool allValid = true;
+  const RuntimePhraseEdit::PrepareResult prepareResult =
+      RuntimePhraseEdit::prepare(live, out.after, [&](Buffer& candidate) {
+        for (uint16_t i = 0; i < candidate.count && allValid; ++i) {
+          if (candidate.events[i].startTick < barStart ||
+              candidate.events[i].startTick >= barEnd) {
+            continue;
+          }
+          const int cur = static_cast<int>(candidate.events[i].note);
+          const int next = mapPitch(candidate.events[i].note);
+          const int semitones = next - cur;
+          if (next < 0 || next > 127 || semitones == 0 ||
+              semitones > 12 || semitones < -12) {
+            allValid = false;
+            break;
+          }
+          const int dir = semitones > 0 ? 1 : -1;
+          for (int s = 0; s < semitones * dir && allValid; ++s) {
+            allValid = RuntimePhraseEdit::transposeEvent(candidate, i, dir) ==
+                       RuntimePhraseEdit::EventEditResult::Changed;
+          }
+        }
+      });
+
+  if (!allValid || prepareResult != RuntimePhraseEdit::PrepareResult::Ready) {
+    out.after = live;
+    return Result::Rejected;
+  }
+  return Result::Ready;
+}
+
 inline Result prepare(const Buffer& live,
                       uint16_t cursorTick,
                       int direction,

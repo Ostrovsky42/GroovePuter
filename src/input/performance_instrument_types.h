@@ -41,11 +41,13 @@ enum class PerformanceArpDirection : uint8_t {
     DownUp,
     AsPlayed,
     Random,
+    Thumb,
+    Converge,
     Count,
 };
 
 enum class PerformanceVoiceMode : uint8_t { Mono = 0, Poly, Count };
-enum class PerformanceSpread : uint8_t { Close = 0, Wide, Count };
+enum class PerformanceSpread : uint8_t { Close = 0, Wide, Drop2, BassRoot, Count };
 enum class PerformanceVoiceLeading : uint8_t { Off = 0, Nearest, Count };
 enum class PerformanceStrumDirection : uint8_t { LowToHigh = 0, HighToLow, AsPlayed, Count };
 

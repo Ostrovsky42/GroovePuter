@@ -141,6 +141,16 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool shiftPitch(int direction, PitchStep stepKind);
   int editTargetNote() const;
   bool toggleAccent();
+  bool toggleSlide();
+  bool melodyBarSelected() const;
+  int countEventsInFocusBar() const;
+  int firstEventInFocusBar() const;
+  void openNoteSettings();
+  bool handleNoteSettingsKey(const UIEvent& ui_event);
+  void adjustNoteSetting(int field, int direction);
+  void resetNoteSetting(int field);
+  void drawNoteSettings(IGfx& gfx) const;
+  bool noteSettingsOpen() const { return note_settings_open_; }
   bool generateMelodyPhrase();
   bool cycleMelodyGrid();
   // Successive Alt+G presses give different phrases (deterministic per count).
@@ -152,6 +162,9 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> vary_original_;
   int vary_bar_ = -1;
   uint8_t vary_stage_ = 0;
+  bool melody_bar_selected_ = false;
+  bool note_settings_open_ = false;
+  uint8_t note_settings_field_ = 0;
   bool newEmptyMelody();
   bool newMelodyInSlot(int bank, int pattern);
   bool toggleSource();

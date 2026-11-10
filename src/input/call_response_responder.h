@@ -35,11 +35,10 @@ class ResponsePlayer {
 public:
     void setRouter(MusicalEventRouter* router) { router_ = router; }
     void setTarget(MusicalEventTarget target) {
-        if (target == target_) return;
-        (void)cancel();
         target_ = target;
     }
     MusicalEventTarget target() const { return target_; }
+    MusicalEventTarget activeTarget() const { return activeTarget_; }
 
     // 0 = follow the PERFORM DX route (phase 1/2 output, default), 1..16 = MIDI
     // channel of the answer lane. Takes effect at the next answer.
@@ -67,6 +66,7 @@ public:
         }
         count_ = plan.count;
         activeWireChannel_ = wireChannel_;
+        activeTarget_ = target_;
         activeLoopLane_ = loopLane;
         playedThisAnswer_ = 0;
         ++answersStarted_;
@@ -163,7 +163,7 @@ private:
     void emit(MusicalEventType type, uint8_t note, uint8_t velocity) {
         if (!router_) return;
         const bool lane = activeWireChannel_ != kFollowDx;
-        router_->route(MusicalEvent{type, MusicalEventSource::Arpeggiator, target_,
+        router_->route(MusicalEvent{type, MusicalEventSource::Arpeggiator, activeTarget_,
                                     static_cast<uint8_t>(lane ? activeWireChannel_ - 1u : 0u),
                                     note, velocity,
                                     static_cast<uint8_t>((lane ? kMusicalEventWireChannel : kMusicalEventAnswerFollowDx) |
@@ -184,6 +184,7 @@ private:
     // Non-zero default: the owning singleton is in .dram0.data instead of .bss
     // (same DRAM, a few hundred bytes of flash for the initial image).
     MusicalEventTarget target_{MusicalEventTarget::Dx};
+    MusicalEventTarget activeTarget_{MusicalEventTarget::Dx};
 };
 
 }  // namespace GroovePuterCallResponse

@@ -90,7 +90,7 @@ inline bool validPerformanceKeyboardConfig(const PerformanceKeyboardConfig& c) {
         c.voiceLeading < PerformanceVoiceLeading::Count &&
         c.rootPitchClass < 12 && c.scale < PerformanceScale::Count &&
         c.velocity >= 10 && c.velocity <= 120 && c.octaveShift >= -2 &&
-        c.octaveShift <= 2 && c.ratchetCount >= 1 && c.ratchetCount <= 4 &&
+        c.octaveShift <= 2 && c.ratchetCount >= 1 && c.ratchetCount <= 7 &&
         c.euclideanLength >= 1 && c.euclideanLength <= 16 &&
         c.euclideanPulses <= c.euclideanLength &&
         c.euclideanRotation < c.euclideanLength && c.strumMs <= 48 &&
@@ -99,7 +99,6 @@ inline bool validPerformanceKeyboardConfig(const PerformanceKeyboardConfig& c) {
         c.target <= MusicalEventTarget::Dx && c.mutationSeed != 0 &&
         c.mutationSkipPercent <= 100 && c.mutationOctaveJumpPercent <= 100 &&
         c.mutationDeviatePercent <= 100 && (!c.latchEnabled || c.arpEnabled) &&
-        !(c.voiceLeading == PerformanceVoiceLeading::Nearest && c.arpEnabled) &&
         !(c.strumMs > 0 && c.ratchetCount > 1) &&
         (c.strumMs == 0 || c.strumMs == 8 || c.strumMs == 16 ||
          c.strumMs == 24 || c.strumMs == 36);

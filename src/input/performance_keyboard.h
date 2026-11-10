@@ -111,6 +111,7 @@ public:
     void cycleRoot(int direction);
     uint8_t rootPitchClass() const { return rootPitchClass_; }
     const char* rootName() const;
+    void syncProjectKey(uint8_t pitchClass, PerformanceScale scale);
     bool shiftOctave(int direction);
     int8_t octaveShift() const { return octaveShift_; }
 
@@ -123,6 +124,7 @@ public:
     uint8_t chordInversion() const { return chordInversion_; }
     void setChordSpread(PerformanceSpread spread);
     void toggleChordSpread();
+    void cycleChordSpread(int direction = 1);
     PerformanceSpread chordSpread() const { return chordSpread_; }
     const char* chordSpreadName() const;
     void setVoiceLeading(PerformanceVoiceLeading mode);
@@ -188,6 +190,7 @@ public:
 
     void cycleRatchet(int direction = 1);
     uint8_t ratchetCount() const { return pendingClocked_.ratchetCount; }
+    const char* ratchetModeName() const;
     void setEuclideanLength(uint8_t length);
     void cycleEuclideanLength(int direction = 1);
     uint8_t euclideanLength() const { return pendingClocked_.euclideanLength; }
@@ -195,14 +198,21 @@ public:
     uint8_t euclideanPulses() const { return pendingClocked_.euclideanPulses; }
     void rotateEuclidean(int direction);
     uint8_t euclideanRotation() const { return pendingClocked_.euclideanRotation; }
+    bool euclideanStepHit(uint8_t step) const;
 
     void setMutationSeed(uint32_t seed);
     void setMutationProbability(uint8_t skipPercent,
                                 uint8_t octaveJumpPercent,
                                 uint8_t deviatePercent);
+    void setMutationMacro(uint8_t macroPercent);
+    void cycleMutationMacro(int direction = 1);
+    uint8_t mutationMacroPercent() const;
+    void reseedMutation();
     const PerformanceMutationConfig& mutationConfig() const {
         return pendingClocked_.mutation;
     }
+    void setSwingPercent(uint8_t percent);
+    uint8_t swingPercent() const { return swingPercent_; }
 
     bool transformedPlaybackEnabled() const;
     int activeNote() const;
@@ -373,7 +383,7 @@ private:
                                uint8_t selected) const;
     void applyInversionAndSpread(uint8_t* notes, std::size_t count) const;
     void applyNearestVoiceLeading(uint8_t* notes, std::size_t count) const;
-    void rememberVoicing(const uint8_t* notes, std::size_t count);
+    void rememberVoicing(const uint8_t* notes, std::size_t count) const;
     void reconcileDirectPolyChord(uint32_t nowMicros);
     void revoiceDirectHarmony(uint32_t nowMicros);
     void triggerDirectTransformed(uint32_t nowMicros);
@@ -423,6 +433,7 @@ private:
     uint8_t strumMs_{0};
     PerformanceStrumDirection strumDirection_{PerformanceStrumDirection::LowToHigh};
     float tempoBpm_{120.0f};
+    uint8_t swingPercent_{50};
 
     PerformanceClockedConfig activeClocked_{};
     PerformanceClockedConfig pendingClocked_{};
@@ -436,6 +447,7 @@ private:
     std::size_t pendingLatchCount_{0};
     bool pendingLatchCapture_{false};
     bool latchReplaceArmed_{false};
+    bool latchTransposedSingle_{false};
 
     GroovePuterPerformance::PerformanceContext performanceContext_{};
     GroovePuterHarmony::HarmonyEventKey harmonyEventKey_{};

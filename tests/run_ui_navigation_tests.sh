@@ -46,7 +46,7 @@ if (( ${#SRCS[@]} == 0 )); then
   exit 3
 fi
 
-for test in test_tempo_sync_ui test_melody_new_empty_ui test_melody_chord_playback test_melody_list_edit_target test_melody_vary_bar test_pattern_pair_view test_pair_play test_pair_navigation_playback test_tempo_ctrl_keys test_midi_import_audible; do
+for test in test_tempo_sync_ui test_melody_new_empty_ui test_melody_chord_playback test_melody_list_edit_target test_melody_bar_selection_and_note_settings test_melody_vary_bar test_pattern_pair_view test_pair_play test_pair_navigation_playback test_tempo_ctrl_keys test_midi_import_audible; do
   "$CXX" -std=c++17 -Wall -Wextra -Wno-c++20-extensions \
     -I.. -I. -include arduino_compat.h \
     $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
@@ -66,6 +66,7 @@ tail -1 "$BUILD/test_tempo_sync_ui.out"
 echo "UI navigation: Alt+N new empty Melody, chord edit and recording PASS"
 "$BUILD/test_melody_chord_playback"
 "$BUILD/test_melody_list_edit_target"
+"$BUILD/test_melody_bar_selection_and_note_settings"
 "$BUILD/test_melody_vary_bar"
 "$BUILD/test_pattern_pair_view"
 "$BUILD/test_pair_play"

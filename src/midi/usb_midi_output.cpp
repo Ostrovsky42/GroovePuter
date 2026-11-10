@@ -971,9 +971,18 @@ bool UsbMidiOutput::releaseLoopNotes(bool pendingOnly) {
 
 void UsbMidiOutput::handleLoopLaneEvent(const MusicalEvent& event) {
     if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
+    if ((event.flags & kMusicalEventAnswerFollowDx) != 0 &&
+        event.target != MusicalEventTarget::Dx) {
+        GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+        if (GroovePuterOutput::trackForTarget(event.target, track) &&
+            GroovePuterOutput::mode(track) == GroovePuterOutput::Mode::Internal &&
+            event.type == MusicalEventType::NoteOn) {
+            return;
+        }
+    }
     const bool pendingReleased = releaseLoopNotes(true);
     const uint8_t channel = (event.flags & kMusicalEventAnswerFollowDx)
-        ? generatedChannel(MusicalEventTarget::Dx) : clampChannel(event.channel);
+        ? generatedChannel(event.target) : clampChannel(event.channel);
     const uint8_t note = clampDataByte(event.note);
     LoopNote* found = nullptr;
     LoopNote* vacant = nullptr;

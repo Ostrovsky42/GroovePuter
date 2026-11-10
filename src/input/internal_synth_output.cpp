@@ -184,7 +184,15 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     // Legacy output mode suppresses only new local PERFORM NoteOn. Cleanup and
     // OTHER LIVE retain the existing behavior.
-    if (isInternalMonoPerformanceSource(event.source) &&
+    const bool isLoopLane = (event.flags & kMusicalEventLoopLane) != 0;
+    if (isLoopLane) {
+        if ((event.flags & kMusicalEventWireChannel) != 0) return;
+        GroovePuterOutput::Track track = GroovePuterOutput::Track::SynthA;
+        if (!GroovePuterOutput::trackForTarget(event.target, track) ||
+            GroovePuterOutput::mode(track) == GroovePuterOutput::Mode::Midi) {
+            return;
+        }
+    } else if (isInternalMonoPerformanceSource(event.source) &&
         event.type == MusicalEventType::NoteOn &&
         !GroovePuterOutput::allowsInternalNoteOn(event)) {
         return;

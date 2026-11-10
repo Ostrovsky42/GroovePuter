@@ -25,11 +25,24 @@ public:
         Candidate generatedCandidate{};
         Candidate directCandidate{};
         Candidate otherLiveCandidate{};
+        Candidate loopCandidate{};
         Candidate currentlyProjectedLiveCandidate{};
 
         void applyLiveEvent(const MusicalEvent& event) {
             if (event.type == MusicalEventType::AllNotesOff) {
                 panic();
+                return;
+            }
+
+            if ((event.flags & kMusicalEventLoopLane) != 0) {
+                if (event.type == MusicalEventType::NoteOn) {
+                    loopCandidate = Candidate{
+                        true, MusicalEventSource::PatternPlayer, event.note, event.velocity};
+                } else if (event.type == MusicalEventType::NoteOff &&
+                           loopCandidate.active &&
+                           loopCandidate.note == event.note) {
+                    loopCandidate = Candidate{};
+                }
                 return;
             }
 
@@ -56,6 +69,7 @@ public:
             generatedCandidate = Candidate{};
             directCandidate = Candidate{};
             otherLiveCandidate = Candidate{};
+            loopCandidate = Candidate{};
         }
 
         Candidate selectedCandidate() const {
@@ -63,6 +77,7 @@ public:
             if (generatedCandidate.active) return generatedCandidate;
             if (directCandidate.active) return directCandidate;
             if (otherLiveCandidate.active) return otherLiveCandidate;
+            if (loopCandidate.active) return loopCandidate;
             return Candidate{};
         }
 

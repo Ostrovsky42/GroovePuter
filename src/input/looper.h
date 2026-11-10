@@ -108,6 +108,12 @@ public:
     void cycleChannel(int direction) {
         setChannel(static_cast<uint8_t>((channel_ + (direction >= 0 ? 1 : 16)) % 17));
     }
+    MusicalEventTarget target() const { return target_; }
+    void setTarget(MusicalEventTarget target) {
+        if (target == MusicalEventTarget::Drums || target == target_) return;
+        target_ = target;
+        if (loopRunning() && channel_ == kChannelFollowDx) restartPlanNow(nowMicros());
+    }
     AnswerLength length() const { return length_; }
     uint8_t lengthPercent() const { return GroovePuterCallResponse::answerLengthPercent(length_); }
     void setLength(AnswerLength length) {
@@ -351,6 +357,13 @@ public:
                 (void)layer_.noteOff(static_cast<uint16_t>(0x4000u | soundMono_), relAt(nowMicros()), passSteps());
             if (on) soundMono_ = event.note;
             else if (soundMono_ == event.note) soundMono_ = 0xff;
+        } else if (on && soundMono_ != 0xff) {
+            if (clock_.running())
+                (void)layer_.noteOff(static_cast<uint16_t>(0x4000u | soundMono_), relAt(nowMicros()), passSteps());
+            soundMono_ = 0xff;
+        }
+        if (on && (state_ == State::Idle || state_ == State::Armed)) {
+            target_ = event.target;
         }
         // PerformanceKeyboard collapses overlapping owners of the same sounding
         // pitch before emitting output; pitch therefore identifies its voice.
@@ -575,9 +588,12 @@ private:
         // The loop channel is latched for this pass only; the PARTNER setting
         // stored in the shared player is put back right away.
         const uint8_t partnerChannel = player_->wireChannel();
+        const MusicalEventTarget partnerTarget = player_->target();
         player_->setWireChannel(channel_);
+        player_->setTarget(channel_ == kChannelFollowDx ? target_ : MusicalEventTarget::Dx);
         const bool started = player_->start(plan, originMicros, clock_.sixteenthMicros(), true);
         player_->setWireChannel(partnerChannel);
+        player_->setTarget(partnerTarget);
         player_->service(now);
         return started;
     }
@@ -759,6 +775,7 @@ private:
     uint8_t nextSegment_{0};   // step of the next plan of this pass, 0 = none
     uint8_t layerFlags_{0};    // HOLD / MUTE per layer, the active layer (phase 3)
     uint8_t soundMono_{0xff};  // current MONO performance pitch, or none
+    MusicalEventTarget target_{MusicalEventTarget::SynthA};
     LoopClock clock_{};
     ResponsePlayer* player_{nullptr};
     NowFn nowFn_{nullptr};

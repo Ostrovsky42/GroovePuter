@@ -91,6 +91,8 @@ uint8_t arpCycleLength(std::size_t count, PerformanceArpDirection direction) {
     if (direction == PerformanceArpDirection::UpDown ||
         direction == PerformanceArpDirection::DownUp)
         return static_cast<uint8_t>(count * 2u - 2u);
+    if (direction == PerformanceArpDirection::Thumb && count > 2)
+        return static_cast<uint8_t>((count - 1u) * 2u);
     return static_cast<uint8_t>(count);
 }
 
@@ -425,6 +427,17 @@ bool PerformanceKeyboard::euclideanPulseActive(uint64_t musicalOrdinal) const {
     return static_cast<uint8_t>((rotated * pulses) % length) < pulses;
 }
 
+bool PerformanceKeyboard::euclideanStepHit(uint8_t step) const {
+    const uint8_t length = pendingClocked_.euclideanLength == 0
+        ? 1 : pendingClocked_.euclideanLength;
+    const uint8_t pulses = pendingClocked_.euclideanPulses;
+    if (step >= length) return false;
+    if (pulses == 0 || pulses >= length) return true;
+    const uint8_t rotated = static_cast<uint8_t>(
+        (step + pendingClocked_.euclideanRotation) % length);
+    return static_cast<uint8_t>((rotated * pulses) % length) < pulses;
+}
+
 void PerformanceKeyboard::resetPulseClock(bool resetMusicalPhase) {
     standalonePulseRunning_ = false;
     nextStandalonePulseMicros_ = 0;
@@ -454,6 +467,7 @@ void PerformanceKeyboard::stageClockedConfig() {
 
 void PerformanceKeyboard::captureLatchNow() {
     pendingLatchCount_ = 0;
+    latchTransposedSingle_ = false;
     if (heldCount_ == 0) {
         pendingLatchCapture_ = true;
         latchReplaceArmed_ = true;
@@ -480,6 +494,7 @@ void PerformanceKeyboard::commitLatchAtBoundary(
         pendingLatchCount_ = 0;
         pendingLatchCapture_ = false;
         latchReplaceArmed_ = false;
+        latchTransposedSingle_ = false;
         return;
     }
     if ((!oldConfig.latchEnabled && newConfig.latchEnabled) || pendingLatchCapture_) {
@@ -545,12 +560,33 @@ std::size_t PerformanceKeyboard::buildScaleChord(uint8_t baseNote,
                                                  uint8_t* notes,
                                                  std::size_t capacity) const {
     if (!notes || capacity == 0) return 0;
+    if (scale_ == PerformanceScale::Chromatic) {
+        static constexpr int kFallbackMinor[] = {0, 3, 7, 10};
+        const std::size_t wanted = seventh ? 4 : 3;
+        std::size_t count = 0;
+        for (std::size_t i = 0; i < wanted && count < capacity; ++i) {
+            notes[count++] = fitMidiNote(static_cast<int>(baseNote) + kFallbackMinor[i]);
+        }
+        return uniqueInPlace(notes, count);
+    }
     uint8_t degree = 0;
+    int snapSemitones = 0;
     if (!noteBelongsToScale(baseNote, rootPitchClass_, scale_, degree)) {
-        notes[0] = baseNote;
-        return 1;
+        const ScaleDefinitionView def =
+            GroovePuterRhythm::scaleDefinitionFor(catalogScaleFor(scale_));
+        if (def.intervals == nullptr || def.count == 0) {
+            notes[0] = baseNote;
+            return 1;
+        }
+        const int delta = static_cast<int>((baseNote % 12u + 12u - rootPitchClass_) % 12u);
+        degree = 0;
+        for (uint8_t i = 0; i < def.count; ++i) {
+            if (def.intervals[i] <= delta) degree = i;
+        }
+        snapSemitones = static_cast<int>(def.intervals[degree]) - delta;
     }
     const ScaleTypeValue scaleValue = catalogScaleFor(scale_);
+    const int snappedBase = fitMidiNote(static_cast<int>(baseNote) + snapSemitones);
     const int rootSemi = GroovePuterRhythm::scaleDegreeToSemitone(scaleValue, degree);
     const uint8_t offsets[] = {0, 2, 4, 6};
     const std::size_t wanted = seventh ? 4 : 3;
@@ -558,7 +594,7 @@ std::size_t PerformanceKeyboard::buildScaleChord(uint8_t baseNote,
     for (std::size_t i = 0; i < wanted && count < capacity; ++i) {
         const int targetSemi = GroovePuterRhythm::scaleDegreeToSemitone(
             scaleValue, static_cast<int>(degree) + offsets[i]);
-        notes[count++] = fitMidiNote(static_cast<int>(baseNote) + targetSemi - rootSemi);
+        notes[count++] = fitMidiNote(snappedBase + targetSemi - rootSemi);
     }
     return uniqueInPlace(notes, count);
 }
@@ -581,28 +617,45 @@ void PerformanceKeyboard::applyInversionAndSpread(uint8_t* notes,
             notes[i] = fitMidiNote(static_cast<int>(notes[i]) + 12);
         }
         std::sort(notes, notes + count);
+    } else if (chordSpread_ == PerformanceSpread::Drop2 && count >= 3) {
+        const std::size_t dropIdx = count - 2;
+        notes[dropIdx] = fitMidiNote(static_cast<int>(notes[dropIdx]) - 12);
+        std::sort(notes, notes + count);
     }
 }
 
 void PerformanceKeyboard::applyNearestVoiceLeading(uint8_t* notes,
                                                     std::size_t count) const {
-    if (!notes || count == 0 || previousVoicingCount_ == 0 ||
-        voiceLeading_ != PerformanceVoiceLeading::Nearest ||
-        activeClocked_.arpEnabled || pendingClocked_.arpEnabled) {
+    if (!notes || count < 2 || previousVoicingCount_ == 0 ||
+        voiceLeading_ != PerformanceVoiceLeading::Nearest) {
         return;
     }
     std::sort(notes, notes + count);
-    const std::size_t matched = std::min(count, previousVoicingCount_);
-    for (std::size_t i = 0; i < matched; ++i) {
+    const std::size_t startIdx =
+        (chordSpread_ == PerformanceSpread::BassRoot && count > 2) ? 1u : 0u;
+    int prevSum = 0;
+    for (std::size_t i = 0; i < previousVoicingCount_; ++i) prevSum += previousVoicing_[i];
+    int targetCenter = prevSum / static_cast<int>(previousVoicingCount_);
+    const int anchor = static_cast<int>(notes[startIdx]);
+    targetCenter = std::max(anchor - 3, std::min(anchor + 7, targetCenter));
+
+    for (std::size_t i = startIdx; i < count; ++i) {
         int best = notes[i];
-        int bestDistance = std::abs(best - static_cast<int>(previousVoicing_[i]));
+        int bestCost = 10000;
         for (int shift = -24; shift <= 24; shift += 12) {
-            int candidate = static_cast<int>(notes[i]) + shift;
+            const int candidate = static_cast<int>(notes[i]) + shift;
             if (candidate < kMinNote || candidate > kMaxNote) continue;
-            const int distance = std::abs(candidate - static_cast<int>(previousVoicing_[i]));
-            if (distance < bestDistance) {
+            int minVoiceDist = 1000;
+            for (std::size_t j = 0; j < previousVoicingCount_; ++j) {
+                const int d = std::abs(candidate - static_cast<int>(previousVoicing_[j]));
+                if (d < minVoiceDist) minVoiceDist = d;
+            }
+            const int centerDist = std::abs(candidate - targetCenter);
+            if (centerDist > 9) continue;
+            const int cost = minVoiceDist * 2 + centerDist;
+            if (cost < bestCost) {
+                bestCost = cost;
                 best = candidate;
-                bestDistance = distance;
             }
         }
         notes[i] = static_cast<uint8_t>(best);
@@ -651,12 +704,22 @@ std::size_t PerformanceKeyboard::buildChord(uint8_t baseNote,
 
     count = uniqueInPlace(notes, count);
     applyInversionAndSpread(notes, count);
+    if (chordSpread_ == PerformanceSpread::BassRoot &&
+        chordMode_ != PerformanceChordMode::Off &&
+        count > 0 && count < capacity) {
+        const int subRoot = static_cast<int>(baseNote) >= static_cast<int>(kMinNote) + 12
+            ? static_cast<int>(baseNote) - 12
+            : static_cast<int>(baseNote);
+        notes[count++] = static_cast<uint8_t>(subRoot);
+        std::sort(notes, notes + count);
+        count = uniqueInPlace(notes, count);
+    }
     if (applyVoiceLeading) applyNearestVoiceLeading(notes, count);
     return uniqueInPlace(notes, count);
 }
 
-void PerformanceKeyboard::rememberVoicing(const uint8_t* notes, std::size_t count) {
-    if (!notes || count == 0 || voiceLeading_ != PerformanceVoiceLeading::Nearest) return;
+void PerformanceKeyboard::rememberVoicing(const uint8_t* notes, std::size_t count) const {
+    if (!notes || count < 2 || voiceLeading_ != PerformanceVoiceLeading::Nearest) return;
     previousVoicingCount_ = std::min(count, kMaxChordMemoryNotes);
     for (std::size_t i = 0; i < previousVoicingCount_; ++i) previousVoicing_[i] = notes[i];
     std::sort(previousVoicing_, previousVoicing_ + previousVoicingCount_);
@@ -775,7 +838,9 @@ std::size_t PerformanceKeyboard::buildArpPool(uint8_t* notes,
                 if (note >= kMinNote && note <= kMaxNote) chord[chordCount++] = static_cast<uint8_t>(note);
             }
         } else {
-            chordCount = buildChord(inputs[input].note, chord, kMaxChordMemoryNotes, false);
+            const bool applyVl = (chordMode_ != PerformanceChordMode::Off && inputCount == 1);
+            chordCount = buildChord(inputs[input].note, chord, kMaxChordMemoryNotes, applyVl);
+            if (applyVl) rememberVoicing(chord, chordCount);
         }
         chordCount = constrainChordNotes(chord, chordCount);
         for (std::size_t j = 0; j < chordCount; ++j) {
@@ -1111,6 +1176,22 @@ uint8_t PerformanceKeyboard::selectArpNote(
             pulseConfig.mutation.seed, arpEpoch_, musicalPulseOrdinal_);
         return ordered[randomWord % count];
     }
+    if (pulseConfig.arpDirection == PerformanceArpDirection::Thumb) {
+        const std::size_t cycle = count <= 2 ? count : (count - 1u) * 2u;
+        if (arpIndex_ >= cycle) arpIndex_ = 0;
+        const std::size_t index = (count <= 2)
+            ? arpIndex_
+            : ((arpIndex_ % 2u == 0u) ? 0u : (1u + (arpIndex_ / 2u)));
+        arpIndex_ = (arpIndex_ + 1u) % cycle;
+        return ordered[index];
+    }
+    if (pulseConfig.arpDirection == PerformanceArpDirection::Converge) {
+        if (arpIndex_ >= count) arpIndex_ = 0;
+        const std::size_t half = arpIndex_ / 2u;
+        const std::size_t index = (arpIndex_ % 2u == 0u) ? half : (count - 1u - half);
+        arpIndex_ = (arpIndex_ + 1u) % count;
+        return ordered[index];
+    }
     if (arpIndex_ >= count) arpIndex_ = 0;
     std::size_t index = arpIndex_;
     switch (pulseConfig.arpDirection) {
@@ -1138,6 +1219,8 @@ uint8_t PerformanceKeyboard::selectArpNote(
             break;
         case PerformanceArpDirection::AsPlayed:
         case PerformanceArpDirection::Up:
+        case PerformanceArpDirection::Thumb:
+        case PerformanceArpDirection::Converge:
         case PerformanceArpDirection::Count:
         default:
             index = arpIndex_;
@@ -1159,9 +1242,38 @@ void PerformanceKeyboard::emitPerformancePulse(
     uint32_t pulseStartMicros,
     uint32_t pulseMicros,
     const PerformanceClockedConfig& pulseConfig) {
+    if (pulseConfig.arpEnabled &&
+        harmonyChangePolicy_ == GroovePuterPerformance::HarmonyChangePolicy::Restart &&
+        musicalPulseOrdinal_ > 0) {
+        uint64_t pulsesPerBar = 16;
+        switch (pulseConfig.rate) {
+            case PerformanceRate::Quarter: pulsesPerBar = 4; break;
+            case PerformanceRate::Eighth: pulsesPerBar = 8; break;
+            case PerformanceRate::EighthTriplet: pulsesPerBar = 12; break;
+            case PerformanceRate::Sixteenth: pulsesPerBar = 16; break;
+            case PerformanceRate::SixteenthTriplet: pulsesPerBar = 24; break;
+            case PerformanceRate::ThirtySecond: pulsesPerBar = 32; break;
+            case PerformanceRate::Count: break;
+        }
+        if ((musicalPulseOrdinal_ % pulsesPerBar) == 0ULL) {
+            arpIndex_ = 0;
+            arpAscending_ = true;
+            mutationRng_.reset(pulseConfig.mutation.seed);
+        }
+    }
     if (!euclideanPulseActive(musicalPulseOrdinal_)) return;
     if (pulseConfig.mutation.skipPercent > 0 &&
         mutationRng_.chance(pulseConfig.mutation.skipPercent)) return;
+
+    if (pulseConfig.rate == PerformanceRate::Sixteenth &&
+        swingPercent_ > 50u && (musicalPulseOrdinal_ & 1ULL) == 1ULL) {
+        const uint32_t swingOffset =
+            (pulseMicros * static_cast<uint32_t>(swingPercent_ - 50u)) / 50u;
+        pulseStartMicros += swingOffset;
+        pulseMicros = pulseMicros > swingOffset + 4000u
+            ? (pulseMicros - swingOffset)
+            : std::max<uint32_t>(4000u, pulseMicros / 2u);
+    }
 
     LatchedNote inputs[kMaxLatchedNotes]{};
     const std::size_t inputCount = collectInputPool(inputs, kMaxLatchedNotes);
@@ -1188,6 +1300,7 @@ void PerformanceKeyboard::emitPerformancePulse(
             if (arpCycleProgress_ == 0) arpCycleStarted_ = false;
         }
         uint8_t selected = selectArpNote(pool, poolCount, pulseConfig);
+        const uint8_t baseSelected = selected;
         if (arpHoldActive_ && arpHoldPulsesRemaining_ > 0 &&
             --arpHoldPulsesRemaining_ == 0) {
             arpHoldActive_ = false;
@@ -1205,10 +1318,7 @@ void PerformanceKeyboard::emitPerformancePulse(
             else if (selected >= kMinNote + 12) selected = static_cast<uint8_t>(selected - 12);
         }
         notes[0] = selected;
-        velocities[0] = velocityForArpNote(pool, poolVelocity, poolCount,
-                                           selected > kMaxNote - 12
-                                               ? static_cast<uint8_t>(selected - 12)
-                                               : selected);
+        velocities[0] = velocityForArpNote(pool, poolVelocity, poolCount, baseSelected);
         noteCount = 1;
     } else {
         noteCount = buildChord(inputs[inputCount - 1].note,
@@ -1226,7 +1336,24 @@ void PerformanceKeyboard::emitPerformancePulse(
         }
     }
 
-    const uint8_t ratchets = pulseConfig.ratchetCount == 0 ? 1 : pulseConfig.ratchetCount;
+    uint8_t ratchets = 1;
+    switch (pulseConfig.ratchetCount) {
+        case 2: case 3: case 4:
+            ratchets = pulseConfig.ratchetCount;
+            break;
+        case 5:  // BEAT x2 (downbeat of each beat)
+            ratchets = ((musicalPulseOrdinal_ % 4ULL) == 0ULL) ? 2u : 1u;
+            break;
+        case 6:  // END x2 (pickup at end of each beat)
+            ratchets = ((musicalPulseOrdinal_ % 4ULL) == 3ULL) ? 2u : 1u;
+            break;
+        case 7:  // END x3 (triplet pickup at end of each beat)
+            ratchets = ((musicalPulseOrdinal_ % 4ULL) == 3ULL) ? 3u : 1u;
+            break;
+        default:
+            ratchets = 1;
+            break;
+    }
     const uint32_t subStep = std::max<uint32_t>(1000u, pulseMicros / ratchets);
     uint32_t strumMicros = (!pulseConfig.arpEnabled && chordMode_ != PerformanceChordMode::Off)
         ? static_cast<uint32_t>(strumMs_) * 1000u : 0u;
@@ -1239,6 +1366,13 @@ void PerformanceKeyboard::emitPerformancePulse(
     for (uint8_t ratchet = 0; ratchet < ratchets; ++ratchet) {
         const uint32_t ratchetStart = pulseStartMicros + ratchet * subStep;
         for (std::size_t noteIndex = 0; noteIndex < noteCount; ++noteIndex) {
+            uint8_t hitVelocity = velocities[noteIndex];
+            if (ratchets > 1u) {
+                const uint32_t scalePct = 72u +
+                    (28u * static_cast<uint32_t>(ratchet)) / static_cast<uint32_t>(ratchets - 1u);
+                const uint32_t scaled = (static_cast<uint32_t>(hitVelocity) * scalePct + 50u) / 100u;
+                hitVelocity = static_cast<uint8_t>(std::max<uint32_t>(1u, std::min<uint32_t>(127u, scaled)));
+            }
             const uint32_t onAt = ratchetStart + static_cast<uint32_t>(noteIndex) * strumMicros;
             uint32_t gate = static_cast<uint32_t>(
                 (static_cast<uint64_t>(subStep) * pulseConfig.gatePercent) / 100u);
@@ -1248,7 +1382,7 @@ void PerformanceKeyboard::emitPerformancePulse(
             if (due(offAt, hardEnd)) offAt = hardEnd > 1000u ? hardEnd - 1000u : hardEnd;
             if (due(onAt, offAt)) offAt = onAt + 1000u;
             if (!scheduleGenerated(MusicalEventType::NoteOn,
-                                   notes[noteIndex], velocities[noteIndex], onAt) ||
+                                   notes[noteIndex], hitVelocity, onAt) ||
                 !scheduleGenerated(MusicalEventType::NoteOff,
                                    notes[noteIndex], 0, offAt)) {
                 stopGeneratedOutput();
@@ -1551,17 +1685,41 @@ bool PerformanceKeyboard::keyDown(char physicalKey, uint8_t velocity) {
             for (std::size_t i = 0; i < latchedCount_; ++i) pendingLatch_[i] = latched_[i];
         }
         if (priorHeld == 0 && latchReplaceArmed_) {
-            pendingLatchCount_ = 0;
             latchReplaceArmed_ = false;
+            if (chordMode_ == PerformanceChordMode::Off && latchedCount_ >= 2) {
+                const int delta = static_cast<int>(note) - static_cast<int>(latched_[0].note);
+                pendingLatchCount_ = latchedCount_;
+                for (std::size_t i = 0; i < latchedCount_; ++i) {
+                    pendingLatch_[i] = LatchedNote{
+                        fitMidiNote(static_cast<int>(latched_[i].note) + delta),
+                        velocity};
+                    if (activeClocked_.latchEnabled) latched_[i] = pendingLatch_[i];
+                }
+                latchTransposedSingle_ = true;
+                pendingLatchCapture_ = true;
+            } else {
+                pendingLatchCount_ = 0;
+                latchTransposedSingle_ = false;
+            }
+        } else if (priorHeld == 1 && latchTransposedSingle_) {
+            latchTransposedSingle_ = false;
+            pendingLatchCount_ = 0;
+            pendingLatch_[pendingLatchCount_++] = LatchedNote{held_[0].note, held_[0].velocity};
+            if (activeClocked_.latchEnabled) {
+                latchedCount_ = 1;
+                latched_[0] = pendingLatch_[0];
+            }
         }
-        bool duplicate = false;
-        for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
-            if (pendingLatch_[i].note == note) { duplicate = true; break; }
+        if (!latchTransposedSingle_) {
+            bool duplicate = false;
+            for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
+                if (pendingLatch_[i].note == note) { duplicate = true; break; }
+            }
+            if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
+                pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
+            }
+            pendingLatchCapture_ = true;
         }
-        if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
-            pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
-        }
-        pendingLatchCapture_ = true;
     }
 
     if (activeStepEngineEnabled() || requestedStepEngineEnabled()) {
@@ -1591,6 +1749,7 @@ bool PerformanceKeyboard::keyUp(char physicalKey) {
     held_[--heldCount_] = HeldNote{};
     if (heldCount_ == 0 && (activeClocked_.latchEnabled || pendingClocked_.latchEnabled)) {
         latchReplaceArmed_ = true;
+        latchTransposedSingle_ = false;
     }
 
     if (target_ == MusicalEventTarget::Drums) {
@@ -1710,17 +1869,41 @@ bool PerformanceKeyboard::externalNoteOnUntracked(uint8_t note, uint8_t velocity
             for (std::size_t i = 0; i < latchedCount_; ++i) pendingLatch_[i] = latched_[i];
         }
         if (priorHeld == 0 && latchReplaceArmed_) {
-            pendingLatchCount_ = 0;
             latchReplaceArmed_ = false;
+            if (chordMode_ == PerformanceChordMode::Off && latchedCount_ >= 2) {
+                const int delta = static_cast<int>(note) - static_cast<int>(latched_[0].note);
+                pendingLatchCount_ = latchedCount_;
+                for (std::size_t i = 0; i < latchedCount_; ++i) {
+                    pendingLatch_[i] = LatchedNote{
+                        fitMidiNote(static_cast<int>(latched_[i].note) + delta),
+                        velocity};
+                    if (activeClocked_.latchEnabled) latched_[i] = pendingLatch_[i];
+                }
+                latchTransposedSingle_ = true;
+                pendingLatchCapture_ = true;
+            } else {
+                pendingLatchCount_ = 0;
+                latchTransposedSingle_ = false;
+            }
+        } else if (priorHeld == 1 && latchTransposedSingle_) {
+            latchTransposedSingle_ = false;
+            pendingLatchCount_ = 0;
+            pendingLatch_[pendingLatchCount_++] = LatchedNote{held_[0].note, held_[0].velocity};
+            if (activeClocked_.latchEnabled) {
+                latchedCount_ = 1;
+                latched_[0] = pendingLatch_[0];
+            }
         }
-        bool duplicate = false;
-        for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
-            if (pendingLatch_[i].note == note) { duplicate = true; break; }
+        if (!latchTransposedSingle_) {
+            bool duplicate = false;
+            for (std::size_t i = 0; i < pendingLatchCount_; ++i) {
+                if (pendingLatch_[i].note == note) { duplicate = true; break; }
+            }
+            if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
+                pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
+            }
+            pendingLatchCapture_ = true;
         }
-        if (!duplicate && pendingLatchCount_ < kMaxLatchedNotes) {
-            pendingLatch_[pendingLatchCount_++] = LatchedNote{note, velocity};
-        }
-        pendingLatchCapture_ = true;
     }
 
     if (activeStepEngineEnabled() || requestedStepEngineEnabled()) {
@@ -1767,6 +1950,7 @@ bool PerformanceKeyboard::externalNoteOffUntracked(uint8_t note) {
     held_[--heldCount_] = HeldNote{};
     if (heldCount_ == 0 && (activeClocked_.latchEnabled || pendingClocked_.latchEnabled)) {
         latchReplaceArmed_ = true;
+        latchTransposedSingle_ = false;
     }
 
     if (target_ == MusicalEventTarget::Drums) {

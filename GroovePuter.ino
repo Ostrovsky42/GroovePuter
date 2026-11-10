@@ -661,6 +661,7 @@ void setup() {
   // PERFORM input goes to both through a fixed two-way fan-out.
   GroovePuterLooper::looper().setNowFunction(callResponseNowMicros);
   GroovePuterLooper::looper().setPlayer(&GroovePuterCallResponse::callResponseListener().responder());
+  GroovePuterLooper::looper().setRecordSound(true);
   g_performanceInputFanout.set(&GroovePuterCallResponse::callResponseListener(),
                                &GroovePuterLooper::looper());
   g_performanceKeyboard.setInputObserver(&g_performanceInputFanout);
@@ -1133,6 +1134,10 @@ static void serviceLooper() {
     transport.bpm = snapshot.bpm();
   }
   const uint32_t now = micros();
+  if (lp.state() == GroovePuterLooper::Looper::State::Idle ||
+      lp.state() == GroovePuterLooper::Looper::State::Armed) {
+    lp.setTarget(g_performanceKeyboard.target());
+  }
   const bool passStarted = lp.service(now, view, g_performanceKeyboard.tempoBpm());
   static uint8_t s_lastState = 0;
   const uint8_t state = static_cast<uint8_t>(lp.state()) | (lp.hold() ? 0x80u : 0u);
