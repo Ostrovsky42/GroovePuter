@@ -3,8 +3,8 @@
 // close, same onset+pitch (SHADOW / replace), overflow, undo (incl. 5000
 // random sessions against a naive copy of the layer), CLEAR + undo, and the
 // pass plan (held notes, same-pitch overlap, SHADOW, LENGTH, <= 32 notes).
-// BARS 8 / 64 events: onsets 0..127 in 4 bytes, the length saturating at 127
-// (= to the pass end), overflow at 64, and a pass of up to 64 notes played as
+// BARS 8 / 192 events: onsets 0..127 in 4 bytes, the length saturating at 127
+// (= to the pass end), overflow at 192, and a pass of up to 192 notes played as
 // consecutive plans of <= 32 (segments, carry across a forced boundary).
 // Phase 3: two layers in the shared pool (a write never replaces or hides a
 // note of the other layer; CLEAR and the undo mask per layer; MUTE in the
@@ -214,49 +214,52 @@ void testSameOnsetSamePitch() {
 }
 
 void testOverflow() {
-    static_assert(kLoopCapacity == 64, "64 events");
+    static_assert(kLoopCapacity == 192, "192 events");
     LoopLayer layer;
     layer.reset();
     layer.beginUnit();
-    // 64 notes on onsets 0, 2, .. 126 of an 8-bar pass (the last index 63
-    // uses every bit of the open table's 6-bit pool index).
-    for (int i = 0; i < 64; ++i) {
-        CHECK(layer.noteOn(static_cast<uint16_t>(i), 0, static_cast<uint8_t>(40 + i), 100, i * 2.0, 128) == Write::Stored);
-        CHECK(layer.note(static_cast<uint8_t>(i)).onset() == i * 2);
-        CHECK(layer.noteOff(static_cast<uint16_t>(i), i * 2 + 1.0, 128));
+    for (int i = 0; i < 192; ++i) {
+        const int step = i % 128;
+        const uint8_t pitch = static_cast<uint8_t>(40 + i / 128);
+        CHECK(layer.noteOn(i, 0, pitch, 100, step, 128) == Write::Stored);
+        CHECK(layer.noteOff(i, step + 1.0, 128));
     }
     CHECK(layer.full() && layer.dropped() == 0);
-    CHECK(layer.noteOn(99, 0, 30, 100, 5.0, 128) == Write::Full);
-    CHECK(layer.dropped() == 1 && layer.slotCount() == 64 && layer.openCount() == 0);
-    ResponsePlan plan;
-    uint8_t next = 0;
-    CHECK(layer.buildPlan(plan, 128, AnswerLength::Full, 0, 0, false, &next) == 32);
-    CHECK(next == 64);
-    // A full layer still replaces a NEW note of the same unit in place.
-    CHECK(layer.noteOn(100, 0, 41, 77, 2.0, 128) == Write::Replaced);
-    CHECK(layer.noteOff(100, 3.0, 128));
-    // Older-unit note on the same step: no free slot -> nothing hidden either.
+    CHECK(layer.noteOn(999, 0, 100, 100, 5.0, 128) == Write::Full);
+    CHECK(layer.dropped() == 1 && layer.slotCount() == 192 && layer.openCount() == 0);
+    CHECK(layer.noteOn(1000, 0, 40, 77, 2.0, 128) == Write::Replaced);
+    CHECK(layer.noteOff(1000, 3.0, 128));
     layer.closePass(128, true);
-    CHECK(layer.noteOn(101, 0, 42, 77, 4.0, 128) == Write::Full);
-    CHECK(layer.visibleCount() == 64 && layer.dropped() == 2);
-    // CLEAR frees the slots at the next commit (first note of the next unit).
+    CHECK(layer.noteOn(1001, 0, 40, 77, 4.0, 128) == Write::Full);
+    CHECK(layer.visibleCount() == 192 && layer.dropped() == 2);
     CHECK(layer.clear(0));
-    CHECK(layer.slotCount() == 64 && layer.visibleCount() == 0);
-    CHECK(layer.noteOn(102, 0, 60, 100, 0.0, 128) == Write::Stored);
+    CHECK(layer.slotCount() == 192 && layer.visibleCount() == 0);
+    CHECK(layer.noteOn(1002, 0, 60, 100, 0.0, 128) == Write::Stored);
     CHECK(layer.slotCount() == 1);
-    // The last pool slot (index 63) held open, then a pickup on it: the open
-    // table addresses it and closes it correctly.
     layer.reset();
     layer.beginUnit();
-    for (int i = 0; i < 63; ++i) {
-        CHECK(layer.noteOn(static_cast<uint16_t>(i), 0, static_cast<uint8_t>(30 + i), 90, i * 2.0, 128) == Write::Stored);
-        CHECK(layer.noteOff(static_cast<uint16_t>(i), i * 2 + 1.0, 128));
+    for (int i = 0; i < 191; ++i) {
+        CHECK(layer.noteOn(i, 0, static_cast<uint8_t>(40 + i / 128), 90, i % 128, 128) == Write::Stored);
+        CHECK(layer.noteOff(i, i % 128 + 1.0, 128));
     }
-    CHECK(layer.noteOn(500, 0, 100, 90, 127.9, 128) == Write::Stored);  // pickup -> step 0
-    CHECK(layer.slotCount() == 64 && layer.note(63).held() && layer.note(63).onset() == 0);
+    CHECK(layer.noteOn(2000, 0, 100, 90, 127.9, 128) == Write::Stored);
+    CHECK(layer.slotCount() == 192 && layer.note(191).held() && layer.note(191).onset() == 0);
     layer.closePass(128, true);
-    CHECK(layer.noteOff(500, 3.0, 128));
-    CHECK(layer.note(63).length() == 3 && layer.openCount() == 0);
+    CHECK(layer.noteOff(2000, 3.0, 128));
+    CHECK(layer.note(191).length() == 3 && layer.openCount() == 0);
+
+    // An overdub at a high index retains the shadow and restores it on undo.
+    layer.reset();
+    layer.beginUnit();
+    for (int i = 0; i < 191; ++i) {
+        CHECK(layer.noteOn(i, 0, static_cast<uint8_t>(40 + i / 128), 90, i % 128, 128) == Write::Stored);
+        CHECK(layer.noteOff(i, i % 128 + 1.0, 128));
+    }
+    layer.closePass(128, true);
+    CHECK(layer.noteOn(3000, 0, 41, 110, 62.0, 128) == Write::Stored);
+    CHECK(layer.noteOff(3000, 63.0, 128));
+    CHECK(layer.note(190).shadow() && layer.note(191).velocity() == 110);
+    CHECK(layer.undo() && !layer.note(190).shadow() && layer.note(190).velocity() == 90);
 }
 
 void testUndoBasics() {
@@ -531,6 +534,36 @@ void testSegments() {
     CHECK(playPass(layer, 128, AnswerLength::Full, plans, &bounds) == expected);
     CHECK(plans == 2 && bounds == std::vector<int>{64});
 
+    // The high two thirds of the pool participate in planning and overlap
+    // detection just like the first 64 entries.
+    layer.reset();
+    layer.beginUnit();
+    expected.clear();
+    for (int i = 0; i < 192; ++i) {
+        const int onset = i % 128;
+        const uint8_t pitch = static_cast<uint8_t>(40 + i / 128);
+        CHECK(layer.noteOn(i, 0, pitch, 100, onset, 128) == Write::Stored);
+        CHECK(layer.noteOff(i, onset + 1.0, 128));
+        expected.push_back(PassNote{onset, onset + 1, pitch, 100});
+    }
+    std::sort(expected.begin(), expected.end());
+    CHECK(playPass(layer, 128, AnswerLength::Full, plans) == expected);
+    CHECK(plans == 6);
+
+    layer.reset();
+    layer.beginUnit();
+    for (int i = 0; i < 130; ++i) {
+        CHECK(layer.noteOn(i, 0, static_cast<uint8_t>(40 + i / 128), 90, i % 128, 128) == Write::Stored);
+        CHECK(layer.noteOff(i, i % 128 + 1.0, 128));
+    }
+    CHECK(layer.noteOn(3000, 0, 100, 90, 2.0, 128) == Write::Stored);
+    CHECK(layer.noteOff(3000, 10.0, 128));
+    CHECK(layer.noteOn(3001, 1, 100, 90, 5.0, 128) == Write::Stored);
+    CHECK(layer.noteOff(3001, 8.0, 128));
+    const auto overlap = playPass(layer, 128, AnswerLength::Full, plans);
+    CHECK(std::count(overlap.begin(), overlap.end(), PassNote{2, 5, 100, 90}) == 1);
+    CHECK(std::count(overlap.begin(), overlap.end(), PassNote{5, 8, 100, 90}) == 1);
+
     // Legato notes (each to the next onset): the boundary still falls on a
     // step no note crosses (an onset step, the previous note ends there).
     layer.reset();
@@ -747,21 +780,21 @@ void testResize() {
     CHECK(planOf(layer, 16) == (std::vector<Tuple>{{8, 50, 8, 100}}));
     CHECK(layer.resize(16, 32, 1));
     CHECK(planOf(layer, 32) == (std::vector<Tuple>{{8, 50, 8, 100}, {24, 50, 8, 100}}));
-    // No room: 40 notes in 4 bars cannot repeat to 8 bars; nothing changes.
+    // No room: 100 notes in 4 bars cannot repeat to 8 bars; nothing changes.
     layer.reset();
     layer.beginUnit();
-    for (int i = 0; i < 40; ++i) recordNote(layer, static_cast<uint16_t>(i), 0, static_cast<uint8_t>(40 + i), i * 1.5, i * 1.5 + 1.0, 64);
+    for (int i = 0; i < 100; ++i) recordNote(layer, static_cast<uint16_t>(i), 0, static_cast<uint8_t>(40 + i / 64), i % 64, i % 64 + 1.0, 64);
     layer.closePass(64, false);
     const auto before = planOf(layer, 64);
     CHECK(!layer.resizeFits(64, 128) && !layer.resize(64, 128, 4));
     CHECK(planOf(layer, 64) == before && layer.undoBars() == 0);
     CHECK(layer.resizeFits(64, 32) && !layer.resizeFits(64, 48) && !layer.resize(64, 64, 4));
-    // 32 notes fit exactly at x2 (64).
+    // 96 notes fit exactly at x2 (192).
     layer.reset();
     layer.beginUnit();
-    for (int i = 0; i < 32; ++i) recordNote(layer, static_cast<uint16_t>(i), 0, static_cast<uint8_t>(40 + i), i * 2.0, i * 2.0 + 1.0, 64);
+    for (int i = 0; i < 96; ++i) recordNote(layer, static_cast<uint16_t>(i), 0, static_cast<uint8_t>(40 + i / 64), i % 64, i % 64 + 1.0, 64);
     layer.closePass(64, false);
-    CHECK(layer.resize(64, 128, 4) && layer.full() && layer.visibleTotal() == 64);
+    CHECK(layer.resize(64, 128, 4) && layer.full() && layer.visibleTotal() == 192);
     // A write after BARS commits it: no BARS undo any more.
     layer.beginUnit();
     layer.reset();

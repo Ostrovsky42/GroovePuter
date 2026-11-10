@@ -20,7 +20,7 @@
 //   T5 overdub with chords, V removes exactly the last pass, Del + V;
 //   T6 the borrowed player: nothing starts while the PARTNER is enabled;
 //   T7 BARS 8: the cycle 1-2-4-8, 128-step passes, the bar phase on an
-//      8-bar loop, 64 notes then FULL, every note in every pass;
+//      8-bar loop, 192 notes then FULL, every note in every pass;
 //   T8 two layers (phase 3): M, DUB into layer 2 never touches layer 1,
 //      undo of layer 2 only, HOLD per layer (layer 1 locked, layer 2 records
 //      and clears), MUTE heard at once, CLEAR of one layer, balance;
@@ -920,39 +920,41 @@ void testEightBars() {
             if (r.sink.events[i].type == MusicalEventType::NoteOn && r.sink.events[i].note == 74) on = true;
         CHECK(on);
     }
-    // 64 notes fill the pool: the 65th is dropped (FULL notice once), every
-    // pass plays all 64 (two plans), V and Del + V as at 4 bars.
+    // 192 notes fill the pool: the 193rd is dropped (FULL notice once), every
+    // pass plays all 192 (two plans), V and Del + V as at 4 bars.
     {
         Rig r;
         CHECK(r.lp.setBars(8) == Result::Done);
         CHECK(r.lp.recDub() == Result::Done);
         const uint32_t t0 = gNow;
-        for (int i = 0; i < 64; ++i) {
-            r.runUntil(t0 + static_cast<uint32_t>(i * 2) * kSixteenth);
-            r.press(static_cast<uint16_t>(100 + i), static_cast<uint8_t>(40 + i % 40));
+        for (int i = 0; i < 96; ++i) {
+            r.runUntil(t0 + static_cast<uint32_t>(i) * kSixteenth);
+            r.press(static_cast<uint16_t>(100 + i * 2), 50);
+            r.press(static_cast<uint16_t>(101 + i * 2), 62);
             r.runSteps(0.9);
-            r.release(static_cast<uint16_t>(100 + i));
+            r.release(static_cast<uint16_t>(100 + i * 2));
+            r.release(static_cast<uint16_t>(101 + i * 2));
         }
-        CHECK(r.lp.noteCount() == 64 && r.lp.full() && !r.lp.takeFullNotice());
+        CHECK(r.lp.noteCount() == 192 && r.lp.full() && !r.lp.takeFullNotice());
         r.runUntil(t0 + 127 * kSixteenth);
-        r.press(999, 90);  // the 65th
+        r.press(999, 90);  // the 193rd
         r.runSteps(0.5);
         r.release(999);
-        CHECK(r.lp.noteCount() == 64 && r.lp.layer().dropped() == 1);
+        CHECK(r.lp.noteCount() == 192 && r.lp.layer().dropped() == 1);
         CHECK(r.lp.takeFullNotice() && !r.lp.takeFullNotice());
         r.runUntil(t0 + 128 * kSixteenth + 1000);
         CHECK(r.lp.state() == State::Play);
         const uint32_t pass2 = t0 + 128 * kSixteenth;
         r.runUntil(pass2 + 128 * kSixteenth - 1);
-        CHECK(r.sink.countOns(pass2, pass2 + 128 * kSixteenth) == 64);
+        CHECK(r.sink.countOns(pass2, pass2 + 128 * kSixteenth) == 192);
         r.runUntil(pass2 + 2 * 128 * kSixteenth - 1);
-        CHECK(r.sink.countOns(pass2 + 128 * kSixteenth, pass2 + 2 * 128 * kSixteenth) == 64);
+        CHECK(r.sink.countOns(pass2 + 128 * kSixteenth, pass2 + 2 * 128 * kSixteenth) == 192);
         CHECK(r.player.staleDrops() == 0);
         CHECK(r.lp.clear() == Result::Done && r.silent());
-        CHECK(r.lp.undo() == Result::Done && r.lp.state() == State::Play && r.lp.noteCount() == 64);
+        CHECK(r.lp.undo() == Result::Done && r.lp.state() == State::Play && r.lp.noteCount() == 192);
         CHECK(r.lp.playStop() == Result::Done && r.silent());
     }
-    std::printf("T7 BARS 8: cycle, 128-step pass, bar phase, 64 notes + FULL\n");
+    std::printf("T7 BARS 8: cycle, 128-step pass, bar phase, 192 notes + FULL\n");
 }
 
 // ---------------------------------------------------------------- T8
@@ -1127,24 +1129,24 @@ void testBarsWithNotes() {
         setup(q, Setup::Record, false);
         CHECK(q.lp.cycleBars(1) == Result::Recording && q.lp.bars() == 2 && q.lp.state() == State::Record);
     }
-    // No room: 40 notes in 4 bars cannot repeat to 8.
+    // No room: 100 notes in 4 bars cannot repeat to 8.
     {
         Rig q;
         CHECK(q.lp.setBars(4) == Result::Done);
         CHECK(q.lp.recDub() == Result::Done);
         const uint32_t s0 = gNow;
-        for (int i = 0; i < 40; ++i) {
-            q.runUntil(s0 + static_cast<uint32_t>(i * 1.5 * kSixteenth));
-            q.press(static_cast<uint16_t>(100 + i), static_cast<uint8_t>(40 + i));
-            q.runSteps(0.5);
+        for (int i = 0; i < 100; ++i) {
+            q.runUntil(s0 + static_cast<uint32_t>((i / 2) * kSixteenth));
+            q.press(static_cast<uint16_t>(100 + i), static_cast<uint8_t>(40 + i % 2));
+            q.runSteps(0.2);
             q.release(static_cast<uint16_t>(100 + i));
         }
         q.runUntil(s0 + 64 * kSixteenth + 1000);
-        CHECK(q.lp.state() == State::Play && q.lp.noteCount() == 40);
-        CHECK(q.lp.setBars(8) == Result::NoRoom && q.lp.bars() == 4 && q.lp.noteCount() == 40);
+        CHECK(q.lp.state() == State::Play && q.lp.noteCount() == 100);
+        CHECK(q.lp.setBars(8) == Result::NoRoom && q.lp.bars() == 4 && q.lp.noteCount() == 100);
         int firstHalf = 0;
         for (uint8_t i = 0; i < q.lp.layer().slotCount(); ++i) if (q.lp.layer().note(i).onset() < 32) ++firstHalf;
-        CHECK(firstHalf > 0 && firstHalf < 40);
+        CHECK(firstHalf > 0 && firstHalf < 100);
         CHECK(q.lp.setBars(2) == Result::Done && q.lp.noteCount() == firstHalf);
         q.runSteps(70.0);
         CHECK(q.lp.playStop() == Result::Done && q.silent());

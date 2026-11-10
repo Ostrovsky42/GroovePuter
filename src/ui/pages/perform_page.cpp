@@ -1658,7 +1658,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         counterColor = COLOR_DANGER;
     } else {
         if (loop.state() == Looper::State::Idle && loop.empty()) {
-            // Nothing recorded yet: the first hint instead of 0/64.
+            // Nothing recorded yet: show the first recording hint.
             std::snprintf(counter, sizeof(counter), "Z REC");
         } else {
             std::snprintf(counter, sizeof(counter), "%u/%u",
@@ -1670,7 +1670,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         if (loop.layer().slotCount() + 4u >= GroovePuterLooper::kLoopCapacity) counterColor = COLOR_WARN;
     }
     const int right = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X;
-    const int counterW = 6 * 6;
+    const int counterW = static_cast<int>(std::strlen(counter)) * 6;
     gfx.setTextColor(counterColor);
     gfx.drawText(right - counterW, y + 1, counter);
 

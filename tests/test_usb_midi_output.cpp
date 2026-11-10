@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/usb_midi_output.h"
+#include "src/midi/midi_control_event_queue.h"
 
 namespace {
 enum class PacketType : uint8_t { NoteOn, NoteOff };
@@ -83,6 +84,34 @@ void expectPacket(const Packet& packet,
     assert(packet.velocity == velocity);
 }
 
+void testControlOverflowCannotReplayPrePanicNoteOn() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    MidiControlEventQueue queue;
+    auto oldOn = event(MusicalEventType::NoteOn, 60, 100,
+                       MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 3);
+    oldOn.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    assert(queue.tryPush(oldOn));
+    for (std::size_t i = 1; i < MidiControlEventQueue::kCapacity; ++i)
+        assert(queue.tryPush(event(MusicalEventType::NoteOn, static_cast<uint8_t>(i), 100,
+                                   MusicalEventSource::PerformanceKeyboard, MusicalEventTarget::SynthB)));
+    auto lostOff = oldOn;
+    lostOff.type = MusicalEventType::NoteOff;
+    lostOff.velocity = 0;
+    assert(!queue.tryPush(lostOff));
+    assert(queue.takePendingAllNotesOffMask() == MidiControlEventQueue::kDxMask);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PerformanceKeyboard, MusicalEventTarget::Dx));
+    MusicalEvent queued{};
+    while (queue.tryPop(queued)) output.handleMusicalEvent(queued);
+    assert(output.wireOwnerCount(3, 60) == 0);
+    for (const auto& packet : transport.packets)
+        assert(!(packet.type == PacketType::NoteOn && packet.channel == 3 && packet.note == 60));
+}
+
 void testLoopLanePolyphony() {
     FakeUsbMidiTransport transport;
     transport.mountedState = true;
@@ -102,6 +131,50 @@ void testLoopLanePolyphony() {
     on.velocity = 0;
     output.handleMusicalEvent(on);
     expectPacket(transport.packets.back(), PacketType::NoteOff, 3, 64, 0);
+}
+
+void testLoopSamePitchOnDifferentChannels() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    note.channel = 4;
+    output.handleMusicalEvent(note);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    assert(output.wireOwnerCount(5, 60) == 1);
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 5, 60, 0);
+}
+
+void testLoopReleaseRetriedWhenOutputDisabled() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    transport.noteOffFailuresRemaining = 1;
+    output.setEnabled(false);
+    assert(output.wireOwnerCount(4, 60) == 1);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    output.handleMusicalEvent(note);
+    assert(output.servicePendingReleases(1000000));
+    assert(output.wireOwnerCount(4, 60) == 0);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
 }
 
 void testLoopLaneRetryAndPanic() {
@@ -476,7 +549,10 @@ void testPendingNoteOffRetriedWithoutNewEvent() {
 }
 
 int main() {
+    testControlOverflowCannotReplayPrePanicNoteOn();
     testLoopLanePolyphony();
+    testLoopSamePitchOnDifferentChannels();
+    testLoopReleaseRetriedWhenOutputDisabled();
     testLoopLaneRetryAndPanic();
     testMultipleFailedLoopReleases();
     testLoopAndGeneratedRetrigger();

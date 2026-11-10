@@ -746,9 +746,8 @@ private:
         resumeNow(now);
     }
 
-    // Field order: vptr 4 + layer 277 + 9 bytes = 290 -> clock (24) at 296
-    // (8-aligned, 6 bytes of padding), + 16 = 336 on the 32-bit target
-    // (§3.3; 64 events x 4 B, BARS 8; layerFlags_ took a padding byte).
+    // The layer holds 192 four-byte events and six open recording notes.
+    // ESP32 build: Looper is 856 bytes; the 32-bit budget below is 864 bytes.
     LoopLayer layer_{};
     uint8_t passCount_{0};     // log only (wraps)
     State state_{State::Idle};
@@ -767,8 +766,8 @@ private:
     int32_t passStart_{0};     // clock step of the current pass (ARMED: of the first pass)
 };
 
-// §3.3: <= 336 bytes on the 32-bit target (the host build has 8-byte pointers).
-static_assert(sizeof(void*) != 4 || sizeof(Looper) <= 336, "Looper DRAM budget");
+// §3.3: <= 864 bytes on the 32-bit target (the host build has 8-byte pointers).
+static_assert(sizeof(void*) != 4 || sizeof(Looper) <= 864, "Looper DRAM budget");
 
 inline Looper& looper() {
     static Looper instance;

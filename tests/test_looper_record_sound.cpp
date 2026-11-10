@@ -12,10 +12,11 @@ struct Rig {
     MusicalEventRouter router;
     PerformanceKeyboard keys{router};
     Looper loop;
-    Rig(bool sound) {
+    Rig(bool sound, uint8_t bars = 2) {
         now = 1000;
         loop.setNowFunction(timeNow);
         assert(loop.setRecordSound(sound));
+        assert(bars == 2 || loop.setBars(bars) == Looper::Result::Done);
         keys.setInputObserver(&loop);
         loop.service(now, nullptr, 120.0f);
         assert(loop.recDub() == Looper::Result::Done);
@@ -24,6 +25,33 @@ struct Rig {
 };
 
 int main() {
+    {
+        Rig r(true, 8);
+        for (unsigned i = 0; i < 128; ++i) {
+            assert(r.keys.keyDown('a'));
+            assert(r.keys.keyUp('a'));
+            if (i != 127) r.advance(125000);
+        }
+        assert(r.loop.noteCount() == 128);
+        assert(!r.loop.full() && r.loop.layer().dropped() == 0);
+    }
+    {
+        Rig r(true, 8);
+        r.keys.setVoiceMode(PerformanceVoiceMode::Poly);
+        r.keys.setChordMode(PerformanceChordMode::Fifth);
+        for (unsigned i = 0; i < 64; ++i) {
+            assert(r.keys.keyDown('a'));
+            assert(r.keys.keyUp('a'));
+            r.advance(125000);
+        }
+        assert(r.loop.noteCount() == kLoopCapacity);
+        assert(r.keys.keyDown('a'));
+        assert(r.keys.keyUp('a'));
+        assert(r.loop.noteCount() == kLoopCapacity);
+        assert(r.loop.layer().dropped() == 3);
+        assert(r.loop.takeFullNotice());
+        assert(!r.loop.takeFullNotice());
+    }
     {
         Rig r(false);
         r.keys.setVoiceMode(PerformanceVoiceMode::Poly);

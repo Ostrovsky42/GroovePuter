@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LOOPER phases 0-1 (+ BARS 8 / 64 events): source contracts (docs/design/LOOPER_PLAN.md).
+"""LOOPER phases 0-1 (+ BARS 8 / 192 events): source contracts (docs/design/LOOPER_PLAN.md).
 
 - looper*.h: no allocation, no String/vector, no FS, no locks;
 - unrelated PARTNER files and src/audio are untouched (git, when available);
@@ -37,16 +37,16 @@ for name in ("looper.h", "looper_layer.h", "looper_clock.h"):
         assert not re.search(banned, code), f"{name}: {banned}"
 
 layer = read("src/input/looper_layer.h")
-# BARS 8 / 64 events: 4-byte events (onset 7 bits), the open table's 6-bit
+# BARS 8 / 192 events: 4-byte events (onset 7 bits), the open table's 16-bit
 # pool index, passes of more than 32 notes played as consecutive plans.
-assert "kLoopCapacity = 64" in layer
+assert "kLoopCapacity = 192" in layer
 assert "kMaxLoopSteps = 128" in layer
 assert 'static_assert(sizeof(LoopNote) == 4' in layer
-assert "static_assert(kLoopCapacity <= 64" in layer
-assert "kOpenIndexMask = 0x3Fu" in layer
+assert "static_assert(kLoopCapacity <= 255" in layer
+assert "kOpenIndexMask = 0x00FFu" in layer
 assert "uint8_t* nextStep = nullptr" in layer
 looper = read("src/input/looper.h")
-assert "sizeof(Looper) <= 336" in looper
+assert "sizeof(Looper) <= 864" in looper
 assert "bars != 1 && bars != 4 && bars != 8" in looper
 assert "bars_ == 1 ? 2 : bars_ == 2 ? 4 : bars_ == 4 ? 8 : 1" in looper
 assert "startSegment(now, position)" in looper
@@ -141,11 +141,11 @@ for line in ("Z           Loop REC/DUB", "C           Loop PLAY/STOP", "V       
              "M           Loop layer 1/2",
              "X           Panic: HELPER+loop stop"):
     assert line in perform, line
-assert "Loop: 1-8 bars, 64 notes" in perform
+assert "Loop: 1-8 bars, 192 notes" in perform
 assert "Loop: TO MELODY, Enter x2" in perform and "LP > MELODY" not in perform
 assert '"LOOP LENGTH IN BARS"' in page
 keys = read("src/ui/docs/keys.md")
-assert "`LOOP BARS` 1/2/4/8" in keys and "`N/64`" in keys and "`LAYER`" in keys and "`MUTE LAYER`" in keys
+assert "`LOOP BARS` 1/2/4/8" in keys and "`N/192`" in keys and "`LAYER`" in keys and "`MUTE LAYER`" in keys
 assert "`TO MELODY`" in keys and "LP > MELODY" not in keys and "`LP " not in keys
 assert "OFF/ANSWER/DUET/RIFF" in keys and "`--- HELPER ---`" in keys
 assert "LOOP: HELPER OFF FIRST" in keys

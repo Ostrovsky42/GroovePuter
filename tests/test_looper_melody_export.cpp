@@ -135,15 +135,17 @@ void testOverflow() {
     CHECK(loopToMelody(layer, 16, 1, 0, out, 6) == MelodyExportResult::Ok);
     CHECK(loopToMelody(layer, 16, 1, 0, out, 5) == MelodyExportResult::Overflow);
     CHECK(out.count == 0);
-    // The pool (64) always fits the Melody (128).
-    static_assert(kLoopCapacity <= PhraseRuntime::kMaxSynthEvents, "pool fits the Melody");
+    // The loop can exceed the Melody's 128-event limit; reject atomically.
     LoopLayer full;
     full.reset();
-    for (uint8_t i = 0; i < kLoopCapacity; ++i)
-        put(full, static_cast<uint16_t>(i + 1), 0, static_cast<uint8_t>(i), 100, i, 1, 64);
-    CHECK(loopToMelody(full, 64, 4, 0, out) == MelodyExportResult::Ok);
-    CHECK(out.count == kLoopCapacity);
+    for (uint16_t i = 0; i < PhraseRuntime::kMaxSynthEvents; ++i)
+        put(full, static_cast<uint16_t>(i + 1), 0, static_cast<uint8_t>(i), 100, i, 1, 128);
+    CHECK(loopToMelody(full, 128, 8, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == PhraseRuntime::kMaxSynthEvents);
     CHECK(RuntimePhraseEdit::validate(out));
+    put(full, 200, 0, 127, 100, 0, 1, 128);
+    CHECK(loopToMelody(full, 128, 8, 0, out) == MelodyExportResult::Overflow);
+    CHECK(out.count == 0);
 }
 }  // namespace
 

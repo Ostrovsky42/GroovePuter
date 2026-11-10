@@ -15,7 +15,7 @@
 // layer index (2 bits). Phase 1 uses layer 0 only; the field is there for the
 // second layer (phase 3) at no data cost.
 //
-// BARS 8 (128 steps) and 64 events: the event stays 4 bytes (onset 7 bits,
+// BARS 8 (128 steps) and 192 events: the event stays 4 bytes (onset 7 bits,
 // length 7 bits, pitch 7, velocity 7, layer 2, NEW, SHADOW = 32 bits). The
 // length saturates at 127 = "to the pass end" (exact for every note except
 // onset 0 with length exactly 127 of an 8-bar pass, which plays 128).
@@ -54,12 +54,12 @@ using GroovePuterCallResponse::PhraseCapture;
 using GroovePuterCallResponse::ResponseNote;
 using GroovePuterCallResponse::ResponsePlan;
 
-constexpr uint8_t kLoopCapacity = 64;   // events of every layer, one pool
+constexpr uint8_t kLoopCapacity = 192;   // events of every layer, one pool
 constexpr uint8_t kMaxLayers = 2;       // phase 3; the event field allows 4
 constexpr uint8_t kOpenCapacity = 6;    // notes held at once while recording (more: the oldest ends)
 constexpr uint8_t kStepsPerBar = 16;
 constexpr uint8_t kMaxLoopSteps = 128;  // 8 bars
-static_assert(kLoopCapacity <= 64, "the open table keeps a pool index in 6 bits");
+static_assert(kLoopCapacity <= 255, "pool indices fit in a byte");
 static_assert(kMaxLoopSteps <= 128, "the onset is 7 bits");
 
 struct LoopNote {
@@ -369,7 +369,8 @@ public:
         const uint8_t percent = GroovePuterCallResponse::answerLengthPercent(length);
         constexpr uint8_t cap = ResponsePlan::kCapacity;
 
-        const uint64_t play = playableMask(passSteps, muteMask);
+        PlayMask play{};
+        playableMask(passSteps, muteMask, play);
         uint8_t carried = 0, total = 0, firstOnset = passSteps;
         for (uint8_t i = 0; i < count_; ++i) {
             if (!inMask(play, i)) continue;
@@ -436,16 +437,15 @@ private:
     static constexpr uint8_t kUndoBars = 0x04u;      // the last unit is a BARS change
     static constexpr uint8_t kBarsCodeShift = 3;     // bars before it: 1 << code
     static constexpr uint8_t kBarsCodeMask = 0x18u;
-    static constexpr uint8_t kOpenFree = 0xFFu;
-    static constexpr uint8_t kOpenPickup = 0x80u;
-    static constexpr uint8_t kOpenIndexMask = 0x3Fu;
+    static constexpr uint16_t kOpenFree = 0xFFFFu;
+    static constexpr uint16_t kOpenPickup = 0x8000u;
+    static constexpr uint16_t kOpenIndexMask = 0x00FFu;
 
-    // 3 bytes: tag (uint16 split to avoid padding) + pool index (bit 7: pickup
-    // = a note of the next pass, played before its downbeat; 0xFF = free).
+    // 4 bytes: tag and a 16-bit pool index with a separate pickup flag.
     struct OpenNote {
         uint8_t tagLo{0};
         uint8_t tagHi{0};
-        uint8_t index{kOpenFree};
+        uint16_t index{kOpenFree};
         uint16_t tag() const { return static_cast<uint16_t>(tagLo | (tagHi << 8)); }
     };
 
@@ -457,19 +457,18 @@ private:
         return !n.shadow() && !n.held() && (muteMask & (1u << n.layer())) == 0 &&
                n.onset() < passSteps;
     }
-    static bool inMask(uint64_t mask, uint8_t i) { return ((mask >> i) & 1u) != 0; }
+    using PlayMask = uint64_t[(kLoopCapacity + 63u) / 64u];
+    static bool inMask(const PlayMask& mask, uint8_t i) { return ((mask[i / 64u] >> (i % 64u)) & 1u) != 0; }
     // Bit i: pool note i plays (sounds, and is the first of its step + pitch).
-    uint64_t playableMask(uint8_t passSteps, uint8_t muteMask) const {
-        uint64_t mask = 0;
+    void playableMask(uint8_t passSteps, uint8_t muteMask, PlayMask& mask) const {
         for (uint8_t i = 0; i < count_; ++i) {
             if (!sounds(i, passSteps, muteMask)) continue;
             bool first = true;
             for (uint8_t j = 0; j < i && first; ++j)
                 if (inMask(mask, j) && notes_[j].onset() == notes_[i].onset() &&
                     notes_[j].note() == notes_[i].note()) first = false;
-            if (first) mask |= uint64_t{1} << i;
+            if (first) mask[i / 64u] |= uint64_t{1} << (i % 64u);
         }
-        return mask;
     }
 
     // Played length of a playable note: to the pass end at most, cut at the
@@ -488,7 +487,7 @@ private:
     }
 
     // End of a plan from fromStep that cannot hold the rest of the pass.
-    uint8_t segmentEnd(uint64_t play, uint8_t passSteps, uint8_t fromStep, uint8_t muteMask, uint8_t percent,
+    uint8_t segmentEnd(const PlayMask& play, uint8_t passSteps, uint8_t fromStep, uint8_t muteMask, uint8_t percent,
                        bool carry, uint8_t carried, uint8_t firstOnset) const {
         constexpr uint8_t cap = ResponsePlan::kCapacity;
         // The latest end that fits: the onset of the first note past capacity.
@@ -567,7 +566,7 @@ private:
         OpenNote& o = open_[free];
         o.tagLo = static_cast<uint8_t>(tag & 0xFFu);
         o.tagHi = static_cast<uint8_t>(tag >> 8);
-        o.index = static_cast<uint8_t>(index | (pickup ? kOpenPickup : 0u));
+        o.index = static_cast<uint16_t>(index | (pickup ? kOpenPickup : 0u));
     }
 
     void closeEntry(uint8_t e, double rel, uint8_t passSteps) {
@@ -594,7 +593,7 @@ private:
             if (o.index == kOpenFree) continue;
             const uint8_t at = o.index & kOpenIndexMask;
             if (at == index) o.index = kOpenFree;
-            else if (at > index) o.index = static_cast<uint8_t>(o.index - 1u);
+            else if (at > index) o.index = static_cast<uint16_t>(o.index - 1u);
         }
     }
 
