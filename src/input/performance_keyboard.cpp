@@ -1260,8 +1260,10 @@ void PerformanceKeyboard::emitPerformancePulse(
 
 bool PerformanceKeyboard::serviceTransportPulseClock(uint32_t nowMicros) {
     GroovePuterMidi::ProjectTransportBlockSnapshot snapshot{};
-    if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot) ||
-        !snapshot.valid || !snapshot.playing || snapshot.bpmQ16 == 0 ||
+    // An unavailable seqlock read is not a transport stop. Keep the pulse
+    // phase and anchor for the next service pass.
+    if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) return false;
+    if (!snapshot.valid || !snapshot.playing || snapshot.bpmQ16 == 0 ||
         snapshot.blockFrames == 0 || snapshot.sampleRate == 0) {
         transportPulseClockRunning_ = false;
         transportBlockAnchorValid_ = false;
