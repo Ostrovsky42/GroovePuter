@@ -131,7 +131,8 @@ int main() {
   send(scan(GROOVEPUTER_RIGHT));
   assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
   // INPUT has no TARGET row (variant A): the target lives in KEY (row 4).
-  send(key('\t'));  // INPUT -> KEY
+  send(key('\t'));  // INPUT -> LOOP (0.9.23 T14)
+  send(key('\t'));  // LOOP -> KEY
   gfx.texts.clear(); perform.drawContent(gfx);
   assert(gfx.has("[KEY]"));
   for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));  // ROOT -> TARGET

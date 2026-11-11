@@ -384,7 +384,7 @@ constexpr const char* kPerformLines[] = {
     "Ctrl+Z      Undo loop or synth",
     "M           Loop layer 1/2",
     "Loop: MIDI only (DX ROUTE)",
-    "REC: KEYS / SOUND (INPUT)",
+    "REC: KEYS / SOUND (LOOP)",
     "Loop: 1/96 grid; triplets kept",
     "Loop: 1-8 bars, 192 notes",
     "Loop: BARS repeats, V undo",

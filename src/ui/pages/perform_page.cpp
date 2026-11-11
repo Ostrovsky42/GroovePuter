@@ -999,7 +999,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int valueW = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X - valueX;
     const uint8_t selected = currentRow();
     constexpr uint8_t kVisibleRows = 6;
-    // INPUT draws a group heading line above MIDI IN, HELPER and LOOPER; the
+    // INPUT draws a group heading line above MIDI IN, LOOP SETUP and HELPER; the
     // window scrolls by screen lines so the selected row is always visible.
     const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
     auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
