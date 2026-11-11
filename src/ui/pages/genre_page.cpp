@@ -6,6 +6,7 @@
 
 #include "../axis_page_palette.h"
 #include "../genre_palette.h"
+#include "../genre_tempo_text.h"
 #include "../project_key.h"
 #include "src/generation/migration/genre_harmony_selection.h"
 #include "../layout_manager.h"
@@ -455,6 +456,30 @@ void GenrePage::updateFromEngine() {
   rhythmFallbackPending_ = normalizePendingRhythm(false);
 }
 
+// Leaving with a GENRE/RECIPE choice that was never applied: every other page
+// generates in the active genre, so say which one that is. Nothing is applied
+// or discarded here; the choice stays pending on this page.
+void GenrePage::onExit() {
+  const GenreSettings& active = mini_acid_.sceneManager().currentScene().genre;
+  const GenreSettings pending = pendingSettings();
+  if (active.generativeMode == pending.generativeMode &&
+      active.recipe == pending.recipe) {
+    return;
+  }
+  char selected[20];
+  char current[20];
+  GenreTempoText::upperGenreName(pending, selected, sizeof(selected));
+  GenreTempoText::upperGenreName(active, current, sizeof(current));
+  char toast[64];
+  if (active.generativeMode == pending.generativeMode) {
+    std::snprintf(toast, sizeof(toast), "RECIPE NOT APPLIED: STILL %s",
+                  GenreCatalog::recipeName(sceneRecipe(active)));
+  } else {
+    std::snprintf(toast, sizeof(toast), "%s NOT APPLIED: STILL %s", selected, current);
+  }
+  UI::showToast(toast, 1600);
+}
+
 // The pending GENRE/RECIPE/RHYTHM choice, without a new TAKE: a Melody from G
 // must follow what the page shows.
 void GenrePage::applyPendingProfile() {
@@ -591,9 +616,16 @@ void GenrePage::draw(IGfx& gfx) {
                       "WHAT G GENERATES", axisColor, palette);
   drawRecipeOverlay(gfx, recipeIndex_);
 
+  // The tempo the selected genre expects, next to its name: the corridor used
+  // to reach the musician only through APPLY = NEW TAKE + TEMPO.
+  const GenreSettings selectedSettings = pendingSettings();
+  const GenreTempoText::Info tempo =
+      GenreTempoText::infoFor(selectedSettings, mini_acid_.bpm());
+  char genreValue[40];
+  GenreTempoText::formatGenreRow(selectedSettings, tempo, genreValue,
+                                 sizeof(genreValue));
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(1), width, "GENRE",
-      GenreCatalog::generativeModeName(selectedGenre),
-      focus_ == FocusRow::Genre, axisColor, palette);
+      genreValue, focus_ == FocusRow::Genre, axisColor, palette);
 
   char value[80];
   std::snprintf(value, sizeof(value), "%s", GenreCatalog::recipeName(selectedRecipe));
@@ -624,8 +656,16 @@ void GenrePage::draw(IGfx& gfx) {
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(5), width, "KEY",
       keyValue, focus_ == FocusRow::Key, axisColor, palette);
 
+  // NEW TAKE + TEMPO names the tempo it will set.
+  char applyValue[32];
+  if (currentApplyMode() == ApplyMode::RegenerateTempo && tempo.suggestedBpm > 0) {
+    std::snprintf(applyValue, sizeof(applyValue), "%s %u", applyModeName(),
+                  static_cast<unsigned>(tempo.suggestedBpm));
+  } else {
+    std::snprintf(applyValue, sizeof(applyValue), "%s", applyModeName());
+  }
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(6), width, "APPLY",
-                       applyModeName(), focus_ == FocusRow::Apply, axisColor, palette);
+                       applyValue, focus_ == FocusRow::Apply, axisColor, palette);
 
   const char* pendingSuffix =
       GroovePuterRhythm::hasPendingQuantizedGeneration(mini_acid_)
@@ -646,10 +686,28 @@ void GenrePage::draw(IGfx& gfx) {
   const bool statusIsNews = pendingSuffix[0] != '\0' ||
                             activeGenre != selectedGenre ||
                             activeRecipe != selectedRecipe;
+  // The project tempo is outside what the active genre expects: say so, and
+  // name the one key that fixes it. This outranks the key hint, not the
+  // pending-selection status.
+  char tempoLine[56];
+  const bool tempoIsNews = !statusIsNews && GenreTempoText::outside(tempo);
+  if (tempoIsNews) {
+    char tail[24];
+    if (currentApplyMode() == ApplyMode::RegenerateTempo) {
+      std::snprintf(tail, sizeof(tail), "G SETS %u",
+                    static_cast<unsigned>(tempo.suggestedBpm));
+    } else {
+      std::snprintf(tail, sizeof(tail), "%s",
+                    focus_ == FocusRow::Key ? "APPLY:+TEMPO" : "M:+TEMPO");
+    }
+    GenreTempoText::formatStatus(selectedSettings, tempo, tail, tempoLine,
+                                 sizeof(tempoLine));
+  }
   UI::publishShellInfo(
       statusIsNews ? value
+      : tempoIsNews ? tempoLine
       : focus_ == FocusRow::Key ? "L/R ROOT  ENT SCALE  H HARM  N PRESET"
-                                : "N PRESET  G TAKE  ENT APPLY  P STYLE",
+                                : "G 1 BAR  ALT+8 MATERIAL 4 BARS",
       statusIsNews ? UI::genreProfile(selectedGenre).tag : nullptr);
   char keyHint[40];
   std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");
