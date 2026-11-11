@@ -31,6 +31,16 @@ inline uint32_t answerStepDueMicros(uint32_t originMicros, uint32_t sixteenthMic
     return originMicros + step * sixteenthMicros;
 }
 
+// A due time on a finer grid: unit `unit` of `unitsPerSixteenth` to a sixteenth.
+// Computed from the whole sixteenth every time (never from a truncated unit
+// length), so the error is below 1 us at any unit and does not add up; a unit
+// on a whole step is exactly answerStepDueMicros.
+inline uint32_t answerGridDueMicros(uint32_t originMicros, uint32_t sixteenthMicros,
+                                    uint32_t unit, uint32_t unitsPerSixteenth) {
+    return originMicros + static_cast<uint32_t>(
+        static_cast<uint64_t>(unit) * sixteenthMicros / unitsPerSixteenth);
+}
+
 class ResponsePlayer {
 public:
     void setRouter(MusicalEventRouter* router) { router_ = router; }
@@ -66,6 +76,36 @@ public:
             slot.state = State::Pending;
         }
         count_ = plan.count;
+        activeWireChannel_ = wireChannel_;
+        activeLoopLane_ = loopLane;
+        playedThisAnswer_ = 0;
+        ++answersStarted_;
+        return true;
+    }
+
+    // The same, for notes on a finer grid (the LOOPER: 6 ticks to a sixteenth).
+    // Note is any type with tick, length (both in units), note and velocity.
+    // The slots, service() and cancel() are shared with start().
+    template <typename Note>
+    bool startGrid(const Note* notes, uint8_t count, uint32_t originMicros,
+                   uint32_t sixteenthMicros, uint32_t unitsPerSixteenth, bool loopLane = false,
+                   uint16_t gridOffset = 0) {
+        (void)cancel();
+        if (!notes || count == 0 || sixteenthMicros == 0 || unitsPerSixteenth == 0) return false;
+        if (count > ResponsePlan::kCapacity) count = ResponsePlan::kCapacity;
+        for (uint8_t i = 0; i < count; ++i) {
+            const Note& note = notes[i];
+            Slot& slot = slots_[i];
+            slot.onMicros = answerGridDueMicros(originMicros, sixteenthMicros, static_cast<uint32_t>(gridOffset) + note.tick,
+                                                unitsPerSixteenth);
+            slot.offMicros = answerGridDueMicros(originMicros, sixteenthMicros,
+                                                 static_cast<uint32_t>(gridOffset) + note.tick + note.length,
+                                                 unitsPerSixteenth);
+            slot.note = note.note;
+            slot.velocity = note.velocity < 1 ? 1 : note.velocity;
+            slot.state = State::Pending;
+        }
+        count_ = count;
         activeWireChannel_ = wireChannel_;
         activeLoopLane_ = loopLane;
         playedThisAnswer_ = 0;

@@ -444,7 +444,7 @@ void testClock() {
         CHECK(r.lp.passDownbeatMicros() == t0);
         r.runSteps(1.0);
         r.release(1);
-        CHECK(r.lp.layer().note(0).onset() == 0);
+        CHECK(r.lp.layer().note(0).onsetTicks() == 0);
         // Silent passes never stop the free clock while the loop plays.
         r.runSteps(32.0 * 20 + 1.0);
         CHECK(r.lp.state() == State::Play && r.lp.clockSource() == LoopClock::Source::Free);
@@ -470,7 +470,7 @@ void testClock() {
         CHECK(r.lp.state() == State::Record);
         r.runUntil(r.transportStepTime(17.0));
         r.release(2);
-        CHECK(r.lp.noteCount() == 1 && r.lp.layer().note(0).onset() == 0);
+        CHECK(r.lp.noteCount() == 1 && r.lp.layer().note(0).onsetTicks() == 0);
         const int32_t err = static_cast<int32_t>(r.lp.passDownbeatMicros() - r.transportStepTime(16.0));
         CHECK(err > -static_cast<int32_t>(3 * kBlockMicros) && err < static_cast<int32_t>(3 * kBlockMicros));
     }
@@ -486,7 +486,12 @@ void testClock() {
         r.press(1, 72);
         r.runUntil(r.transportStepTime(33.0));
         r.release(1);
-        CHECK(r.lp.state() == State::Record && r.lp.layer().note(0).onset() == 16);
+        // Step 16 of the loop. The onset is kept to the tick now, so it shows
+        // the lag of the PLAY estimate (up to two audio blocks, ~0.22 step)
+        // between the pass downbeat and the press: within two ticks of 96.
+        CHECK(r.lp.state() == State::Record && r.lp.layer().note(0).onsetStep() == 16);
+        std::printf("T2 PLAY onset: tick %u (step 16 = 96)\n", r.lp.layer().note(0).onsetTicks());
+        CHECK(std::abs(static_cast<int>(r.lp.layer().note(0).onsetTicks()) - 16 * kTicksPerStep) <= 2);
         r.runUntil(r.transportStepTime(50.0));
         CHECK(r.lp.state() == State::Play);
         r.stopTransport();
@@ -768,10 +773,10 @@ void testNoGaps() {
 // ---------------------------------------------------------------- T5
 
 std::vector<std::tuple<int, int>> planNotes(const Looper& lp) {
-    ResponsePlan plan;
+    LoopPlan plan;
     lp.layer().buildPlan(plan, lp.passSteps(), lp.length());
     std::vector<std::tuple<int, int>> out;
-    for (uint8_t i = 0; i < plan.count; ++i) out.emplace_back(plan.notes[i].step, plan.notes[i].note);
+    for (uint8_t i = 0; i < plan.count; ++i) out.emplace_back(plan.notes[i].tick, plan.notes[i].note);
     std::sort(out.begin(), out.end());
     return out;
 }
@@ -875,7 +880,7 @@ void testEightBars() {
         r.press(2, 72);
         r.runSteps(2.0);
         r.release(2);
-        CHECK(r.lp.noteCount() == 2 && r.lp.layer().note(1).onset() == 120);
+        CHECK(r.lp.noteCount() == 2 && r.lp.layer().note(1).onsetTicks() == 120 * kTicksPerStep);
         r.runUntil(t0 + 128 * kSixteenth + 1000);
         CHECK(r.lp.state() == State::Play && r.lp.passDownbeatMicros() == t0 + 128 * kSixteenth);
         r.runUntil(t0 + 2 * 128 * kSixteenth + 1000);
@@ -903,7 +908,9 @@ void testEightBars() {
         r.press(1, 74);
         r.runUntil(r.transportStepTime(16.0 + 117.0));
         r.release(1);
-        CHECK(r.lp.layer().note(0).onset() == 116);
+        // Step 116, within two ticks (the PLAY estimate lag, see T2).
+        CHECK(r.lp.layer().note(0).onsetStep() == 116);
+        CHECK(std::abs(static_cast<int>(r.lp.layer().note(0).onsetTicks()) - 116 * kTicksPerStep) <= 2);
         r.runUntil(r.transportStepTime(16.0 + 130.0));
         CHECK(r.lp.state() == State::Play);
         r.stopTransport();
@@ -1080,7 +1087,7 @@ void testBarsWithNotes() {
     auto repeated = [&](int bars) {
         std::vector<std::tuple<int, int>> out;
         for (int k = 0; k < bars; ++k)
-            for (const auto& t : bar) out.emplace_back(std::get<0>(t) + 16 * k, std::get<1>(t));
+            for (const auto& t : bar) out.emplace_back(std::get<0>(t) + 16 * kTicksPerStep * k, std::get<1>(t));
         std::sort(out.begin(), out.end());
         return out;
     };
@@ -1145,7 +1152,7 @@ void testBarsWithNotes() {
         CHECK(q.lp.state() == State::Play && q.lp.noteCount() == 100);
         CHECK(q.lp.setBars(8) == Result::NoRoom && q.lp.bars() == 4 && q.lp.noteCount() == 100);
         int firstHalf = 0;
-        for (uint8_t i = 0; i < q.lp.layer().slotCount(); ++i) if (q.lp.layer().note(i).onset() < 32) ++firstHalf;
+        for (uint8_t i = 0; i < q.lp.layer().slotCount(); ++i) if (q.lp.layer().note(i).onsetTicks() < 32 * kTicksPerStep) ++firstHalf;
         CHECK(firstHalf > 0 && firstHalf < 100);
         CHECK(q.lp.setBars(2) == Result::Done && q.lp.noteCount() == firstHalf);
         q.runSteps(70.0);
@@ -1189,7 +1196,362 @@ void testBarsWithNotes() {
 
 }  // namespace
 
+
+// ---------------------------------------------------------------- T10 / T11
+// The tick grid (6 ticks to a step): an arp line at 1/16T, 1/32 and 1/8T
+// (performancePulseRatio: 2/3, 1/2 and 4/3 step = 4, 3 and 8 ticks) and a 50 %
+// gate come back as played.
+
+struct Line { const char* name; int ticks; uint8_t bars; };
+
+// Runs to t with the main loop serviced on every microsecond of [t-2, t+1],
+// so an event due at t is stamped t.
+void runExact(Rig& r, uint32_t t) {
+    if (static_cast<int32_t>(t - 2 - gNow) > 0) r.runUntil(t - 2);
+    const uint32_t coarse = r.passMicros;
+    r.passMicros = 1;
+    r.runUntil(t + 1);
+    r.passMicros = coarse;
+}
+
+// T10: free clock. Recorded on the tick, played back to the microsecond:
+// NoteOn k of a pass at downbeat + k * ticks * sixteenth / 6 (from the whole
+// sixteenth: the error stays under 1 us over 8 bars), NoteOff a gate later.
+void testTickGridPlayback() {
+    const Line lines[] = {{"1/16T", 4, 8}, {"1/32", 3, 4}, {"1/8T", 8, 8}, {"1/16", 6, 2}};
+    for (const Line& line : lines) {
+        Rig r;
+        CHECK(line.bars == 2 || r.lp.setBars(line.bars) == Result::Done);
+        CHECK(r.lp.recDub() == Result::Done);
+        const uint32_t t0 = gNow;
+        const int W = line.bars * 16;
+        const int count = W * kTicksPerStep / line.ticks;
+        CHECK(count <= kLoopCapacity);
+        // Micros of a position in half ticks from the downbeat (floor, as the arp's clock).
+        auto half = [&](uint32_t downbeat, int64_t halfTicks) {
+            return downbeat + static_cast<uint32_t>(halfTicks * kSixteenth / (2 * kTicksPerStep));
+        };
+        for (int k = 0; k < count; ++k) {
+            const uint8_t pitch = static_cast<uint8_t>(60 + (k % 4) * 3);
+            const uint16_t tag = static_cast<uint16_t>(0x4000u | pitch);
+            r.runUntil(half(t0, 2LL * k * line.ticks));
+            r.press(tag, pitch);
+            r.runUntil(half(t0, 2LL * k * line.ticks + line.ticks));  // gate 50 %
+            r.release(tag);
+        }
+        CHECK(r.lp.state() == State::Record && r.lp.noteCount() == count);
+        // 50 % of a 1/32 is 1.5 ticks: stored as 1 or 2, played as 2.
+        const int gate = std::max(line.ticks / 2, 2);
+        for (int k = 0; k < count; ++k) {
+            const LoopNote& n = r.lp.layer().note(static_cast<uint8_t>(k));
+            CHECK_MSG(n.onsetTicks() == k * line.ticks, "%s note %d onset %u", line.name, k, n.onsetTicks());
+            if (line.ticks % 2 == 0) CHECK(n.lengthTicks() == line.ticks / 2);
+            else CHECK(n.lengthTicks() == 1 || n.lengthTicks() == 2);
+        }
+        int64_t worst = 0;
+        for (int pass = 1; pass <= 2; ++pass) {
+            const uint32_t downbeat = t0 + static_cast<uint32_t>(pass * W) * kSixteenth;
+            struct Due { uint32_t t; bool on; uint8_t note; };
+            std::vector<Due> due;
+            for (int k = 0; k < count; ++k) {
+                const uint8_t pitch = static_cast<uint8_t>(60 + (k % 4) * 3);
+                due.push_back(Due{half(downbeat, 2LL * k * line.ticks), true, pitch});
+                due.push_back(Due{half(downbeat, 2LL * (k * line.ticks + gate)), false, pitch});
+            }
+            std::sort(due.begin(), due.end(), [](const Due& a, const Due& b) {
+                return std::tie(a.t, a.on) < std::tie(b.t, b.on); });
+            r.runUntil(downbeat - 3);
+            CHECK(r.silent());
+            const size_t mark = r.sink.events.size();
+            for (const Due& d : due) runExact(r, d.t);
+            CHECK(r.lp.state() == State::Play && r.lp.passDownbeatMicros() == downbeat);
+            // Exactly the notes of the pass: none lost, none twice, in order.
+            CHECK_MSG(r.sink.events.size() - mark == due.size(), "%s pass %d: %zu events, %zu due",
+                      line.name, pass, r.sink.events.size() - mark, due.size());
+            uint32_t previousOn = 0;
+            for (size_t i = 0; i < due.size(); ++i) {
+                const Ev& e = r.sink.events[mark + i];
+                CHECK((e.type == MusicalEventType::NoteOn) == due[i].on && e.note == due[i].note);
+                const int64_t error = static_cast<int64_t>(e.t) - static_cast<int64_t>(due[i].t);
+                worst = std::max<int64_t>(worst, std::llabs(error));
+                CHECK_MSG(error >= -1 && error <= 1, "%s pass %d event %zu: %lld us off", line.name, pass, i,
+                          static_cast<long long>(error));
+                if (!due[i].on) continue;
+                // Equal intervals: the tick length in micros, within 1 us.
+                if (previousOn != 0) {
+                    const int64_t interval = static_cast<int64_t>(e.t) - previousOn;
+                    const int64_t nominal = static_cast<int64_t>(line.ticks) * kSixteenth / kTicksPerStep;
+                    CHECK_MSG(interval >= nominal - 1 && interval <= nominal + 2, "%s interval %lld (nominal %lld)",
+                              line.name, static_cast<long long>(interval), static_cast<long long>(nominal));
+                }
+                previousOn = e.t;
+            }
+        }
+        std::printf("T10 %s: %d notes in %d bars, 2 passes, worst event error %lld us\n", line.name, count,
+                    line.bars, static_cast<long long>(worst));
+    }
+}
+
+// T11: under PLAY. The pass downbeat is the block-anchored estimate of the
+// project bar (late by up to two audio blocks); the notes are timed from it
+// in micros. A line played on the project grid must be stored with EQUAL
+// intervals whatever the lag is, also when each note leaves the main loop a
+// few ms late. The lag may only show as one offset common to the whole pass.
+void testTickGridUnderPlay() {
+    const Line lines[] = {{"1/16T", 4, 2}, {"1/32", 3, 2}, {"1/8T", 8, 2}};
+    int minOffset = 1000, maxOffset = -1000;
+    int32_t minLag = 1 << 30, maxLag = -(1 << 30);
+    for (const Line& line : lines) {
+        // Different phases of the audio blocks against the bar, with and
+        // without a late main loop (0..4 ms, changing from note to note).
+        for (uint32_t phase = 0; phase < 24; ++phase) {
+            for (int late = 0; late < 2; ++late) {
+                Rig r;
+                r.runUntil(kT0 + phase * 997u);
+                r.startTransport();
+                // Armed in the bar before project bar 2 + phase: every bar
+                // meets the audio blocks in another phase.
+                const double barStep = 16.0 * (1 + phase);
+                r.runUntil(r.transportStepTime(barStep - 4.0));
+                CHECK(line.bars == 2 || r.lp.setBars(line.bars) == Result::Done);
+                CHECK(r.lp.recDub() == Result::Done);
+                const int W = line.bars * 16;
+                const int count = W * kTicksPerStep / line.ticks;
+                const uint32_t bar = r.transportStepTime(barStep);  // the true project bar
+                auto lateness = [&](int k) {
+                    return late ? static_cast<uint32_t>((k * 2654435761u >> 7) % 4000u) : 0u;
+                };
+                for (int k = 0; k < count; ++k) {
+                    const uint8_t pitch = static_cast<uint8_t>(60 + (k % 4) * 3);
+                    const uint16_t tag = static_cast<uint16_t>(0x4000u | pitch);
+                    const uint32_t on = bar + static_cast<uint32_t>(
+                        static_cast<int64_t>(k) * line.ticks * kSixteenth / kTicksPerStep);
+                    r.runUntil(on + lateness(k));
+                    r.press(tag, pitch);
+                    if (k == 0) {
+                        CHECK(r.lp.state() == State::Record);
+                        // After the first note: the downbeat it was aligned to.
+                        const int32_t lag = static_cast<int32_t>(r.lp.passDownbeatMicros() - bar);
+                        minLag = std::min(minLag, lag);
+                        maxLag = std::max(maxLag, lag);
+                    }
+                    r.runUntil(on + static_cast<uint32_t>(line.ticks * kSixteenth / (2 * kTicksPerStep)) + lateness(k + 1));
+                    r.release(tag);
+                }
+                CHECK_MSG(r.lp.noteCount() == count, "%s phase %u: %u notes of %d", line.name, phase,
+                          r.lp.noteCount(), count);
+                const int offset = r.lp.layer().note(0).onsetTicks();
+                minOffset = std::min(minOffset, offset);
+                maxOffset = std::max(maxOffset, offset);
+                for (int k = 0; k < count; ++k) {
+                    const LoopNote& n = r.lp.layer().note(static_cast<uint8_t>(k));
+                    CHECK_MSG(n.onsetTicks() == offset + k * line.ticks,
+                              "%s phase %u late %d: note %d on tick %u, expected %d (interval broken)",
+                              line.name, phase, late, k, n.onsetTicks(), offset + k * line.ticks);
+                }
+            }
+        }
+    }
+    std::printf("T11 PLAY: equal intervals at 1/16T, 1/32, 1/8T over 24 block phases, loop late 0..4 ms; "
+                "pass offset %d..%d ticks, downbeat estimate %d..%d us from the bar\n",
+                minOffset, maxOffset, minLag, maxLag);
+}
+
+void testLastTickRecordedAndPlayed() {
+    Rig r;
+    CHECK(r.lp.setBars(1) == Result::Done);
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t start = gNow;
+    r.press(1, 60);
+    r.runSteps(0.2);
+    r.release(1);
+    const uint32_t last = start + static_cast<uint32_t>(95ULL * kSixteenth / 6u);
+    r.runUntil(last);
+    r.press(2, 72);
+    r.runUntil(start + 16 * kSixteenth + 1000);
+    r.release(2);
+    CHECK(r.lp.state() == State::Play && r.lp.noteCount() == 2);
+    CHECK(r.lp.layer().note(1).onsetTicks() == 95);
+    const uint32_t played = last + 16 * kSixteenth;
+    r.runUntil(played + 5000);
+    CHECK(onsIn(r, played, played + 5001, 72) == 1);
+}
+
+void testDenseTickPlaybackAndLateGate() {
+    Rig r;
+    r.passMicros = 100;
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t start = gNow;
+    for (uint8_t tick = 0; tick < 6; ++tick) {
+        r.runUntil(start + static_cast<uint32_t>(tick) * kSixteenth / 6);
+        for (uint8_t i = 0; i < 6; ++i) r.press(i + 1, static_cast<uint8_t>(60 + i));
+        r.runUntil(start + static_cast<uint32_t>((tick + 0.75) * kSixteenth / 6));
+        for (uint8_t i = 0; i < 6; ++i) r.release(i + 1);
+    }
+    r.runUntil(start + r.lp.passSteps() * kSixteenth);
+    const uint32_t pass = r.lp.passDownbeatMicros();
+    r.runUntil(pass + kSixteenth + 1000);
+    CHECK_MSG(r.sink.countOns(pass, pass + kSixteenth) == 36, "ons=%d notes=%u pass=%u state=%u", r.sink.countOns(pass, pass + kSixteenth), r.lp.noteCount(), pass, static_cast<unsigned>(r.lp.state()));
+    CHECK(r.lp.panicStop() == Result::Done && r.silent());
+
+    // A missed one-tick gate is skipped entirely; no orphan NoteOn.
+    ResponsePlayer player;
+    MusicalEventRouter router;
+    BalanceSink sink;
+    CHECK(router.addSink(sink));
+    player.setRouter(&router);
+    const LoopPlanNote note{0, 1, 60, 100};
+    CHECK(player.startGrid(&note, 1, 1000, kSixteenth, kTicksPerStep, true));
+    gNow = 1000 + kSixteenth / 6 + 1;
+    player.service(gNow);
+    CHECK(sink.events.empty() && player.staleDrops() == 1 && !player.active());
+}
+
+void testTickSegmentationKeepsDroneSounding() {
+    LoopLayer layer;
+    layer.reset();
+    layer.beginUnit();
+    for (int tick = 0; tick < 32; ++tick) {
+        CHECK(layer.noteOn(1, 0, static_cast<uint8_t>(40 + tick), 100, double(tick * 2) / 6, 16) == LoopLayer::Write::Stored);
+        CHECK(layer.noteOff(1, double(tick * 2 + 1) / 6, 16));
+    }
+    CHECK(layer.noteOn(1, 0, 100, 100, 40.0 / 6, 16) == LoopLayer::Write::Stored);
+    CHECK(layer.noteOff(1, 90.0 / 6, 16));
+    MusicalEventRouter router;
+    BalanceSink sink;
+    ResponsePlayer player;
+    CHECK(router.addSink(sink));
+    player.setRouter(&router);
+    LoopPlan plan;
+    uint16_t next = 0;
+    CHECK(layer.buildPlanTicks(plan, 16, AnswerLength::Full, 0, 0, false, &next) == 20);
+    CHECK(next == 40);
+    CHECK(player.startGrid(plan.notes, plan.count, 1000, kSixteenth, 6, true));
+    for (uint16_t tick = 0; tick <= 90; ++tick) {
+        gNow = 1000 + static_cast<uint32_t>(static_cast<uint64_t>(tick) * kSixteenth / 6);
+        player.service(gNow);
+        if (tick == 40) {
+            CHECK(layer.buildPlanTicks(plan, 16, AnswerLength::Full, 40, 0, true, &next) == 13);
+            CHECK(player.startGrid(plan.notes, plan.count, 1000, kSixteenth, 6, true, 40));
+            player.service(gNow);
+        }
+    }
+    unsigned on = 0, off = 0;
+    for (const Ev& event : sink.events) if (event.note == 100) {
+        if (event.type == MusicalEventType::NoteOn) ++on; else ++off;
+    }
+    CHECK(on == 1 && off == 1 && sink.total == 0);
+}
+
+void testOverflowSkipsChordButResumesDrone() {
+    Rig r;
+    r.passMicros = 100;
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t start = gNow;
+    r.press(1000, 100);
+    r.runUntil(start + 20 * kSixteenth / 6);
+    for (uint8_t pitch = 0; pitch < 33; ++pitch) {
+        r.press(1, pitch);
+        r.release(1);
+    }
+    r.runUntil(start + 40 * kSixteenth / 6);
+    r.press(1, 90);
+    r.runUntil(start + 42 * kSixteenth / 6);
+    r.release(1);
+    r.runUntil(start + 80 * kSixteenth / 6);
+    r.release(1000);
+    r.runUntil(start + r.lp.passSteps() * kSixteenth);
+    const uint32_t pass = r.lp.passDownbeatMicros();
+    r.runUntil(pass + 90 * kSixteenth / 6);
+    bool resumedDrone = false, lateNote = false, overflowNote = false;
+    for (const Ev& e : r.sink.events) {
+        if (e.t < pass || e.type != MusicalEventType::NoteOn) continue;
+        if (e.note == 100 && e.t >= pass + 21 * kSixteenth / 6) resumedDrone = true;
+        if (e.note == 90) lateNote = true;
+        if (e.note < 33) overflowNote = true;
+    }
+    CHECK(!resumedDrone && !lateNote && !overflowNote);
+    CHECK_MSG(r.lp.state() == State::Stopped && r.silent(), "state=%s silent=%d", r.lp.stateName(), r.silent());
+    CHECK(r.lp.takeTooManyNotice() && !r.lp.takeTooManyNotice());
+    r.startTransport();
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.playStop() == Result::Done);
+    r.runUntil(r.transportStepTime(4.0) + 2 * kBlockMicros);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.takeTooManyNotice());
+    r.stopTransport();
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.panicStop() == Result::Done && r.silent());
+}
+
+void testRecDubCannotOverrideOverflowStop() {
+    Rig r;
+    r.passMicros = 100;
+    CHECK(r.lp.setBars(1) == Result::Done);
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t start = gNow;
+    for (uint8_t pitch = 0; pitch < 33; ++pitch) {
+        r.press(1, pitch);
+        r.release(1);
+    }
+    r.runUntil(start + 16 * kSixteenth + 100);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.takeTooManyNotice());
+
+    // Z from STOP starts the same overfull pass again. The plan fails safe
+    // during resumeNow(); recDub must not overwrite STOP with OVERDUB.
+    CHECK(r.lp.recDub() == Result::Done);
+    CHECK_MSG(r.lp.state() == State::Stopped && r.silent(), "state=%s", r.lp.stateName());
+    CHECK(r.lp.takeTooManyNotice());
+    r.runUntil(gNow + 16 * kSixteenth);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+}
+
+void testSuppressionDoesNotLeakAcrossRestart() {
+    Rig r;
+    r.passMicros = 100;
+    CHECK(r.lp.setBars(1) == Result::Done);
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t start = gNow;
+    for (uint8_t pitch = 0; pitch < 20; ++pitch) { r.press(1, pitch); r.release(1); }
+    r.runUntil(start + 16 * kSixteenth + 100);
+    CHECK(r.lp.state() == State::Play && r.lp.nextLayer() == Result::Done);
+    CHECK(r.lp.recDub() == Result::Done);
+    const uint32_t dub = start + 32 * kSixteenth;
+    r.runUntil(dub);
+    for (uint8_t pitch = 20; pitch < 33; ++pitch) { r.press(1, pitch); r.release(1); }
+    CHECK(r.lp.recDub() == Result::Done);
+    r.runUntil(start + 48 * kSixteenth + 100);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.takeTooManyNotice() && !r.lp.takeTooManyNotice());
+    CHECK(r.lp.playStop() == Result::Done);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.takeTooManyNotice());
+    CHECK(r.lp.toggleMute() == Result::Done);
+    const uint32_t resumed = gNow;
+    CHECK(r.lp.playStop() == Result::Done);
+    r.runUntil(resumed + kSixteenth / 6 + 1000);
+    CHECK_MSG(r.sink.countOns(resumed, resumed + kSixteenth / 6 + 1000) == 20,
+              "restart ons=%d", r.sink.countOns(resumed, resumed + kSixteenth / 6 + 1000));
+    CHECK(r.lp.playStop() == Result::Done && r.silent());
+    CHECK(r.lp.toggleMute() == Result::Done);
+    CHECK(r.lp.clear() == Result::Done);
+    const uint32_t afterClear = gNow;
+    CHECK(r.lp.playStop() == Result::Done);
+    r.runUntil(afterClear + kSixteenth / 6 + 1000);
+    CHECK(r.sink.countOns(afterClear, afterClear + kSixteenth / 6 + 1000) == 20);
+    CHECK(r.lp.undo() == Result::Done);
+    r.runUntil(afterClear + 16 * kSixteenth + 100);
+    CHECK(r.lp.state() == State::Stopped && r.silent());
+    CHECK(r.lp.takeTooManyNotice());
+}
+
 int main() {
+    testSuppressionDoesNotLeakAcrossRestart();
+    testOverflowSkipsChordButResumesDrone();
+    testDenseTickPlaybackAndLateGate();
+    testRecDubCannotOverrideOverflowStop();
+    testTickSegmentationKeepsDroneSounding();
     testTransitionTable();
     testClock();
     testBalance();
@@ -1199,6 +1561,9 @@ int main() {
     testEightBars();
     testTwoLayers();
     testBarsWithNotes();
+    testTickGridPlayback();
+    testTickGridUnderPlay();
+    testLastTickRecordedAndPlayed();
     std::printf("looper engine tests passed (%d checks)\n", gChecks);
     return 0;
 }

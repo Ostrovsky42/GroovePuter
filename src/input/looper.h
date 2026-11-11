@@ -36,6 +36,12 @@
 // once. BARS changes keep the notes: longer repeats the loop, shorter cuts
 // it, V takes it back.
 //
+// Time: the layer stores onsets and lengths in ticks, 6 to a sixteenth
+// (looper_layer.h), and the pass plan is played on the same ticks, so a
+// recorded arp at 1/16T, 1/32 or 1/8T and its gate come back as played. The
+// pass, the bar phase and the plan boundaries of a long pass stay on whole
+// steps.
+//
 // Main loop only: the observer callback comes from PerformanceKeyboard on the
 // main loop, service() once per loop pass. No allocation, no locks, no FS.
 namespace GroovePuterLooper {
@@ -174,6 +180,7 @@ public:
                 return Result::Done;
             case State::Stopped:
                 resumeNow(now);
+                if (state_ != State::Play) return Result::Done;
                 state_ = State::Overdub;
                 layer_.beginUnit();
                 return Result::Done;
@@ -376,6 +383,7 @@ public:
             }
         }
         if (state_ != State::Record && state_ != State::Overdub) return;
+        if ((layerFlags_ & kGridAlignPending) != 0) alignGridToFirstNote(now);
         const LoopLayer::Write result =
             layer_.noteOn(tag, activeLayer(), note, velocity, relAt(now), passSteps());
         if (result == LoopLayer::Write::Full && !flag(kFullShown)) setFlag(kFullNotice | kFullShown, true);
@@ -399,7 +407,7 @@ public:
         if (position < static_cast<double>(passStart_ + passSteps())) {
             // A pass of more than 32 notes: its next plan starts on its step.
             if (nextSegment_ != 0 && state_ != State::Record &&
-                position >= static_cast<double>(passStart_ + nextSegment_))
+                position >= static_cast<double>(passStart_) + static_cast<double>(nextSegment_) / kTicksPerStep)
                 startSegment(now, position);
             return false;
         }
@@ -452,12 +460,20 @@ public:
         setFlag(kFullNotice, false);
         return true;
     }
+    bool takeTooManyNotice() {
+        const bool pending = (layerFlags_ & kTooManyNotice) != 0;
+        layerFlags_ &= static_cast<uint8_t>(~kTooManyNotice);
+        return pending;
+    }
     static bool partnerActive() {
         return GroovePuterCallResponse::callResponseListener().enabled();
     }
 
 private:
-    // layerFlags_: bit l HOLD of layer l, bit 2+l MUTE, bit 4 active layer, bit 5 SOUND capture.
+    // layerFlags_: bit l HOLD of layer l, bit 2+l MUTE, bit 4 active layer, bit 5 SOUND capture,
+    // bit 6 the first note of a RECORD pass under PLAY still has to set the tick phase.
+    static constexpr uint8_t kGridAlignPending = 0x40u;
+    static constexpr uint8_t kTooManyNotice = 0x80u;
     static constexpr uint8_t kLayerHold = 0x01u;
     static constexpr uint8_t kLayerMute = 0x04u;
     static constexpr uint8_t kLayerActive = 0x10u;
@@ -523,6 +539,34 @@ private:
         nextSegment_ = 0;
         layer_.beginUnit();
         ++passCount_;
+        layerFlags_ = static_cast<uint8_t>(clock_.source() == LoopClock::Source::Transport
+            ? layerFlags_ | kGridAlignPending : layerFlags_ & ~kGridAlignPending);
+    }
+
+    // Under PLAY the pass downbeat is the block-anchored estimate of the bar:
+    // up to two audio blocks late, by an amount unrelated to the tick grid. The
+    // notes of the pass are timed from that downbeat in micros (positionNow),
+    // so the error is the same for every note, but left alone it puts a line
+    // played on the project grid (the arp) anywhere between two ticks, where
+    // the main-loop jitter of each note decides the tick: uneven intervals.
+    // The first note of the first RECORD pass therefore sets the phase: the
+    // downbeat moves by less than half a tick so that this note is exactly on
+    // a tick; a first note just before the estimated bar (the estimate lags)
+    // moves the downbeat back to itself, a quarter of a step at most. What is
+    // heard does not move: the notes keep their own times.
+    void alignGridToFirstNote(uint32_t now) {
+        layerFlags_ = static_cast<uint8_t>(layerFlags_ & ~kGridAlignPending);
+        const uint32_t sixteenth = clock_.sixteenthMicros();
+        if (state_ != State::Record || !flag(kGridValid) || sixteenth == 0 ||
+            clock_.source() != LoopClock::Source::Transport)
+            return;
+        const double ticks = relAt(now) * kTicksPerStep;
+        if (ticks >= (passSteps() - PhraseCapture::kPickupFraction) * kTicksPerStep) return;  // a pickup
+        constexpr double kMaxBack = 0.25 * kTicksPerStep;
+        const double shift = ticks < 0.0 ? (ticks < -kMaxBack ? -kMaxBack : ticks)
+                                         : ticks - std::floor(ticks + 0.5);
+        gridMicros_ += static_cast<uint32_t>(static_cast<int32_t>(
+            std::lround(shift * sixteenth / kTicksPerStep)));
     }
 
     void advancePass(uint32_t now, double position) {
@@ -556,6 +600,7 @@ private:
         gridMicros_ = grid;
         setFlag(kGridValid, true);
         setFlag(kFullShown, false);
+        layerFlags_ = static_cast<uint8_t>(layerFlags_ & ~kGridAlignPending);
         ++passCount_;
         if (state_ == State::Play || state_ == State::Overdub) startPlan(0, grid, now);
     }
@@ -563,11 +608,23 @@ private:
     // carry: the next segment of a running pass (notes cut at the segment
     // boundary go on); otherwise onsets >= fromStep only.
     bool startPlan(uint8_t fromStep, uint32_t originMicros, uint32_t now, bool carry = false) {
+        return startPlanTicks(static_cast<uint16_t>(fromStep * kTicksPerStep), originMicros, now, carry);
+    }
+
+    bool startPlanTicks(uint16_t fromTick, uint32_t originMicros, uint32_t now, bool carry = false) {
         nextSegment_ = 0;
         if (!player_) return false;
-        ResponsePlan plan;  // 131 bytes, main-loop stack
-        uint8_t next = 0;
-        if (layer_.buildPlan(plan, passSteps(), length_, fromStep, muteMask(), carry, &next) == 0) {
+        LoopPlan plan;  // 196 bytes, main-loop stack (buildPlan adds about 550)
+        uint16_t next = 0;
+        const uint8_t count = layer_.buildPlanTicks(plan, passSteps(), length_, fromTick, muteMask(), carry, &next);
+        if (plan.overflow) {
+            layerFlags_ |= kTooManyNotice;
+            stopLoop(now, State::Stopped);
+            setFlag(kResumeOnPlay, false);
+            return false;
+        }
+        if (count == 0) {
+            nextSegment_ = next;
             (void)player_->cancel();
             return false;
         }
@@ -576,7 +633,13 @@ private:
         // stored in the shared player is put back right away.
         const uint8_t partnerChannel = player_->wireChannel();
         player_->setWireChannel(channel_);
-        const bool started = player_->start(plan, originMicros, clock_.sixteenthMicros(), true);
+        // Ticks: each due time is origin + tick * sixteenth / 6, from the whole
+        // sixteenth, so a triplet line does not drift over the pass.
+        const uint32_t period = clock_.sixteenthMicros();
+        const uint32_t passOrigin = originMicros - static_cast<uint32_t>(
+            static_cast<uint64_t>(fromTick) * period / kTicksPerStep);
+        const bool started = player_->startGrid(plan.notes, plan.count, passOrigin,
+                                                period, kTicksPerStep, true, fromTick);
         player_->setWireChannel(partnerChannel);
         player_->service(now);
         return started;
@@ -586,10 +649,10 @@ private:
     // (position): its step 0 is nextSegment_. Any note of the previous plan
     // still sounding was cut at this step (NoteOff due now).
     void startSegment(uint32_t now, double position) {
-        const uint8_t from = nextSegment_;
-        const double late = position - static_cast<double>(passStart_ + from);
+        const uint16_t from = nextSegment_;
+        const double late = position - static_cast<double>(passStart_) - static_cast<double>(from) / kTicksPerStep;
         const uint32_t lateMicros = static_cast<uint32_t>(late * clock_.sixteenthMicros() + 0.5);
-        (void)startPlan(from, now - lateMicros, now, true);
+        (void)startPlanTicks(from, now - lateMicros, now, true);
     }
 
     // Loop sounds again now: on the project grid (from the current step) or,
@@ -746,8 +809,10 @@ private:
         resumeNow(now);
     }
 
-    // The layer holds 192 four-byte events and six open recording notes.
-    // ESP32 build: Looper is 856 bytes; the 32-bit budget below is 864 bytes.
+    // 32-bit layout (xtensa-esp32s3-elf-g++, checked): vptr 4 + layer_ 988
+    // (192 * 5 notes + 6 * 4 open + 3 counters, 2-byte aligned) = 992; ten
+    // one-byte fields = 1002; pad 6 to the 8-byte aligned LoopClock (24) = 1032;
+    // two pointers 8 + two 32-bit words 8 = 1048; budget 1056.
     LoopLayer layer_{};
     uint8_t passCount_{0};     // log only (wraps)
     State state_{State::Idle};
@@ -756,7 +821,7 @@ private:
     AnswerLength length_{AnswerLength::Full};
     uint8_t phaseBars_{0};     // bar of the project grid the loop starts on, mod BARS
     uint8_t flags_{0};
-    uint8_t nextSegment_{0};   // step of the next plan of this pass, 0 = none
+    uint16_t nextSegment_{0};  // tick of the next plan of this pass, 0 = none
     uint8_t layerFlags_{0};    // HOLD / MUTE per layer, the active layer (phase 3)
     uint8_t soundMono_{0xff};  // current MONO performance pitch, or none
     LoopClock clock_{};
@@ -766,8 +831,8 @@ private:
     int32_t passStart_{0};     // clock step of the current pass (ARMED: of the first pass)
 };
 
-// §3.3: <= 864 bytes on the 32-bit target (the host build has 8-byte pointers).
-static_assert(sizeof(void*) != 4 || sizeof(Looper) <= 864, "Looper DRAM budget");
+// §3.3: <= 1056 bytes on the 32-bit target (the host build has 8-byte pointers).
+static_assert(sizeof(void*) != 4 || sizeof(Looper) <= 1056, "Looper DRAM budget");
 
 inline Looper& looper() {
     static Looper instance;
