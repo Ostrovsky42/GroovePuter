@@ -8,6 +8,7 @@
 
 #include "../components/music_visuals.h"
 #include "../ui_input.h"
+#include "../perform_key_header.h"
 #include "src/midi/smf_player_service.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/output/output_ownership.h"
@@ -86,6 +87,15 @@ const char* harmonyPolicyName(GroovePuterPerformance::HarmonyChangePolicy policy
 bool strumIsAudible(const PerformanceKeyboard& keyboard) {
     return !keyboard.arpeggiatorEnabled() &&
            keyboard.chordMode() != PerformanceChordMode::Off;
+}
+
+// The live scale binding (bare LEFT/RIGHT, and , .) already changes the scale;
+// the toast names the new one. Keys are not changed here.
+void cycleScaleWithToast(PerformanceKeyboard& keyboard, int direction) {
+    keyboard.cycleScale(direction);
+    char toast[32];
+    std::snprintf(toast, sizeof(toast), "SCALE: %s", keyboard.scaleName());
+    UI::showToast(toast, 800);
 }
 
 bool rotationIsAudible(const PerformanceKeyboard& keyboard) {
@@ -1103,6 +1113,27 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                               static_cast<unsigned>(keyboard_.euclideanLength()));
             }
             drawRow(3, "EUCLID", value, true);
+            if (keyboard_.euclideanPulses() > 0 && lineOf(3) >= firstVisibleRow) {
+                // 16-step strip right of the digits: a filled square is a hit, a
+                // small dot a rest, the running step is boxed (the current pulse of
+                // the shared step clock modulo the length).
+                const uint8_t length = std::min<uint8_t>(keyboard_.euclideanLength(),
+                                                         PerformanceKeyboard::kEuclideanSteps);
+                const uint8_t cursor = length ? static_cast<uint8_t>(keyboard_.musicalPulseOrdinal() % length) : 0;
+                const int stripX = valueX + 36;
+                const int stripY = LayoutManager::lineY(1 + static_cast<int>(lineOf(3) - firstVisibleRow)) + 1;
+                const bool onSelected = selected == 3;
+                for (uint8_t step = 0; step < length; ++step) {
+                    const int cellX = stripX + step * 5;
+                    const bool hit = PerformKeyHeader::euclidStepHit(
+                        step, keyboard_.euclideanPulses(), keyboard_.euclideanLength(),
+                        keyboard_.euclideanRotation());
+                    const IGfxColor ink = onSelected ? palette.invert : palette.text;
+                    if (hit) gfx.fillRect(cellX, stripY, 4, 5, ink);
+                    else gfx.fillRect(cellX + 1, stripY + 2, 2, 1, onSelected ? palette.invert : palette.dim);
+                    if (step == cursor) gfx.drawRect(cellX - 1, stripY - 2, 6, 9, MusicVisuals::accentForStyle());
+                }
+            }
             if (rotationIsAudible(keyboard_)) {
                 std::snprintf(value, sizeof(value), "%u",
                               static_cast<unsigned>(keyboard_.euclideanRotation()));
@@ -1278,10 +1309,10 @@ bool PerformPage::handleEvent(UIEvent& event) {
     if (!event.ctrl && !event.alt && !event.meta) {
         switch (UIInput::navCode(event)) {
             case GROOVEPUTER_LEFT:
-                keyboard_.cycleScale(-1);
+                cycleScaleWithToast(keyboard_, -1);
                 return true;
             case GROOVEPUTER_RIGHT:
-                keyboard_.cycleScale(1);
+                cycleScaleWithToast(keyboard_, 1);
                 return true;
             default:
                 break;
@@ -1319,11 +1350,11 @@ bool PerformPage::handleEvent(UIEvent& event) {
         }
         case ',':
         case '<':
-            keyboard_.cycleScale(-1);
+            cycleScaleWithToast(keyboard_, -1);
             return true;
         case '.':
         case '>':
-            keyboard_.cycleScale(1);
+            cycleScaleWithToast(keyboard_, 1);
             return true;
         case '-':
             keyboard_.shiftOctave(-1);
@@ -1435,16 +1466,18 @@ void PerformPage::drawContent(IGfx& gfx) {
                       static_cast<unsigned>(keyboard_.heldCount()),
                       static_cast<unsigned>(keyboard_.velocity()));
     } else {
-        std::snprintf(line, sizeof(line), "%s O%+d C:%s A:%s R%u E%u S%u V%u",
-                      keyboard_.scaleName(),
-                      static_cast<int>(keyboard_.octaveShift()),
-                      keyboard_.chordModeName(),
-                      keyboard_.arpeggiatorEnabled()
-                          ? keyboard_.arpDirectionName() : "OFF",
-                      static_cast<unsigned>(keyboard_.ratchetCount()),
-                      static_cast<unsigned>(keyboard_.euclideanPulses()),
-                      static_cast<unsigned>(keyboard_.strumMs()),
-                      static_cast<unsigned>(keyboard_.velocity()));
+        PerformKeyHeader::KeyHeaderInput keyLine;
+        keyLine.root = keyboard_.rootName();
+        keyLine.scale = keyboard_.scaleName();
+        keyLine.octaveShift = static_cast<int>(keyboard_.octaveShift());
+        keyLine.chord = keyboard_.chordModeName();
+        keyLine.arp = keyboard_.arpeggiatorEnabled() ? keyboard_.arpDirectionName() : nullptr;
+        keyLine.ratchet = keyboard_.ratchetCount();
+        keyLine.euclidPulses = keyboard_.euclideanPulses();
+        keyLine.euclidLength = keyboard_.euclideanLength();
+        keyLine.strumMs = static_cast<uint8_t>(keyboard_.strumMs() > 255 ? 255 : keyboard_.strumMs());
+        PerformKeyHeader::formatKeyHeader(line, sizeof(line), keyLine,
+                                          static_cast<std::size_t>((Layout::CONTENT.w - 8) / 6));
     }
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
                              Layout::CONTENT.w - 8, line);

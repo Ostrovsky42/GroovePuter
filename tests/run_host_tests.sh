@@ -21,6 +21,7 @@ python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_perform_t13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
@@ -881,3 +882,15 @@ bash "${ROOT_DIR}/tests/run_s1_synth_engine_switch_tests.sh"
 
 # 0.9.19 S1: Synth page restores the MORE tab before its components exist.
 bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
+
+# 0.9.23 T13: pure key-header / EUCLID step helpers (no SDL).
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_perform_key_header.cpp" \
+  -o "${BUILD_DIR}/test_perform_key_header"
+
+"${BUILD_DIR}/test_perform_key_header"
