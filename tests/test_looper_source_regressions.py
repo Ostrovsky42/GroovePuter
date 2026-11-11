@@ -71,7 +71,12 @@ try:
          "src/input/call_response_listener.h",
          "src/input/call_response_phrase_capture.h", "src/input/call_response_planner.h",
          "src/input/call_response_performance_plan.h",
-         "src/audio", "platform_sdl", "src/ui/undo_ux.h"],
+         "src/audio", "platform_sdl", ":(exclude)platform_sdl/sdl_main.cpp", "src/ui/undo_ux.h"],
+        cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
+    # platform_sdl: 0d4d5c99 (harmony: keep context on a missed transport
+    # snapshot) legitimately changed sdl_main.cpp after the looper base.
+    changed += subprocess.run(
+        ["git", "diff", "--name-only", "0d4d5c99", "--", "platform_sdl/sdl_main.cpp"],
         cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
     assert changed == [], f"must stay untouched: {changed}"
 except (OSError, subprocess.CalledProcessError):

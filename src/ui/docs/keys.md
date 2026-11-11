@@ -277,12 +277,15 @@ variation, repeat cycle `1/2/4/8`, and presets.
 | `-` / `=` in NOTE ENTRY | NOTE rows octave: 1-2 .. 5-6 (default 3-4). Steps hold C1..C7; MIDI gets the note as written, the internal synth folds notes above B4 down by octaves |
 | `L` on STEPS | PAIR VIEW + PAIR PLAY (outside NOTE ENTRY, where `L` is a pitch): rows 1-2 are slot N as now, rows 3-4 are slot N+1 of the same synth, header `A 1+2`, footer `L:1 SLOT` (`L:PAIR` when off). The cursor and every edit (note, accent, slide, clear, paste) follow the row and act on that slot with their own Undo. Slot 8 has no N+1: rows 3-4 are empty and not editable. `G`, `Alt+G`, `Ctrl+Backspace` act on slot N only (refused on rows 3-4). Plain `L` also starts PAIR PLAY (below); `L` again stops it and turns the view off. The pair is per synth and sticky: leaving the page or switching to the other synth does not stop it, and re-entering shows its view |
 | PAIR PLAY on STEPS | Started by `L` with the view: this voice plays slot N, then N+1 at the next bar line, and back, as a loop. While the transport plays, the view starts at once but the sound starts at the next bar line (footer `PAIR PLAY: WAIT NEXT BAR`, then `PAIR PLAY 1+2`); stopped, it starts at once. Pattern mode only; refused with Song on (`SONG OFF FIRST`), a Melody slot (`STEPS ONLY`), unsaved edits (`SAVE FIRST`) or a queued GO; the view stays on after a refusal. Stops on `L`, Stop, changing slot, Song on (not on leaving the page). The other synth's page shows `A:PAIR` / `B:PAIR` in the footer. The selected slot does not move. `Ctrl+L` is not used on STEPS |
-| `D` | On MELODY: vary the focused bar in place (1 ANSWER, 2 PUSH, 3 MIRROR, 4 the ORIGINAL bar again); each press is one `Ctrl+Z` step. On STEPS NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
+| `D` | On MELODY: vary the focused bar in place (`1 ANSWER`, `2 SEQUENCE`, `3 SYNCOPATE`, `4 CONTOUR`, `5 OCTAVE`, `6` the `ORIGINAL` bar again); each press is one `Ctrl+Z` step. On STEPS NOTES outside NOTE ENTRY: DEVELOP (revoice the NEXT). With NOTE ENTRY on on STEPS, `D` is the pitch D. On KNOBS `D` is Env Amount + (MORE ignores it) |
 | `Alt+R` / `Opt` | Source STEPS <-> MELODY. With no Melody yet, `Alt+R` (or `Opt`) copies the steps into a new Melody (toast `MELODY <- STEPS`); `Ctrl+Z` removes it and returns to STEPS. On SONG, `Opt` on a cell with no Melody refuses (`NO MELODY (ALT+N ON STEPS)`). `Opt` (Cardputer) works from any synth tab |
 | `Alt+N` | New empty Melody in the current slot; its steps are replaced only on `Alt+Enter`; `Ctrl+Z` steps back; unsaved Melody edits block it |
 | `Q..I` on MELODY | Jump to that slot's accepted Melody; a slot with steps only gets a new empty Melody (its steps stay until `Alt+Enter`); unsaved edits -> `ALT+ENTER SAVE` |
 | `B` on MELODY | Same slot position in the other bank, with the same rules |
 | `Ctrl+Left/Right` on MELODY | Cursor to previous / next bar |
+| `Ctrl+A` on MELODY | Select all notes in the focused bar (`BAR n/m ALL`); `Up/Down`/`A/Z` (key), `Ctrl+Up/Down` (semitone), `S/X` (octave), `Alt+Left/Right` (length), `Alt+A` (accent), `Alt+S` (slide), `Alt+E` (`NOTE SETTINGS`), and `Backspace` (clear bar) act on the whole bar as one `Ctrl+Z` step. `Esc` / `` ` `` or moving the cursor drops the selection |
+| `Alt+S` on MELODY | Toggle slide (`SL`) on the focused note (or uniformly across the selected bar) |
+| `Alt+E` on MELODY | `NOTE SETTINGS` window for the focused note (or all notes in the selected bar when `Ctrl+A` is active, showing `MIXED` when values differ): `VEL` (1..127, step 5), `PROB` (0..100%, step 5), `SLIDE` (`OFF`/`ON`), `CHANCE` (`100%`/`80%`). `Backspace` resets the field, `Ctrl+Backspace` resets all fields; each step is one `Ctrl+Z` |
 | `Ctrl+C` / `Ctrl+V` / `Ctrl+D` on MELODY | Copy the current bar / replace the target bar with it / duplicate into the next empty bar; one Undo. A note or chord crossing the bar edge is refused |
 | `C` in NOTE ENTRY | Repeat the last entered pitch on the current step |
 | `F` | Toggle audible step Retrig (starts at R2) |
@@ -320,7 +323,9 @@ of the bar above / below the window.
 note. `Ctrl+Z` undoes a retained note edit.
 
 The STEPS letters work on the Melody too: `A`/`Z` move the note one key note
-up/down, `S`/`X` an octave, `Alt+A` toggles its accent.
+up/down, `S`/`X` an octave, `Alt+A` toggles its accent, `Alt+S` toggles slide,
+`Alt+E` opens `NOTE SETTINGS` (`VEL`, `PROB`, `SLIDE`, `CHANCE`), and `Ctrl+A`
+selects all notes in the focused bar for batch editing.
 
 Chords: `H` on a single note builds the project key's triad on it in one press;
 `H` on a chord adds one more tone on top (a triad becomes a seventh chord). `C`
