@@ -3,7 +3,7 @@
 // setters stay (test_cr_partner_settings.cpp, test_cr_phase9_length.cpp).
 // Layout (variant A, PerformInputRow): three groups under headings that never
 // take the cursor. --- MIDI IN ---: MIDI IN, LISTEN CH, SEND TO, PLAY AS,
-// LEAD STYLE. --- LOOPER ---: LOOPER, LOOP BARS, LOOP CH (value DX ROUTE),
+// LEAD STYLE. --- LOOPER ---: LOOPER, REC, LOOP BARS, LOOP CH (value DX ROUTE),
 // NOTE LENGTH, HOLD LAYER, LAYER, MUTE LAYER, TO MELODY. --- PARTNER ---:
 // HELPER (OFF/ANSWER/DUET/RIFF), REPLY BARS, REPLY CH, FREEZE RIFF, VARIATION,
 // NEW RIFF IF. The LOOPER group sits above PARTNER.
@@ -130,11 +130,11 @@ int main() {
   assert(inputRow(base) == 0);
   assertDefaults(partner);  // entering INPUT changes nothing
 
-  // DOWN visits exactly the 19 rows 0..18 (headings are not rows) and wraps;
-  // UP wraps back to 18.
-  static_assert(kLp == 5 && PerformPage::kLooperRowLast == 12 &&
-                    PerformPage::kPartnerRowFirst == 13 && kLast == 18,
-                "MIDI IN 0..4, LOOPER 5..12, PARTNER 13..18");
+  // DOWN visits exactly the 20 rows 0..19 (headings are not rows) and wraps;
+  // UP wraps back to 19.
+  static_assert(kLp == 5 && PerformPage::kLooperRowLast == 13 &&
+                    PerformPage::kPartnerRowFirst == 14 && kLast == 19,
+                "MIDI IN 0..4, LOOPER 5..13, PARTNER 14..19");
   static_assert(PerformPage::kInputRowCount == kLast + 1, "NEW RIFF IF is the last row");
   for (uint8_t expected = 1; expected <= kLast; ++expected) {
     send(base, nav(GROOVEPUTER_DOWN));
@@ -150,7 +150,7 @@ int main() {
   // (TARGET, OUT, USB, LIVE MIDI, LP ...) and the PARTNER mode word LOOP gone.
   const char* const kLabels[] = {
       "MIDI IN", "LISTEN CH", "SEND TO", "PLAY AS", "LEAD STYLE",
-      "LOOPER", "LOOP BARS", "LOOP CH", "NOTE LENGTH", "HOLD LAYER", "LAYER", "MUTE LAYER",
+      "LOOPER", "REC", "LOOP BARS", "LOOP CH", "NOTE LENGTH", "HOLD LAYER", "LAYER", "MUTE LAYER",
       "TO MELODY",
       "HELPER", "REPLY BARS", "REPLY CH", "FREEZE RIFF", "VARIATION", "NEW RIFF IF",
       "--- MIDI IN ---", "--- LOOPER ---", "--- HELPER ---",
@@ -297,6 +297,22 @@ int main() {
   assert(partner.mode() == Listener::Mode::Off);
 
   // LOOPER rows act on the looper, never on the PARTNER settings.
+  goToRow(base, row(R::RecordSource));
+  assert(!loop.recordSound());
+  send(base, nav(GROOVEPUTER_RIGHT));
+  assert(loop.recordSound());
+  gfx.texts.clear();
+  page.drawContent(gfx);
+  assert(gfx.sawExact("SOUND"));
+  assert(loop.recDub() == Looper::Result::Done);
+  send(base, nav(GROOVEPUTER_RIGHT));
+  assert(loop.recordSound());
+  gfx.texts.clear();
+  UI::drawToast(gfx);
+  assert(gfx.saw("LOOP: STOP REC TO CHANGE"));
+  assert(loop.recDub() == Looper::Result::Done);
+  send(base, nav(GROOVEPUTER_LEFT));
+  assert(!loop.recordSound());
   const uint8_t partnerBars = partner.answerBars();
   const uint8_t partnerChannel = partner.answerChannel();
   goToRow(base, row(R::LoopBars));
@@ -457,8 +473,8 @@ int main() {
     assert(toastHas("SAVE OR DISCARD A FIRST"));  // and no armed confirmation was left behind
   }
 
-  // View continuity: the last row (18) survives a page round trip; a stale
-  // row past the list (19..21) falls back to the top.
+  // View continuity: the last row (19) survives a page round trip; a stale
+  // row past the list (20..22) falls back to the top.
   goToRow(base, kLast);
   UI::UiViewContinuityState saved = capture(base);
   PerformPage other(gfx, engine, keyboard);

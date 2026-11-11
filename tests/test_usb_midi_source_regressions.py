@@ -336,6 +336,18 @@ def main() -> None:
             transport.index("g_inputParser.usbPacket("),
             "realtime transport must be handled before the note input route")
 
+    # The timeline snapshot is a seqlock and may fail on a pass. A failed read is
+    # not a STOP: the controller sweep must not be ticked (and so cancelled) with
+    # an empty view, and a request must wait for a pass that has one.
+    cutoff = transport[transport.index("void serviceCutoffAutomation() {"):]
+    cutoff = cutoff[:cutoff.index("\n}\n")]
+    require("const bool haveView =" in cutoff and
+            "if (haveView) (void)state.control.tick(view);" in cutoff and
+            cutoff.count("state.control.tick(view)") == 1,
+            "a failed timeline snapshot must not tick the controller sweep")
+    require("if (haveView && request != 0u && request != g_cutoffRequestApplied[voice])" in cutoff,
+            "controller requests must wait for a pass with a timeline snapshot")
+
     print("USB MIDI source regressions: OK")
 
 

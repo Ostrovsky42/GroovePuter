@@ -8,7 +8,7 @@ start = text.index("void SynthSequencerPage::drawTabIndicator")
 end = text.index("void SynthSequencerPage::drawPhraseNotes", start)
 body = text[start:end]
 
-for label in ('"[N]KM"', '"N[K]M"', '"NK[M]"'):
+for label in ('"[N]KMI"', '"N[K]MI"', '"NK[M]I"', '"NKM[I]"'):
     assert label in body, f"missing synth tab indicator label {label}"
 
 assert "UI::currentStyle" not in body, (

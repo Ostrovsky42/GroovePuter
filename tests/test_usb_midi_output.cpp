@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "src/midi/usb_midi_output.h"
+#include "src/midi/midi_control_event_queue.h"
 
 namespace {
 enum class PacketType : uint8_t { NoteOn, NoteOff };
@@ -81,6 +82,200 @@ void expectPacket(const Packet& packet,
     assert(packet.channel == channel);
     assert(packet.note == note);
     assert(packet.velocity == velocity);
+}
+
+void testControlOverflowCannotReplayPrePanicNoteOn() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    MidiControlEventQueue queue;
+    auto oldOn = event(MusicalEventType::NoteOn, 60, 100,
+                       MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 3);
+    oldOn.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    assert(queue.tryPush(oldOn));
+    for (std::size_t i = 1; i < MidiControlEventQueue::kCapacity; ++i)
+        assert(queue.tryPush(event(MusicalEventType::NoteOn, static_cast<uint8_t>(i), 100,
+                                   MusicalEventSource::PerformanceKeyboard, MusicalEventTarget::SynthB)));
+    auto lostOff = oldOn;
+    lostOff.type = MusicalEventType::NoteOff;
+    lostOff.velocity = 0;
+    assert(!queue.tryPush(lostOff));
+    assert(queue.takePendingAllNotesOffMask() == MidiControlEventQueue::kDxMask);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::PerformanceKeyboard, MusicalEventTarget::Dx));
+    MusicalEvent queued{};
+    while (queue.tryPop(queued)) output.handleMusicalEvent(queued);
+    assert(output.wireOwnerCount(3, 60) == 0);
+    for (const auto& packet : transport.packets)
+        assert(!(packet.type == PacketType::NoteOn && packet.channel == 3 && packet.note == 60));
+}
+
+void testLoopLanePolyphony() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto on = event(MusicalEventType::NoteOn, 60, 100,
+                    MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 3);
+    on.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(on);
+    on.note = 64;
+    output.handleMusicalEvent(on);
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[0], PacketType::NoteOn, 3, 60, 100);
+    expectPacket(transport.packets[1], PacketType::NoteOn, 3, 64, 100);
+    on.type = MusicalEventType::NoteOff;
+    on.velocity = 0;
+    output.handleMusicalEvent(on);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 3, 64, 0);
+}
+
+void testLoopSamePitchOnDifferentChannels() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    note.channel = 4;
+    output.handleMusicalEvent(note);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    assert(output.wireOwnerCount(5, 60) == 1);
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 5, 60, 0);
+}
+
+void testLoopReleaseRetriedWhenOutputDisabled() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    transport.noteOffFailuresRemaining = 1;
+    output.setEnabled(false);
+    assert(output.wireOwnerCount(4, 60) == 1);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    output.handleMusicalEvent(note);
+    assert(output.servicePendingReleases(1000000));
+    assert(output.wireOwnerCount(4, 60) == 0);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+}
+
+void testLoopLaneRetryAndPanic() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    note.channel = 5;
+    output.handleMusicalEvent(note);
+    note.type = MusicalEventType::NoteOff;
+    note.velocity = 0;
+    transport.noteOffFailuresRemaining = 1;
+    output.handleMusicalEvent(note);
+    assert(output.wireOwnerCount(5, 64) == 1);
+    assert(output.servicePendingReleases(1000000));
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 5, 64, 0);
+    assert(output.wireOwnerCount(5, 64) == 0);
+    output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                    MusicalEventSource::Arpeggiator,
+                                    MusicalEventTarget::Dx));
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    assert(output.wireOwnerCount(4, 60) == 0);
+}
+
+void testMultipleFailedLoopReleases() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto note = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    note.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    output.handleMusicalEvent(note);
+    transport.noteOffFailuresRemaining = 3;
+    note.type = MusicalEventType::NoteOff;
+    note.note = 60;
+    output.handleMusicalEvent(note);
+    note.note = 64;
+    output.handleMusicalEvent(note);
+    assert(output.wireOwnerCount(4, 60) == 1);
+    assert(output.wireOwnerCount(4, 64) == 1);
+    assert(output.servicePendingReleases(1000000));
+    assert(output.wireOwnerCount(4, 60) == 0);
+    assert(output.wireOwnerCount(4, 64) == 0);
+}
+
+void testLoopAndGeneratedRetrigger() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto loop = event(MusicalEventType::NoteOn, 60, 90,
+                      MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    loop.flags = kMusicalEventWireChannel | kMusicalEventLoopLane;
+    output.handleMusicalEvent(loop);
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 4, 60, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 4, 60, 90);
+    loop.type = MusicalEventType::NoteOff;
+    loop.velocity = 0;
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 3);
+    output.handleMusicalEvent(loop);
+    assert(transport.packets.size() == 4);
+    expectPacket(transport.packets.back(), PacketType::NoteOff, 4, 60, 0);
+    transport.clear();
+    auto generated = event(MusicalEventType::NoteOn, 65, 90,
+                           MusicalEventSource::Arpeggiator, MusicalEventTarget::SynthA);
+    output.handleMusicalEvent(generated);
+    output.handleMusicalEvent(generated);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 65, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 7, 65, 90);
+}
+
+void testHelperStillMono() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport);
+    assert(output.begin());
+    output.pollConnection();
+    auto helper = event(MusicalEventType::NoteOn, 60, 90,
+                        MusicalEventSource::Arpeggiator, MusicalEventTarget::Dx, 4);
+    helper.flags = kMusicalEventWireChannel;
+    output.handleMusicalEvent(helper);
+    helper.note = 64;
+    output.handleMusicalEvent(helper);
+    assert(transport.packets.size() == 3);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 4, 60, 0);
+    expectPacket(transport.packets[2], PacketType::NoteOn, 4, 64, 90);
 }
 
 void testPerformanceTransformMidiPolyphony() {
@@ -299,7 +494,70 @@ void testMidiInputReachesWire() {
     std::puts("MIDI input source reaches the external output as live synth notes (Host only): PASS");
 }
 
+// D5: a NoteOff the wire refused is retried by the cadence, not by the next
+// event on the lane. No new musical event is sent after the failure.
+void testPendingNoteOffRetriedWithoutNewEvent() {
+    FakeUsbMidiTransport transport;
+    transport.mountedState = true;
+    UsbMidiOutput output(transport, UsbMidiRouteConfig{7, 7, 8, true, true});
+    assert(output.begin());
+    output.pollConnection();
+
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+
+    transport.noteOffFailuresRemaining = 1;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.size() == 1);
+
+    // Within the cadence window: a call is a no-op and sends nothing new.
+    // The first call after the window is the retry that must reach the wire.
+    assert(output.servicePendingReleases(1000u));
+    assert(transport.packets.size() == 2);
+    expectPacket(transport.packets[1], PacketType::NoteOff, 7, 60, 0);
+
+    // Idle afterwards: nothing pending, nothing sent, even past the window.
+    transport.clear();
+    assert(output.servicePendingReleases(1000u + 100000u));
+    assert(transport.packets.empty());
+
+    // Cadence is bounded: a refused retry is not repeated before the interval,
+    // and the interval doubles while the wire refuses (5 ms, then 10 ms).
+    transport.clear();
+    output.handleMusicalEvent(event(MusicalEventType::NoteOn, 62, 90,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    transport.clear();
+    transport.noteOffFailuresRemaining = 3;
+    output.handleMusicalEvent(event(MusicalEventType::NoteOff, 62, 0,
+                                    MusicalEventSource::PatternPlayer,
+                                    MusicalEventTarget::SynthA));
+    assert(transport.packets.empty());
+    const uint32_t t0 = 200000u;
+    assert(!output.servicePendingReleases(t0));           // attempt 1 refused, next +10 ms
+    assert(output.servicePendingReleases(t0 + 5000u));    // inside window: no attempt
+    assert(transport.noteOffFailuresRemaining == 1);
+    assert(!output.servicePendingReleases(t0 + 10000u));  // attempt 2 refused, next +20 ms
+    assert(transport.noteOffFailuresRemaining == 0);
+    assert(output.servicePendingReleases(t0 + 30000u));   // attempt 3 succeeds
+    assert(transport.packets.size() == 1);
+    expectPacket(transport.packets[0], PacketType::NoteOff, 7, 62, 0);
+}
+
 int main() {
+    testControlOverflowCannotReplayPrePanicNoteOn();
+    testLoopLanePolyphony();
+    testLoopSamePitchOnDifferentChannels();
+    testLoopReleaseRetriedWhenOutputDisabled();
+    testLoopLaneRetryAndPanic();
+    testMultipleFailedLoopReleases();
+    testLoopAndGeneratedRetrigger();
+    testHelperStillMono();
+    testPendingNoteOffRetriedWithoutNewEvent();
     testMidiInputReachesWire();
     FakeUsbMidiTransport transport;
     UsbMidiOutput output(transport);

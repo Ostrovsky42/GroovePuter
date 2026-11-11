@@ -8,6 +8,7 @@
 #include "src/input/musical_event_router.h"
 #include "midi_note_ownership_table.h"
 #include "usb_midi_transport.h"
+#include "cutoff_sweep.h"
 
 struct UsbMidiRouteConfig {
     // Channels are zero-based internally and displayed as 1..16 externally.
@@ -81,6 +82,31 @@ public:
 
     void handleMusicalEvent(const MusicalEvent& event) override;
     void servicePitchBendRetries();
+    // CC74 filter cutoff on Synth A and Synth B (each on its own performance
+    // route channel). Only this controller and these two targets reach the wire;
+    // each target is deduplicated against its own last value on this connection.
+    void handleCutoffControlChange(const MusicalEvent& event);
+    // D5: a NoteOff the wire refused stays owned here and used to be retried
+    // only by the next event on the same lane or target. A lane's last NoteOff
+    // could therefore sound until something else happened. The dispatcher calls
+    // this on a bounded cadence with its monotonic clock; it never creates a
+    // NoteOn and never clears ownership before the wire accepts the release.
+    // Cadence: 5 ms while the wire accepts, doubling to 20 ms while it refuses.
+    // A refused write costs a paced wait, so a saturated FIFO must not be
+    // re-tried at full rate. 64 refusals (the tee's stall threshold) therefore
+    // take at most about 1.3 s; the wire is never retried faster than this.
+    static constexpr uint32_t kPendingReleaseMinIntervalUs = 5000u;
+    static constexpr uint32_t kPendingReleaseMaxIntervalUs = 20000u;
+    bool servicePendingReleases(uint32_t nowUs);
+    // Channels on which this output currently holds a wire-sounding note.
+    uint16_t wireOwnedChannelMask() const { return owners_.channelMask(); }
+    // True when `value` is on the wire for this slot on this connection. A refused
+    // write is not recorded, so the dispatcher's level check retries it.
+    bool cutoffDelivered(uint8_t slot, uint8_t controller, uint8_t value) const {
+        const int index = GroovePuterMidi::controllerIndex(controller);
+        return slot < 2 && index >= 0 && cutoffSent_[slot][index] &&
+               cutoffLast_[slot][index] == GroovePuterMidi::clampForController(index, value);
+    }
 
     bool handleSmfNoteOn(uint8_t zeroBasedChannel,
                          uint8_t note,
@@ -199,6 +225,11 @@ private:
     // lanes, so it shares a channel/note with PERFORM or Pattern safely.
     void handleAnswerLaneEvent(const MusicalEvent& event);
     bool releaseAnswerLane();
+    void handleLoopLaneEvent(const MusicalEvent& event);
+    bool releaseLoopNote(uint8_t channel, uint8_t note, uint8_t velocity = 0);
+    bool releaseLoopNotes(bool pendingOnly = false);
+    // One pass over every pending release; false at the first refusal.
+    bool retryPendingReleasesOnce();
 
     IUsbMidiTransport& transport_;
     UsbMidiRouteConfig config_;
@@ -206,6 +237,8 @@ private:
     // Kept out of lanes_ so laneFor() never resolves a (source, target) to it.
     // Set up in configureLanes(); its channel follows the event at NoteOn.
     MidiVoiceLane answerLane_;
+    struct LoopNote { uint8_t channel; uint8_t note; uint8_t count; bool pending; };
+    LoopNote loopNotes_[64]{};
     uint8_t generatedActive_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     uint8_t generatedPendingRelease_[kGeneratedTargetCount][kGeneratedBitsetBytes];
     PerformanceReceiverMode performanceReceiverMode_[kGeneratedTargetCount];
@@ -227,6 +260,12 @@ private:
     uint8_t patternChordActive_[2][kGeneratedBitsetBytes]{};
     uint8_t patternChordPending_[2][kGeneratedBitsetBytes]{};
     uint16_t pendingPitchBendMask_{0};
+    // Earliest monotonic time of the next servicePendingReleases() attempt.
+    uint32_t nextPendingReleaseUs_{0};
+    uint32_t pendingReleaseIntervalUs_{kPendingReleaseMinIntervalUs};
+    // Last CC74 value sent on this connection; cleared on (re)connect.
+    bool cutoffSent_[2][GroovePuterMidi::kControllerCount]{};
+    uint8_t cutoffLast_[2][GroovePuterMidi::kControllerCount]{};
     uint16_t pendingPitchBends_[16]{};
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;

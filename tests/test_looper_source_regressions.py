@@ -1,14 +1,13 @@
 #!/usr/bin/env python3
-"""LOOPER phases 0-1 (+ BARS 8 / 64 events): source contracts (docs/design/LOOPER_PLAN.md).
+"""LOOPER phases 0-1 (+ BARS 8 / 192 events): source contracts (docs/design/LOOPER_PLAN.md).
 
 - looper*.h: no allocation, no String/vector, no FS, no locks;
-- the PARTNER files, the keyboard, the observer contract and src/audio are
-  untouched (git, when available);
+- unrelated PARTNER files and src/audio are untouched (git, when available);
 - GroovePuter.ino: the looper and the PARTNER both observe PERFORM input
   (fixed two-way fan-out), the looper borrows the PARTNER player,
   serviceLooper() runs after serviceCallResponseLog();
-- the PARTNER stays: its INPUT group (HELPER 13..NEW RIFF IF 18), its
-  mode/settings handlers; the LOOPER group sits above it at 5..12 (variant A:
+- the PARTNER stays: its INPUT group (HELPER 14..NEW RIFF IF 19), its
+  mode/settings handlers; the LOOPER group sits above it at 5..13 (variant A:
   PerformInputRow, group headings are not rows; HELPER shows RIFF for Mode::Loop);
 - PERFORM: Ctrl+Z (APP_EVENT_UNDO) is passed on when the looper has nothing to
   undo (the global "UNDO: EMPTY / NOT HERE" toast stays), Del clears only on
@@ -38,28 +37,40 @@ for name in ("looper.h", "looper_layer.h", "looper_clock.h"):
         assert not re.search(banned, code), f"{name}: {banned}"
 
 layer = read("src/input/looper_layer.h")
-# BARS 8 / 64 events: 4-byte events (onset 7 bits), the open table's 6-bit
-# pool index, passes of more than 32 notes played as consecutive plans.
-assert "kLoopCapacity = 64" in layer
+# BARS 8 / 192 events on the tick grid: 5-byte events (onset and length 10
+# bits, 6 ticks to a step, 768 to 8 bars), the open table's 16-bit pool index,
+# passes of more than 32 notes played as consecutive plans (LoopPlan, ticks).
+assert "kLoopCapacity = 192" in layer
 assert "kMaxLoopSteps = 128" in layer
-assert 'static_assert(sizeof(LoopNote) == 4' in layer
-assert "static_assert(kLoopCapacity <= 64" in layer
-assert "kOpenIndexMask = 0x3Fu" in layer
+assert "kTicksPerStep = 6" in layer and "kMaxLoopTicks = 768" in layer
+assert 'static_assert(sizeof(LoopNote) == 5' in layer
+assert "struct LoopPlan" in layer and "uint8_t buildPlan(LoopPlan& plan" in layer
+# The looper has its own tick quantization; the HELPER's stays in PhraseCapture.
+assert "PhraseCapture::quantizeOnset(" not in strip_comments(layer)
+assert "scaledAnswerNoteLength" not in strip_comments(layer)
+assert "static_assert(kLoopCapacity <= 255" in layer
+assert "kOpenIndexMask = 0x00FFu" in layer
 assert "uint8_t* nextStep = nullptr" in layer
 looper = read("src/input/looper.h")
-assert "sizeof(Looper) <= 336" in looper
+assert "sizeof(Looper) <= 1056" in looper
+# The pass plays on ticks through the player's grid entry; the HELPER entry
+# (start with a ResponsePlan) is not used by the looper.
+assert "player_->startGrid(plan.notes, plan.count, passOrigin," in looper
+assert "kTicksPerStep, true, fromTick);" in looper and "player_->start(" not in looper
+responder = read("src/input/call_response_responder.h")
+assert "bool start(const ResponsePlan& plan, uint32_t originMicros, uint32_t sixteenthMicros," in responder
+assert "static_cast<uint64_t>(unit) * sixteenthMicros / unitsPerSixteenth" in responder
 assert "bars != 1 && bars != 4 && bars != 8" in looper
 assert "bars_ == 1 ? 2 : bars_ == 2 ? 4 : bars_ == 4 ? 8 : 1" in looper
 assert "startSegment(now, position)" in looper
 
-# Untouched files (port base: feature/0.9.21-rhythm-browser @ 6ad1d60f).
+# Untouched files (looper polyphony base: 44bc76b3).
 try:
     changed = subprocess.run(
-        ["git", "diff", "--name-only", "6ad1d60f", "--",
-         "src/input/call_response_listener.h", "src/input/call_response_responder.h",
+        ["git", "diff", "--name-only", "44bc76b3", "--",
+         "src/input/call_response_listener.h",
          "src/input/call_response_phrase_capture.h", "src/input/call_response_planner.h",
-         "src/input/call_response_performance_plan.h", "src/input/performance_keyboard.h",
-         "src/input/performance_keyboard.cpp", "src/input/performance_input_observer.h",
+         "src/input/call_response_performance_plan.h",
          "src/audio", "platform_sdl", "src/ui/undo_ux.h"],
         cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
     assert changed == [], f"must stay untouched: {changed}"
@@ -100,7 +111,7 @@ assert "kLooperRowFirst = performInputRow(PerformInputRow::Looper);" in header
 assert "kLooperRowLast = performInputRow(PerformInputRow::ToMelody);" in header
 enum_body = header[header.index("enum class PerformInputRow"):header.index("Count,", header.index("enum class PerformInputRow"))]
 order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
-assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Looper", "LoopBars",
+assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Looper", "RecordSource", "LoopBars",
                  "LoopChannel", "NoteLength", "HoldLayer", "Layer", "MuteLayer", "ToMelody", "Helper",
                  "ReplyBars", "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf"], order
 assert "kPartnerRowFirst = performInputRow(PerformInputRow::Helper);" in header
@@ -143,12 +154,18 @@ for line in ("Z           Loop REC/DUB", "C           Loop PLAY/STOP", "V       
              "M           Loop layer 1/2",
              "X           Panic: HELPER+loop stop"):
     assert line in perform, line
-assert "Loop: 1-8 bars, 64 notes" in perform
+assert "Loop: 1-8 bars, 192 notes" in perform
+assert "Loop: 1/96 grid; triplets kept" in perform and "1/16 grid" not in perform
 assert "Loop: TO MELODY, Enter x2" in perform and "LP > MELODY" not in perform
 assert '"LOOP LENGTH IN BARS"' in page
 keys = read("src/ui/docs/keys.md")
-assert "`LOOP BARS` 1/2/4/8" in keys and "`N/64`" in keys and "`LAYER`" in keys and "`MUTE LAYER`" in keys
+assert "`LOOP BARS` 1/2/4/8" in keys and "`N/192`" in keys and "`LAYER`" in keys and "`MUTE LAYER`" in keys
 assert "`TO MELODY`" in keys and "LP > MELODY" not in keys and "`LP " not in keys
+manual = read("MANUAL.md")
+for doc in (keys, manual):
+    assert "grid of 1/6 of a sixteenth" in doc and "1/16T, 1/32 and 1/8T" in doc
+    assert "`TO MELODY` still rounds every note to the 1/16 grid" in doc
+    assert "quantize note starts and ends to" not in doc
 assert "OFF/ANSWER/DUET/RIFF" in keys and "`--- HELPER ---`" in keys
 assert "LOOP: HELPER OFF FIRST" in keys
 # Phase 3: BARS keeps the notes (no LoopNotEmpty), the second layer is written.

@@ -10,6 +10,7 @@
 
 class PatternEditPage;
 class TB303ParamsPage;
+class SynthMidiPage;
 
 class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
@@ -72,6 +73,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
     Notes = 0,
     Knobs,
     More,
+    Midi,
   };
 
   void captureViewContinuity(UI::UiViewContinuityState& state) const override {
@@ -84,7 +86,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
     if (voice_index_ < 0 || voice_index_ >= 2) return;
     uint8_t value = state.synthTab[voice_index_];
-    if (value > static_cast<uint8_t>(SynthTab::More)) value = 0;
+    if (value > static_cast<uint8_t>(SynthTab::Midi)) value = 0;
     setSynthTab(static_cast<SynthTab>(value));
     phrase_cursor_.cell = state.phraseCursorCell[voice_index_];
     uint8_t grid = state.phraseGrid[voice_index_];
@@ -186,6 +188,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int phrase_pitch_followed_ = -1;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
+  std::shared_ptr<SynthMidiPage> midi_page_;
   std::string fallback_title_;
   std::string phrase_title_;
 };

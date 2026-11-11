@@ -115,6 +115,20 @@ void testApproximateSize() {
     assert(queue.approximateSize() == 0);
 }
 
+void testOverflowRejectsSameTargetUntilPanicConsumed() {
+    MidiControlEventQueue queue;
+    fillQueue(queue, MusicalEventTarget::SynthB);
+    assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOff, MusicalEventTarget::SynthB, 10)));
+    MusicalEvent popped{};
+    assert(!queue.tryPop(popped));  // all queued SynthB attacks predate the overflow
+    assert(!queue.tryPush(liveEvent(MusicalEventType::NoteOn, MusicalEventTarget::SynthB, 77)));
+    assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn, MusicalEventTarget::Dx, 78)));
+    assert(queue.takePendingAllNotesOffMask() == MidiControlEventQueue::kSynthBMask);
+    assert(queue.tryPush(liveEvent(MusicalEventType::NoteOn, MusicalEventTarget::SynthB, 79)));
+    assert(queue.tryPop(popped) && popped.target == MusicalEventTarget::Dx);
+    assert(queue.tryPop(popped) && popped.note == 79);
+}
+
 }  // namespace
 
 int main() {
@@ -125,4 +139,5 @@ int main() {
     testCriticalOverflowRequestsDxPanic();
     testIndependentPanicMasks();
     testApproximateSize();
+    testOverflowRejectsSameTargetUntilPanicConsumed();
 }

@@ -414,7 +414,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::ToMelody):
                     exportTarget_ = static_cast<int8_t>(exportVoiceNow() == 1 ? 0 : 1);  // A <-> B
                     break;
-                case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
+                case ir(InRow::RecordSource): case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
                 case ir(InRow::HoldLayer): case ir(InRow::Layer): case ir(InRow::MuteLayer):
                     cycleLooperSetting(row, direction);
                     break;
@@ -567,6 +567,10 @@ void PerformPage::cyclePartnerMode(int direction) {
 void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
     auto& loop = GroovePuterLooper::looper();
     switch (row) {
+        case ir(InRow::RecordSource):
+            if (!loop.setRecordSound(!loop.recordSound()))
+                UI::showToast("LOOP: STOP REC TO CHANGE", 1600);
+            break;
         case ir(InRow::LoopBars): {
             const bool notes = !loop.empty();
             const Looper::Result result = loop.cycleBars(direction);
@@ -847,6 +851,7 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
+                case ir(InRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
                 case ir(InRow::LoopBars): return GroovePuterLooper::looper().empty()
                     ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
                 case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
@@ -1166,6 +1171,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawHeading(inputLine(kLooperRowFirst) - 1u, "--- LOOPER ---");
             formatLooperState(value, sizeof(value));
             drawRow(ir(InRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            drawRow(ir(InRow::RecordSource), "REC", loop.recordSound() ? "SOUND" : "KEYS", true);
             std::snprintf(value, sizeof(value), "%u BAR%s",
                           static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
             drawRow(ir(InRow::LoopBars), "LOOP BARS", value,
@@ -1450,7 +1456,9 @@ void PerformPage::drawContent(IGfx& gfx) {
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
                              Layout::CONTENT.w - 8, line);
 
-    if (GroovePuterLooper::looper().takeFullNotice())
+    if (GroovePuterLooper::looper().takeTooManyNotice())
+        UI::showToast("LOOP: TOO MANY NOTES", 1000);
+    else if (GroovePuterLooper::looper().takeFullNotice())
         UI::showToast("LOOP: FULL, NOTES DROPPED", 1000);
     drawLooperStrip(gfx, LayoutManager::lineY(2));
 
@@ -1652,7 +1660,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         counterColor = COLOR_DANGER;
     } else {
         if (loop.state() == Looper::State::Idle && loop.empty()) {
-            // Nothing recorded yet: the first hint instead of 0/64.
+            // Nothing recorded yet: show the first recording hint.
             std::snprintf(counter, sizeof(counter), "Z REC");
         } else {
             std::snprintf(counter, sizeof(counter), "%u/%u",
@@ -1664,7 +1672,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         if (loop.layer().slotCount() + 4u >= GroovePuterLooper::kLoopCapacity) counterColor = COLOR_WARN;
     }
     const int right = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X;
-    const int counterW = 6 * 6;
+    const int counterW = static_cast<int>(std::strlen(counter)) * 6;
     gfx.setTextColor(counterColor);
     gfx.drawText(right - counterW, y + 1, counter);
 
@@ -1705,7 +1713,9 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
             tick = lane != activeLayer ? COLOR_LABEL
                                        : (note.isNew() ? palette.text : palette.secondary);
         }
-        gfx.fillRect(stepX(note.onset()), y + 2 + lane * 3, 1, 2, tick);
+        // The onset is in ticks (6 to a step): a triplet line is placed as played.
+        gfx.fillRect(stepX(static_cast<double>(note.onsetTicks()) / GroovePuterLooper::kTicksPerStep),
+                     y + 2 + lane * 3, 1, 2, tick);
     }
     if (position >= 0.0) gfx.fillRect(stepX(position), y + 1, 1, barH - 2, color);
 }

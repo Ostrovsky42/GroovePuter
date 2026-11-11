@@ -249,6 +249,11 @@ run_looper_layer() {
 
 # LOOPER phase 1: state machine, clock, NoteOn/NoteOff balance, no gaps,
 # overdub/undo, HOLD, Space stop. -O1: 10080 + 10000 passes.
+run_looper_record_sound() {
+  compile_run looper_record_sound "${ROOT_DIR}/tests/test_looper_record_sound.cpp" \
+    "${ROOT_DIR}/src/input/performance_keyboard.cpp"
+}
+
 run_looper_engine() {
   compile_run looper_engine -O1 "${ROOT_DIR}/tests/test_looper_engine.cpp"
 }
@@ -298,7 +303,7 @@ run_pattern_range_engine() {
 
 targets=("$@")
 if ((${#targets[@]} == 0)); then
-  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps cr_phase8 cr_phase9 cr_phase10 looper_layer looper_engine pattern_range_wire pattern_range_engine)
+  targets=(model quality snapshot registry legacy_context bridge config ownership dispatch midi_input midi_queue external_queue arp trace keyboard external cr_capture cr_motif cr_tap cr_planner cr_cancel cr_timing cr_lookahead cr_genre cr_single_note cr_channel cr_settings cr_development cr_four_bars cr_loop_grid cr_phase6 cr_loop_gaps cr_phase8 cr_phase9 cr_phase10 looper_layer looper_engine looper_record_sound pattern_range_wire pattern_range_engine)
 fi
 
 for target in "${targets[@]}"; do
@@ -340,6 +345,7 @@ for target in "${targets[@]}"; do
     cr_phase10) run_cr_phase10 ;;
     looper_layer) run_looper_layer ;;
     looper_engine) run_looper_engine ;;
+    looper_record_sound) run_looper_record_sound ;;
     pattern_range_wire) run_pattern_range_wire ;;
     pattern_range_engine) run_pattern_range_engine ;;
     *) usage; echo "unknown target: ${target}" >&2; exit 2 ;;

@@ -481,6 +481,52 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_pending_release.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_pending_release"
+
+"${BUILD_DIR}/test_usb_midi_pending_release"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_din_enable_request.cpp" \
+  -o "${BUILD_DIR}/test_din_enable_request"
+
+"${BUILD_DIR}/test_din_enable_request"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cutoff_sweep.cpp" \
+  -o "${BUILD_DIR}/test_cutoff_sweep"
+
+"${BUILD_DIR}/test_cutoff_sweep"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_cutoff.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_cutoff"
+
+"${BUILD_DIR}/test_usb_midi_cutoff"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_pattern_midi_articulation.cpp" \
   "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
   "${ROOT_DIR}/src/midi/midi_companion_settings.cpp" \

@@ -29,6 +29,13 @@ public:
             return false;
         }
 
+        const uint32_t eventEpoch = pendingEpoch(event.target).loadAcquire();
+        if (event.type == MusicalEventType::NoteOn &&
+            eventEpoch != acknowledgedEpoch(event.target).loadAcquire()) {
+            droppedNoteOn_.incrementRelaxed();
+            return false;
+        }
+
         const uint32_t head = head_.loadRelaxed();
         const uint32_t next = (head + 1u) % kStorageSize;
         if (next == tail_.loadAcquire()) {
@@ -42,6 +49,7 @@ public:
         }
 
         events_[head] = event;
+        eventEpochs_[head] = eventEpoch;
         head_.storeRelease(next);
         return true;
     }
@@ -52,13 +60,15 @@ public:
             if (tail == head_.loadAcquire()) return false;
 
             event = events_[tail];
+            const uint32_t eventEpoch = eventEpochs_[tail];
             tail_.storeRelease((tail + 1u) % kStorageSize);
 
             // A NoteOn may have been queued immediately before the user removed
             // the MIDI side. Re-check only NoteOn at the consumer boundary;
             // NoteOff/AllNotesOff must still pass for cleanup.
             if (event.type == MusicalEventType::NoteOn &&
-                !GroovePuterOutput::allowsMidiNoteOn(event)) {
+                (!GroovePuterOutput::allowsMidiNoteOn(event) ||
+                 eventEpoch != pendingEpoch(event.target).loadAcquire())) {
                 continue;
             }
             return true;
@@ -73,18 +83,22 @@ public:
         const uint32_t dxEpoch = pendingDxEpoch_.loadAcquire();
         if (synthAEpoch != consumedSynthAEpoch_) {
             consumedSynthAEpoch_ = synthAEpoch;
+            acknowledgedSynthAEpoch_.storeRelease(synthAEpoch);
             mask |= kSynthAMask;
         }
         if (synthBEpoch != consumedSynthBEpoch_) {
             consumedSynthBEpoch_ = synthBEpoch;
+            acknowledgedSynthBEpoch_.storeRelease(synthBEpoch);
             mask |= kSynthBMask;
         }
         if (drumsEpoch != consumedDrumsEpoch_) {
             consumedDrumsEpoch_ = drumsEpoch;
+            acknowledgedDrumsEpoch_.storeRelease(drumsEpoch);
             mask |= kDrumsMask;
         }
         if (dxEpoch != consumedDxEpoch_) {
             consumedDxEpoch_ = dxEpoch;
+            acknowledgedDxEpoch_.storeRelease(dxEpoch);
             mask |= kDxMask;
         }
 
@@ -114,6 +128,26 @@ public:
     }
 
 private:
+    const MidiRealtimeWord& pendingEpoch(MusicalEventTarget target) const {
+        switch (target) {
+            case MusicalEventTarget::SynthA: return pendingSynthAEpoch_;
+            case MusicalEventTarget::SynthB: return pendingSynthBEpoch_;
+            case MusicalEventTarget::Drums: return pendingDrumsEpoch_;
+            case MusicalEventTarget::Dx: return pendingDxEpoch_;
+        }
+        return pendingSynthAEpoch_;
+    }
+
+    const MidiRealtimeWord& acknowledgedEpoch(MusicalEventTarget target) const {
+        switch (target) {
+            case MusicalEventTarget::SynthA: return acknowledgedSynthAEpoch_;
+            case MusicalEventTarget::SynthB: return acknowledgedSynthBEpoch_;
+            case MusicalEventTarget::Drums: return acknowledgedDrumsEpoch_;
+            case MusicalEventTarget::Dx: return acknowledgedDxEpoch_;
+        }
+        return acknowledgedSynthAEpoch_;
+    }
+
     static uint32_t packedOutputDisableEpochs() {
         return static_cast<uint32_t>(GroovePuterOutput::midiDisableEpoch(
                    GroovePuterOutput::Track::SynthA)) |
@@ -141,12 +175,17 @@ private:
     }
 
     MusicalEvent events_[kStorageSize]{};
+    uint32_t eventEpochs_[kStorageSize]{};
     MidiRealtimeWord head_;
     MidiRealtimeWord tail_;
     MidiRealtimeWord pendingSynthAEpoch_;
     MidiRealtimeWord pendingSynthBEpoch_;
     MidiRealtimeWord pendingDrumsEpoch_;
     MidiRealtimeWord pendingDxEpoch_;
+    MidiRealtimeWord acknowledgedSynthAEpoch_;
+    MidiRealtimeWord acknowledgedSynthBEpoch_;
+    MidiRealtimeWord acknowledgedDrumsEpoch_;
+    MidiRealtimeWord acknowledgedDxEpoch_;
     MidiRealtimeWord droppedNoteOn_;
     MidiRealtimeWord droppedCritical_;
     uint32_t consumedSynthAEpoch_{0};

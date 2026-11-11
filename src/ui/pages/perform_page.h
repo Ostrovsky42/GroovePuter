@@ -32,6 +32,7 @@ enum class PerformInputRow : uint8_t {
     LeadStyle,      // LEAD STYLE: lead interpretation (PLAY AS LEAD)
     // --- LOOPER ---
     Looper,         // LOOPER (Enter = Z)
+    RecordSource,   // REC: KEYS / SOUND
     LoopBars,       // LOOP BARS
     LoopChannel,    // LOOP CH (0 = DX ROUTE)
     NoteLength,     // NOTE LENGTH

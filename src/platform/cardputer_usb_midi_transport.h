@@ -182,5 +182,6 @@ private:
 // The link is write-only: enabling it is not evidence that anything is
 // listening.
 void setCardputerDinMidiEnabled(bool enabled);
+
 bool cardputerDinMidiEnabled();
 

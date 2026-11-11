@@ -143,6 +143,23 @@ void testCancelReleasesOnTheSameChannel() {
     rig.usb.assertBalanced();
 }
 
+void testLoopChannelChangeKeepsOriginalNoteOffChannel() {
+    Rig rig;
+    ResponsePlayer player;
+    player.setRouter(&rig.router);
+    player.setWireChannel(5);
+    assert(player.start(twoNotes(), 0, kSixteenth, true));
+    player.service(0);
+    player.setWireChannel(12);
+    player.service(4 * kSixteenth);
+    player.service(8 * kSixteenth);
+    for (FakeWire* wire : {&rig.usb, &rig.din}) {
+        assert(wire->count(true, 4) == 2 && wire->count(false, 4) == 2);
+        assert(wire->count(true, 11) == 0 && wire->count(false, 11) == 0);
+        wire->assertBalanced();
+    }
+}
+
 // Default (follow DX): exactly the phase-1/2 output, on the DX route.
 void testFollowDxIsThePhaseTwoOutput() {
     Rig rig;
@@ -280,6 +297,7 @@ void testListenerChannelSetting() {
 int main() {
     testChannelFivePlaysOnChannelFiveBothWires();
     testCancelReleasesOnTheSameChannel();
+    testLoopChannelChangeKeepsOriginalNoteOffChannel();
     testFollowDxIsThePhaseTwoOutput();
     testSharedNoteKeepsOtherOwner();
     testFollowDxSharesNoteSafely();
