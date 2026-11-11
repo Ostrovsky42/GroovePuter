@@ -104,6 +104,18 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_keyboard_config_migration.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard_config.cpp" \
+  -o "${BUILD_DIR}/test_performance_keyboard_config_migration"
+
+"${BUILD_DIR}/test_performance_keyboard_config_migration"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_external_note_queue.cpp" \
   -o "${BUILD_DIR}/test_external_note_queue"
 

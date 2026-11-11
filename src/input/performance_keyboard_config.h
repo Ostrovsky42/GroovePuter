@@ -111,11 +111,34 @@ public:
     static constexpr std::size_t kLegacyV1RecordSize = 21;
     static constexpr std::size_t kCurrentRecordSize = 36;
     static constexpr uint8_t kCurrentVersion = 2;
+    // keyboard_v2 NVS key: same 36-byte layout and field order as the record
+    // under keyboard_v1, with its own format version byte (3) so a v2 blob can
+    // never be mistaken for a v1 one. Values are stored as plain numbers.
+    static constexpr std::size_t kV2RecordSize = 36;
+    static constexpr uint8_t kV2Version = 3;
 
     static bool encode(const PerformanceKeyboardConfig& config,
                        uint8_t* out, std::size_t capacity);
     static bool decode(const uint8_t* bytes, std::size_t size,
                        PerformanceKeyboardConfig& out);
+    static bool encodeV2(const PerformanceKeyboardConfig& config,
+                         uint8_t* out, std::size_t capacity);
+    // Unknown enum values / ratchet counts become field defaults; ranges and
+    // cross-field rules still reject the record.
+    static bool decodeV2(const uint8_t* bytes, std::size_t size,
+                         PerformanceKeyboardConfig& out);
 };
+
+enum class PerformanceKeyboardConfigSource : uint8_t {
+    None,
+    V2,
+    MigratedV1,
+};
+
+// Pure load policy (host-testable, no allocation): try the keyboard_v2 blob,
+// else migrate the keyboard_v1 blob. Either pointer may be null / size 0.
+PerformanceKeyboardConfigSource resolvePersistedKeyboardConfig(
+    const uint8_t* v2, std::size_t v2Size, const uint8_t* v1,
+    std::size_t v1Size, PerformanceKeyboardConfig& out);
 
 #endif  // GROOVEPUTER_PERFORMANCE_KEYBOARD_CONFIG_H

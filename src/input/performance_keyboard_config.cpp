@@ -48,11 +48,15 @@ bool decodeLegacy(const uint8_t* bytes, PerformanceKeyboardConfig& out) {
 
 }  // namespace
 
-bool PerformanceKeyboardConfigCodec::encode(
-    const PerformanceKeyboardConfig& c, uint8_t* out, std::size_t capacity) {
+namespace {
+
+bool encodeRecord(const PerformanceKeyboardConfig& c, uint8_t version,
+                  uint8_t* out, std::size_t capacity) {
+    constexpr std::size_t kCurrentRecordSize =
+        PerformanceKeyboardConfigCodec::kCurrentRecordSize;
     if (out == nullptr || capacity < kCurrentRecordSize ||
         !validPerformanceKeyboardConfig(c)) return false;
-    out[0] = kCurrentVersion;
+    out[0] = version;
     const uint8_t fields[18] = {
         static_cast<uint8_t>(c.role), static_cast<uint8_t>(c.leadMode),
         static_cast<uint8_t>(c.arpPitchSource),
@@ -86,22 +90,9 @@ bool PerformanceKeyboardConfigCodec::encode(
     return true;
 }
 
-bool PerformanceKeyboardConfigCodec::decode(
-    const uint8_t* bytes, std::size_t size, PerformanceKeyboardConfig& out) {
-    if (bytes == nullptr) return false;
-    if (size == kLegacyRecordSize) return decodeLegacy(bytes, out);
-    if (size == kLegacyV1RecordSize && bytes[0] == 1u) {
-        const uint16_t stored = static_cast<uint16_t>(bytes[19] |
-            (static_cast<uint16_t>(bytes[20]) << 8u));
-        if (crc16(bytes, 19u) != stored) return false;
-        return decodeLegacy(bytes + 1u, out);
-    }
-    if (size != kCurrentRecordSize || bytes[0] != kCurrentVersion) return false;
-    const uint16_t stored = static_cast<uint16_t>(bytes[34] |
-        (static_cast<uint16_t>(bytes[35]) << 8u));
-    if (crc16(bytes, kCurrentRecordSize - 2u) != stored) return false;
-
-    PerformanceKeyboardConfig candidate{};
+// Fills every field of a 36-byte record (version byte already checked).
+// Returns false only for structurally bad bytes (boolean flags).
+bool decodeRecordFields(const uint8_t* bytes, PerformanceKeyboardConfig& candidate) {
     if (!decodeLegacyFields(bytes + 1, candidate)) return false;
     candidate.ratchetCount = bytes[19];
     candidate.euclideanLength = bytes[20];
@@ -118,6 +109,90 @@ bool PerformanceKeyboardConfigCodec::decode(
     candidate.mutationSkipPercent = bytes[31];
     candidate.mutationOctaveJumpPercent = bytes[32];
     candidate.mutationDeviatePercent = bytes[33];
+    return true;
+}
+
+// v2 forward tolerance: a value this firmware does not know (e.g. an enum
+// appended by a newer release) falls back to that field's default instead of
+// rejecting the whole record. Ranges and cross-field rules still go through
+// validPerformanceKeyboardConfig.
+void defaultUnknownValues(PerformanceKeyboardConfig& c) {
+    const PerformanceKeyboardConfig d{};
+    using namespace GroovePuterPerformance;
+    if (!(c.role < PerformanceRole::Count)) c.role = d.role;
+    if (!(c.leadMode < LeadMode::Count)) c.leadMode = d.leadMode;
+    if (!(c.arpPitchSource < ArpPitchSource::Count)) c.arpPitchSource = d.arpPitchSource;
+    if (!(c.harmonyChangePolicy < HarmonyChangePolicy::Count))
+        c.harmonyChangePolicy = d.harmonyChangePolicy;
+    if (!(c.arpDirection < PerformanceArpDirection::Count)) c.arpDirection = d.arpDirection;
+    if (!(c.arpRate < PerformanceRate::Count)) c.arpRate = d.arpRate;
+    if (!(c.chordMode < PerformanceChordMode::Count)) c.chordMode = d.chordMode;
+    if (!(c.chordSpread < PerformanceSpread::Count)) c.chordSpread = d.chordSpread;
+    if (!(c.voiceLeading < PerformanceVoiceLeading::Count)) c.voiceLeading = d.voiceLeading;
+    if (!(c.scale < PerformanceScale::Count)) c.scale = d.scale;
+    if (!(c.strumDirection < PerformanceStrumDirection::Count))
+        c.strumDirection = d.strumDirection;
+    if (!(c.voiceMode < PerformanceVoiceMode::Count)) c.voiceMode = d.voiceMode;
+    if (!(c.target <= MusicalEventTarget::Dx)) c.target = d.target;
+    if (c.ratchetCount < 1 || c.ratchetCount > 4) c.ratchetCount = d.ratchetCount;
+}
+
+}  // namespace
+
+bool PerformanceKeyboardConfigCodec::encode(
+    const PerformanceKeyboardConfig& c, uint8_t* out, std::size_t capacity) {
+    return encodeRecord(c, kCurrentVersion, out, capacity);
+}
+
+bool PerformanceKeyboardConfigCodec::encodeV2(
+    const PerformanceKeyboardConfig& c, uint8_t* out, std::size_t capacity) {
+    return encodeRecord(c, kV2Version, out, capacity);
+}
+
+bool PerformanceKeyboardConfigCodec::decodeV2(
+    const uint8_t* bytes, std::size_t size, PerformanceKeyboardConfig& out) {
+    if (bytes == nullptr || size != kV2RecordSize || bytes[0] != kV2Version)
+        return false;
+    const uint16_t stored = static_cast<uint16_t>(bytes[34] |
+        (static_cast<uint16_t>(bytes[35]) << 8u));
+    if (crc16(bytes, kV2RecordSize - 2u) != stored) return false;
+    PerformanceKeyboardConfig candidate{};
+    if (!decodeRecordFields(bytes, candidate)) return false;
+    defaultUnknownValues(candidate);
+    if (!validPerformanceKeyboardConfig(candidate)) return false;
+    out = candidate;
+    return true;
+}
+
+PerformanceKeyboardConfigSource resolvePersistedKeyboardConfig(
+    const uint8_t* v2, std::size_t v2Size, const uint8_t* v1,
+    std::size_t v1Size, PerformanceKeyboardConfig& out) {
+    if (v2 != nullptr && v2Size != 0 &&
+        PerformanceKeyboardConfigCodec::decodeV2(v2, v2Size, out))
+        return PerformanceKeyboardConfigSource::V2;
+    if (v1 != nullptr && v1Size != 0 &&
+        PerformanceKeyboardConfigCodec::decode(v1, v1Size, out))
+        return PerformanceKeyboardConfigSource::MigratedV1;
+    return PerformanceKeyboardConfigSource::None;
+}
+
+bool PerformanceKeyboardConfigCodec::decode(
+    const uint8_t* bytes, std::size_t size, PerformanceKeyboardConfig& out) {
+    if (bytes == nullptr) return false;
+    if (size == kLegacyRecordSize) return decodeLegacy(bytes, out);
+    if (size == kLegacyV1RecordSize && bytes[0] == 1u) {
+        const uint16_t stored = static_cast<uint16_t>(bytes[19] |
+            (static_cast<uint16_t>(bytes[20]) << 8u));
+        if (crc16(bytes, 19u) != stored) return false;
+        return decodeLegacy(bytes + 1u, out);
+    }
+    if (size != kCurrentRecordSize || bytes[0] != kCurrentVersion) return false;
+    const uint16_t stored = static_cast<uint16_t>(bytes[34] |
+        (static_cast<uint16_t>(bytes[35]) << 8u));
+    if (crc16(bytes, kCurrentRecordSize - 2u) != stored) return false;
+
+    PerformanceKeyboardConfig candidate{};
+    if (!decodeRecordFields(bytes, candidate)) return false;
     if (!validPerformanceKeyboardConfig(candidate)) return false;
     out = candidate;
     return true;
