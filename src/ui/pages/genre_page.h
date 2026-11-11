@@ -20,6 +20,7 @@ class GenrePage : public IPage {
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override { return title_; }
   void setVisualStyle(VisualStyle style) override { style_ = style; }
+  void onExit() override;
 
  private:
   enum class FocusRow : uint8_t {
