@@ -383,6 +383,18 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_snapshot_miss_contract.cpp" \
+  -o "${BUILD_DIR}/test_snapshot_miss_contract"
+
+# T3 reads GroovePuter.ino relative to the repo root.
+(cd "${ROOT_DIR}" && "${BUILD_DIR}/test_snapshot_miss_contract")
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_routing.cpp" \
   -o "${BUILD_DIR}/test_smf_routing"
 

@@ -21,6 +21,10 @@ struct ProjectTransportBlockSnapshot {
     // Consumers use this only on an epoch transition; it remains stable for the
     // lifetime of that playing session.
     bool restartedFromBeginning{true};
+    // Set only by ProjectTransportTimeline::snapshot() when trySnapshot() missed
+    // (seqlock writer mid-update): the state is UNKNOWN, not "no transport".
+    // Fits in existing padding; trySnapshot() never sets it.
+    bool readMissed{false};
     uint32_t blockSequence{0};
     uint16_t blockFrames{0};
     uint32_t sampleRate{0};
@@ -162,7 +166,10 @@ public:
 
     ProjectTransportBlockSnapshot snapshot() const {
         ProjectTransportBlockSnapshot out{};
-        return trySnapshot(out) ? out : ProjectTransportBlockSnapshot{};
+        if (trySnapshot(out)) return out;
+        ProjectTransportBlockSnapshot missed{};
+        missed.readMissed = true;
+        return missed;
     }
 
     void resetPublisher() {

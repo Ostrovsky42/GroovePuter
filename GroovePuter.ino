@@ -784,8 +784,14 @@ static void updatePerformanceHarmonyContext() {
   GroovePuterPerformance::HarmonyPlaybackPosition position{};
   const auto* origin = g_miniAcid ? g_miniAcid->generatedSynthAOrigin() : nullptr;
   const auto* recipe = g_miniAcid ? g_miniAcid->generatedPhraseRecipe() : nullptr;
-  if (g_miniAcid && origin && recipe &&
-      g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+  HarmonyCapture songCapture = HarmonyCapture::Invalid;
+  if (g_miniAcid && origin && recipe) {
+    songCapture = g_miniAcid->tryCaptureHarmonyPlaybackPosition(position);
+    // A seqlock miss is "unknown", not "no harmony": keep the previous PERFORM
+    // harmony context untouched instead of clearing it for one loop pass.
+    if (songCapture == HarmonyCapture::Unavailable) return;
+  }
+  if (songCapture == HarmonyCapture::Valid) {
     if (origin->common.harmonicAuthority ==
         GroovePuterHarmony::HarmonicAuthority::Graph) {
       using GroovePuterHarmony::SongHarmonicParticipant;
@@ -835,10 +841,14 @@ static void updatePerformanceHarmonyContext() {
   } else if (g_miniAcid && !g_miniAcid->songModeEnabled()) {
     const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
     GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
-    if (patternOrigin &&
-        g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition))
-      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
-          *patternOrigin, patternPosition, snapshot);
+    if (patternOrigin) {
+      const HarmonyCapture patternCapture =
+          g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition);
+      if (patternCapture == HarmonyCapture::Unavailable) return;  // keep state
+      if (patternCapture == HarmonyCapture::Valid)
+        (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+            *patternOrigin, patternPosition, snapshot);
+    }
   }
   g_performanceHarmonyBridge.update(g_performanceKeyboard, snapshot);
 }
@@ -876,7 +886,9 @@ static void collectCallResponseHarmony(
     GroovePuterPerformance::HarmonyPlaybackPosition position{};
     const auto* origin = g_miniAcid->generatedSynthAOrigin();
     const auto* recipe = g_miniAcid->generatedPhraseRecipe();
-    if (origin && recipe && g_miniAcid->tryCaptureHarmonyPlaybackPosition(position)) {
+    if (origin && recipe &&
+        g_miniAcid->tryCaptureHarmonyPlaybackPosition(position) ==
+            HarmonyCapture::Valid) {
       using GroovePuterHarmony::SongHarmonicParticipant;
       SongHarmonicParticipant participants[
           GroovePuterHarmony::kMaxSongHarmonyParticipants]{};
@@ -946,7 +958,8 @@ static void collectCallResponseHarmony(
       const auto* patternOrigin = g_miniAcid->generatedPatternHarmonyOrigin();
       GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
       if (patternOrigin &&
-          g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition)) {
+          g_miniAcid->tryCapturePatternHarmonyPlaybackPosition(patternPosition) ==
+              HarmonyCapture::Valid) {
         for (uint8_t beat = 0; beat < beats; ++beat) {
           const int64_t target = static_cast<int64_t>(answerStartStep) + beat * kStrongBeatSteps;
           const int64_t offset = target - static_cast<int64_t>(patternPosition.absoluteStep);
