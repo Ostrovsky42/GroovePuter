@@ -1,6 +1,7 @@
 // LOOPER > MELODY: the pure converter loopToMelody() (src/input/looper_melody_export.h).
 // Pitch and length as played, shadow / held / muted-layer notes skipped, cut at the pass
-// end, 1/2/4/8 bars, overflow, sorted and validated.
+// end, 1/2/4/8 bars, overflow, sorted and validated. The loop is on ticks (6 to a step),
+// the Melody on 1/16: a triplet loop is rounded to steps, same pitch + step exported once.
 #include <cstdio>
 #include <cstdlib>
 
@@ -62,6 +63,23 @@ void testSkips() {
     LoopLayer empty;
     empty.reset();
     CHECK(loopToMelody(empty, 16, 1, 0, out) == MelodyExportResult::Empty);
+}
+
+void testPendingPickupExport() {
+    LoopLayer layer;
+    layer.reset();
+    layer.beginUnit();
+    put(layer, 1, 0, 60, 100, 2, 1, 16);
+    CHECK(layer.noteOn(2, 0, 127, 90, 15.95, 16) == LoopLayer::Write::Stored);
+    CHECK(layer.noteOff(2, 15.98, 16));
+    CHECK(layer.note(1).pickup() && layer.note(1).note() == 127);
+    RuntimeSynthEventBuffer out;
+    CHECK(loopToMelody(layer, 16, 1, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 1 && out.events[0].note == 60);
+    layer.closePass(16, true);
+    CHECK(!layer.note(1).pickup() && layer.note(1).note() == 127);
+    CHECK(loopToMelody(layer, 16, 1, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 2 && out.events[0].note == 127 && out.events[1].note == 60);
 }
 
 void testCutAtPassEnd() {
@@ -147,15 +165,92 @@ void testOverflow() {
     CHECK(loopToMelody(full, 128, 8, 0, out) == MelodyExportResult::Overflow);
     CHECK(out.count == 0);
 }
+
+// A triplet loop (ticks) into the 1/16 Melody: onsets to the nearest step, the
+// length at least one step, two notes of one pitch on one step exported once.
+void testTripletLoop() {
+    // 1/16T, one pitch: onsets every 2/3 step (ticks 0, 4, 8, 12 ...) round to
+    // steps 0, 1, 1, 2, 3, 3, 4 ...: two of every three share a step with a neighbour.
+    LoopLayer layer;
+    layer.reset();
+    for (int k = 0; k < 24; ++k) {
+        CHECK(layer.noteOn(1, 0, 60, 100, k * 2.0 / 3.0, 16) == LoopLayer::Write::Stored);
+        CHECK(layer.noteOff(1, k * 2.0 / 3.0 + 1.0 / 3.0, 16));
+    }
+    RuntimeSynthEventBuffer out;
+    CHECK(loopToMelody(layer, 16, 1, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 16 && RuntimePhraseEdit::validate(out));  // one note a step
+    for (uint16_t i = 0; i < out.count; ++i) {
+        CHECK(out.events[i].startTick == i * 24u && out.events[i].note == 60);
+        CHECK(out.events[i].durationSubticks == 384u);  // at least one step, cut at the next
+    }
+    // 1/16T arp over four pitches: nothing is merged (different pitches may
+    // share a step), every onset on a whole step, sorted, inside the bar.
+    LoopLayer arp;
+    arp.reset();
+    for (int k = 0; k < 24; ++k) {
+        const uint8_t pitch = static_cast<uint8_t>(60 + (k % 4) * 3);
+        const uint16_t tag = static_cast<uint16_t>(0x4000u | pitch);
+        CHECK(arp.noteOn(tag, 0, pitch, 90, k * 2.0 / 3.0, 16) == LoopLayer::Write::Stored);
+        CHECK(arp.noteOff(tag, k * 2.0 / 3.0 + 1.0 / 3.0, 16));
+    }
+    CHECK(loopToMelody(arp, 16, 1, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 24 && RuntimePhraseEdit::validate(out));
+    for (uint16_t i = 0; i < out.count; ++i) {
+        CHECK(out.events[i].startTick % 24u == 0 && out.events[i].startTick < 384u);
+        CHECK(out.events[i].durationSubticks >= 384u && out.events[i].durationSubticks % 384u == 0);
+        CHECK(out.events[i].startTick * 16u + out.events[i].durationSubticks <= 384u * 16u);
+        if (i > 0) CHECK(out.events[i - 1u].startTick <= out.events[i].startTick);
+    }
+    // The last triplet note (tick 92 = step 15.33) stays on step 15; a note in
+    // the last half step (tick 94 = step 15.67) stays on the last step too.
+    LoopLayer tail;
+    tail.reset();
+    CHECK(tail.noteOn(1, 0, 70, 100, 15.0 + 2.0 / 3.0, 16) == LoopLayer::Write::Stored);
+    CHECK(tail.noteOff(1, 16.0, 16));
+    CHECK(tail.note(0).onsetTicks() == 94);
+    CHECK(loopToMelody(tail, 16, 1, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 1 && out.events[0].startTick == 15u * 24u && out.events[0].durationSubticks == 384u);
+    // Lengths round by the note end: ticks 2..11 (0.33..1.83 steps) = steps 0..2.
+    LoopLayer lengths;
+    lengths.reset();
+    CHECK(lengths.noteOn(1, 0, 50, 100, 2.0 / 6.0, 16) == LoopLayer::Write::Stored);
+    CHECK(lengths.noteOff(1, 11.0 / 6.0, 16));
+    CHECK(lengths.noteOn(2, 0, 52, 100, 4.0, 16) == LoopLayer::Write::Stored);
+    CHECK(lengths.noteOff(2, 4.0 + 1.0 / 6.0, 16));  // one tick: one step in the Melody
+    CHECK(loopToMelody(lengths, 16, 1, 0, out) == MelodyExportResult::Ok && out.count == 2);
+    CHECK(out.events[0].startTick == 0 && out.events[0].durationSubticks == 2u * 384u);
+    CHECK(out.events[1].startTick == 4u * 24u && out.events[1].durationSubticks == 384u);
+    // 8 bars of 1/16T = 192 notes: over the Melody's 128 events when the
+    // pitches differ, refused atomically; one pitch collapses to 128 steps.
+    LoopLayer full;
+    full.reset();
+    for (int k = 0; k < 192; ++k) {
+        const uint8_t pitch = static_cast<uint8_t>(40 + k % 7);
+        const uint16_t tag = static_cast<uint16_t>(0x4000u | pitch);
+        CHECK(full.noteOn(tag, 0, pitch, 90, k * 2.0 / 3.0, 128) == LoopLayer::Write::Stored);
+        CHECK(full.noteOff(tag, k * 2.0 / 3.0 + 1.0 / 3.0, 128));
+    }
+    CHECK(loopToMelody(full, 128, 8, 0, out) == MelodyExportResult::Overflow && out.count == 0);
+    full.reset();
+    for (int k = 0; k < 192; ++k) {
+        CHECK(full.noteOn(1, 0, 60, 90, k * 2.0 / 3.0, 128) == LoopLayer::Write::Stored);
+        CHECK(full.noteOff(1, k * 2.0 / 3.0 + 1.0 / 3.0, 128));
+    }
+    CHECK(loopToMelody(full, 128, 8, 0, out) == MelodyExportResult::Ok);
+    CHECK(out.count == 128 && RuntimePhraseEdit::validate(out));
+}
 }  // namespace
 
 int main() {
     testBasic();
     testSkips();
+    testPendingPickupExport();
     testCutAtPassEnd();
     testBarLengths();
     testSamePitchAndDuplicates();
     testOverflow();
+    testTripletLoop();
     std::printf("looper melody export: PASS (%d checks)\n", gChecks);
     return 0;
 }
