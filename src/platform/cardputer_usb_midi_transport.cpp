@@ -27,6 +27,7 @@
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
+#include "src/midi/smf_project_gate_policy.h"
 #include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
@@ -205,6 +206,9 @@ struct MidiDispatchDiagnostics {
     uint32_t smfMaxNoteOnLatenessUs{0};
     uint32_t smfLateNoteOffSent{0};
     uint32_t smfTransportEpochDrops{0};
+    // NoteOn dropped because the transport snapshot stayed unreadable (seqlock
+    // miss) and the epoch was never verified. Not an epoch change.
+    uint32_t smfSnapshotMissDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
     uint32_t smfTransportRecoveries{0};
@@ -792,11 +796,39 @@ bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
     return false;
 }
 
-bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
+// Policy lives in smf_project_gate_policy.h. A seqlock miss is "unknown", not
+// STOP: only a NoteOn that was never verified is dropped, and under its own
+// counter. NoteOff and SPP never wait for or get dropped by a miss.
+SmfProjectGateResult projectSmfGate(const ScheduledSmfMidiEvent& event,
+                                    SmfGatePhase phase,
+                                    bool verifiedCurrent) {
+    if (event.projectTransportEpoch == 0) {
+        SmfProjectGateResult original;
+        original.verifiedCurrent = true;
+        return original;
+    }
+    return resolveSmfProjectGate(event.type, phase, verifiedCurrent, [&]() {
+        GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+        const bool ok =
+            GroovePuterMidi::projectTransportTimeline().trySnapshot(transport);
+        return smfProjectGateClassify(
+            ok,
+            transport.valid,
+            transport.playing,
+            ok && scheduledSmfMidiEventTransportEpochIsCurrent(
+                      event, transport.transportEpoch));
+    });
+}
+
+bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event,
+                                  bool& verifiedCurrent,
+                                  bool& missDrop) {
     if (event.projectTransportEpoch == 0) return true;
-    GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
-    return GroovePuterMidi::projectTransportTimeline().trySnapshot(transport) &&
-           GroovePuterMidi::projectSmfNoteOnStillCurrent(event, transport);
+    const SmfProjectGateResult gate =
+        projectSmfGate(event, SmfGatePhase::Late, verifiedCurrent);
+    verifiedCurrent = gate.verifiedCurrent;
+    missDrop = gate.missDrop;
+    return gate.action == SmfProjectGateAction::Dispatch;
 }
 
 void logDiagnosticsIfDue() {
@@ -841,7 +873,7 @@ void logDiagnosticsIfDue() {
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
-        "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
+        "smfEpochDrop=%u smfMissDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
         "transportFail=%u tsRetry=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -872,6 +904,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfMaxNoteOnLatenessUs),
         static_cast<unsigned>(g_diagnostics.smfLateNoteOffSent),
         static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
+        static_cast<unsigned>(g_diagnostics.smfSnapshotMissDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
         static_cast<unsigned>(g_diagnostics.smfTransportRecoveries),
@@ -1006,6 +1039,10 @@ void midiDispatchTask(void*) {
     uint8_t smfFailedAttempts = 0;
     uint32_t lastFairnessYieldMs = millis();
     uint32_t pendingSmfLatenessUs = 0;
+    // Stack flags of the loop (no class state): the pending event's epoch was
+    // seen current by an earlier read; last late check dropped on a miss.
+    bool pendingSmfEpochVerified = false;
+    bool pendingSmfMissDrop = false;
 
     // Any wait in this loop gives CPU0 to the idle task, so it also resets
     // the fairness budget below (no extra 1 ms sleep right after a wait).
@@ -1018,6 +1055,8 @@ void midiDispatchTask(void*) {
         hasPendingSmf = false;
         smfFailedAttempts = 0;
         pendingSmfLatenessUs = 0;
+        pendingSmfEpochVerified = false;
+        pendingSmfMissDrop = false;
     };
 
     while (true) {
@@ -1163,15 +1202,17 @@ void midiDispatchTask(void*) {
         }
 
         if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
-            GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
-            if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
-                blockFor(pdMS_TO_TICKS(1));
-                continue;
-            }
-            if (!transport.valid || !transport.playing ||
-                !scheduledSmfMidiEventTransportEpochIsCurrent(
-                    pendingSmf, transport.transportEpoch)) {
-                ++g_diagnostics.smfTransportEpochDrops;
+            // A snapshot miss (seqlock) is "unknown", not STOP: no sleep, no
+            // `continue`, nothing else waits. Only a definite answer drops.
+            const SmfProjectGateResult gate = projectSmfGate(
+                pendingSmf, SmfGatePhase::Early, pendingSmfEpochVerified);
+            pendingSmfEpochVerified = gate.verifiedCurrent;
+            if (gate.action == SmfProjectGateAction::DropStale) {
+                if (gate.missDrop) {
+                    ++g_diagnostics.smfSnapshotMissDrops;
+                } else {
+                    ++g_diagnostics.smfTransportEpochDrops;
+                }
                 clearPendingSmf();
                 continue;
             }
@@ -1382,10 +1423,18 @@ void midiDispatchTask(void*) {
                 ++g_diagnostics.followMuteDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
-                       !projectSmfNoteOnStillCurrent(pendingSmf)) {
+                       !projectSmfNoteOnStillCurrent(
+                           pendingSmf, pendingSmfEpochVerified,
+                           pendingSmfMissDrop)) {
                 // Stop/Restart can happen during the final <=1.5 ms busy-wait.
                 // Recheck the live transport immediately before the USB write.
-                ++g_diagnostics.smfTransportEpochDrops;
+                // A seqlock miss that could not be verified is counted apart
+                // from a real epoch change.
+                if (pendingSmfMissDrop) {
+                    ++g_diagnostics.smfSnapshotMissDrops;
+                } else {
+                    ++g_diagnostics.smfTransportEpochDrops;
+                }
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 if (!g_smfQueue->recordDispatched(pendingSmf)) {
