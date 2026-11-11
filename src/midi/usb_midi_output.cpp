@@ -1097,6 +1097,23 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
     auto* cell = owners_.open(channel, note);
     if (cell == nullptr) return false;
 
+    if (cell->wire > 0) {
+        if (cell->wire > cell->smf) {
+            // Another owner (PERFORM/Pattern) already sounds this note. Never
+            // cut it and never stack a second NoteOn: join without a write.
+            if (cell->smf < 255) ++cell->smf;
+            if (cell->wire < 255) ++cell->wire;
+            return true;
+        }
+        // Only SMF owners sound it: retrigger with NoteOff first so the
+        // receiver never sees ON ON. A refused NoteOff changes nothing.
+        if (!transport_.sendNoteOff(channel, note, 0)) return false;
+        transport_.flush();
+        // The wire is silent now; keep the books honest before the NoteOn so
+        // a refused NoteOn leaves the owners matching the receiver.
+        cell->wire = 0;
+    }
+
     if (!transport_.sendNoteOn(channel, note, velocity)) {
         owners_.prune();
         return false;
@@ -1104,7 +1121,9 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
     transport_.flush();
 
     if (cell->smf < 255) ++cell->smf;
-    if (cell->wire < 255) ++cell->wire;
+    // After a retrigger every owner is SMF again: wire follows smf.
+    cell->wire = cell->wire == 0 ? cell->smf
+                                 : static_cast<uint8_t>(cell->wire < 255 ? cell->wire + 1 : 255);
     return true;
 }
 
