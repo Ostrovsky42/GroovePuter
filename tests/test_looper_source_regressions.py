@@ -37,16 +37,29 @@ for name in ("looper.h", "looper_layer.h", "looper_clock.h"):
         assert not re.search(banned, code), f"{name}: {banned}"
 
 layer = read("src/input/looper_layer.h")
-# BARS 8 / 192 events: 4-byte events (onset 7 bits), the open table's 16-bit
-# pool index, passes of more than 32 notes played as consecutive plans.
+# BARS 8 / 192 events on the tick grid: 5-byte events (onset and length 10
+# bits, 6 ticks to a step, 768 to 8 bars), the open table's 16-bit pool index,
+# passes of more than 32 notes played as consecutive plans (LoopPlan, ticks).
 assert "kLoopCapacity = 192" in layer
 assert "kMaxLoopSteps = 128" in layer
-assert 'static_assert(sizeof(LoopNote) == 4' in layer
+assert "kTicksPerStep = 6" in layer and "kMaxLoopTicks = 768" in layer
+assert 'static_assert(sizeof(LoopNote) == 5' in layer
+assert "struct LoopPlan" in layer and "uint8_t buildPlan(LoopPlan& plan" in layer
+# The looper has its own tick quantization; the HELPER's stays in PhraseCapture.
+assert "PhraseCapture::quantizeOnset(" not in strip_comments(layer)
+assert "scaledAnswerNoteLength" not in strip_comments(layer)
 assert "static_assert(kLoopCapacity <= 255" in layer
 assert "kOpenIndexMask = 0x00FFu" in layer
 assert "uint8_t* nextStep = nullptr" in layer
 looper = read("src/input/looper.h")
-assert "sizeof(Looper) <= 864" in looper
+assert "sizeof(Looper) <= 1056" in looper
+# The pass plays on ticks through the player's grid entry; the HELPER entry
+# (start with a ResponsePlan) is not used by the looper.
+assert "player_->startGrid(plan.notes, plan.count, passOrigin," in looper
+assert "kTicksPerStep, true, fromTick);" in looper and "player_->start(" not in looper
+responder = read("src/input/call_response_responder.h")
+assert "bool start(const ResponsePlan& plan, uint32_t originMicros, uint32_t sixteenthMicros," in responder
+assert "static_cast<uint64_t>(unit) * sixteenthMicros / unitsPerSixteenth" in responder
 assert "bars != 1 && bars != 4 && bars != 8" in looper
 assert "bars_ == 1 ? 2 : bars_ == 2 ? 4 : bars_ == 4 ? 8 : 1" in looper
 assert "startSegment(now, position)" in looper
@@ -142,11 +155,17 @@ for line in ("Z           Loop REC/DUB", "C           Loop PLAY/STOP", "V       
              "X           Panic: HELPER+loop stop"):
     assert line in perform, line
 assert "Loop: 1-8 bars, 192 notes" in perform
+assert "Loop: 1/96 grid; triplets kept" in perform and "1/16 grid" not in perform
 assert "Loop: TO MELODY, Enter x2" in perform and "LP > MELODY" not in perform
 assert '"LOOP LENGTH IN BARS"' in page
 keys = read("src/ui/docs/keys.md")
 assert "`LOOP BARS` 1/2/4/8" in keys and "`N/192`" in keys and "`LAYER`" in keys and "`MUTE LAYER`" in keys
 assert "`TO MELODY`" in keys and "LP > MELODY" not in keys and "`LP " not in keys
+manual = read("MANUAL.md")
+for doc in (keys, manual):
+    assert "grid of 1/6 of a sixteenth" in doc and "1/16T, 1/32 and 1/8T" in doc
+    assert "`TO MELODY` still rounds every note to the 1/16 grid" in doc
+    assert "quantize note starts and ends to" not in doc
 assert "OFF/ANSWER/DUET/RIFF" in keys and "`--- HELPER ---`" in keys
 assert "LOOP: HELPER OFF FIRST" in keys
 # Phase 3: BARS keeps the notes (no LoopNotEmpty), the second layer is written.

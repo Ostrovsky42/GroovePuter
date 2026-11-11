@@ -381,7 +381,7 @@ constexpr const char* kPerformLines[] = {
     "M           Loop layer 1/2",
     "Loop: MIDI only (DX ROUTE)",
     "REC: KEYS / SOUND (INPUT)",
-    "Loop: 1/16 grid; fast notes merge",
+    "Loop: 1/96 grid; triplets kept",
     "Loop: 1-8 bars, 192 notes",
     "Loop: BARS repeats, V undo",
     "Loop: TO MELODY, Enter x2",
