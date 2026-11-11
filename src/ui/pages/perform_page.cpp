@@ -29,24 +29,15 @@ constexpr const char* kToolContextNames[] = {
 constexpr const char* kToolContextActiveNames[] = {
     "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]",
 };
-constexpr PerformanceChordMode kChordPopupModes[] = {
-    PerformanceChordMode::Off,
-    PerformanceChordMode::Major,
-    PerformanceChordMode::Minor,
-    PerformanceChordMode::Fifth,
-    PerformanceChordMode::Minor7,
-    PerformanceChordMode::Memory,
-    PerformanceChordMode::Sus2,
-    PerformanceChordMode::Sus4,
-    PerformanceChordMode::Dominant7,
-    PerformanceChordMode::Major7,
-    PerformanceChordMode::ScaleTriad,
-    PerformanceChordMode::ScaleSeventh,
-};
+// Same order as the keyboard's chord cycle; labels follow it one to one.
+constexpr const PerformanceChordMode* kChordPopupModes = PerformanceKeyboard::kChordDisplayOrder;
+constexpr std::size_t kChordPopupCount = PerformanceKeyboard::kChordDisplayCount;
 constexpr const char* kChordPopupLabels[] = {
-    "OFF", "MAJ", "MIN", "5TH", "MIN7", "MEM",
-    "SUS2", "SUS4", "7", "MAJ7", "SCALE3", "SCALE7",
+    "OFF", "SCALE3", "SCALE7", "5TH", "MIN", "MAJ",
+    "MIN7", "MEM", "SUS2", "SUS4", "7", "MAJ7",
 };
+static_assert(sizeof(kChordPopupLabels) / sizeof(kChordPopupLabels[0]) == kChordPopupCount,
+              "chord popup labels follow the display order");
 
 const char* roleName(GroovePuterPerformance::PerformanceRole role) {
     switch (role) {
@@ -182,14 +173,16 @@ const char* strumDirectionLabel(PerformanceStrumDirection direction) {
 }  // namespace
 
 void PerformPage::openChordModePopup() {
-    const uint8_t selected = static_cast<uint8_t>(keyboard_.chordMode());
-    chordModePopup_.open("CHORD MODE", static_cast<uint8_t>(
-        sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])), selected);
+    uint8_t selected = 0;
+    for (std::size_t i = 0; i < kChordPopupCount; ++i) {
+        if (kChordPopupModes[i] == keyboard_.chordMode()) { selected = static_cast<uint8_t>(i); break; }
+    }
+    chordModePopup_.open("CHORD MODE", static_cast<uint8_t>(kChordPopupCount), selected);
 }
 
 void PerformPage::applyChordModePopup() {
     const uint8_t selected = chordModePopup_.selectedIndex();
-    if (selected >= sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])) return;
+    if (selected >= kChordPopupCount) return;
     keyboard_.setChordMode(kChordPopupModes[selected]);
     char toast[32];
     std::snprintf(toast, sizeof(toast), "CHORD: %s", kChordPopupLabels[selected]);

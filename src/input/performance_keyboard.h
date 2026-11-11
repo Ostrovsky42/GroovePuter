@@ -120,6 +120,26 @@ public:
 
     void setChordMode(PerformanceChordMode mode);
     PerformanceChordMode chordMode() const { return chordMode_; }
+    // Display/cycle order of the chord modes (flash only; enum values and the NVS
+    // record keep their numbering). Diatonic chords come right after OFF.
+    static constexpr PerformanceChordMode kChordDisplayOrder[] = {
+        PerformanceChordMode::Off,
+        PerformanceChordMode::ScaleTriad,
+        PerformanceChordMode::ScaleSeventh,
+        PerformanceChordMode::Fifth,
+        PerformanceChordMode::Minor,
+        PerformanceChordMode::Major,
+        PerformanceChordMode::Minor7,
+        PerformanceChordMode::Memory,
+        PerformanceChordMode::Sus2,
+        PerformanceChordMode::Sus4,
+        PerformanceChordMode::Dominant7,
+        PerformanceChordMode::Major7,
+    };
+    static constexpr int kChordDisplayCount =
+        static_cast<int>(sizeof(kChordDisplayOrder) / sizeof(kChordDisplayOrder[0]));
+    static_assert(kChordDisplayCount == static_cast<int>(PerformanceChordMode::Count),
+                  "chord display order must list every chord mode");
     void cycleChordMode(int direction = 1);
     const char* chordModeName() const;
     void setChordInversion(uint8_t inversion);

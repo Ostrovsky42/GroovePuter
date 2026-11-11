@@ -2346,16 +2346,19 @@ void PerformanceKeyboard::setChordMode(PerformanceChordMode mode) {
     }
 }
 void PerformanceKeyboard::cycleChordMode(int direction) {
-    int next = static_cast<int>(chordMode_) + direction;
-    const int count = static_cast<int>(PerformanceChordMode::Count);
-    do {
-        while (next < 0) next += count;
-        while (next >= count) next -= count;
-        if (static_cast<PerformanceChordMode>(next) != PerformanceChordMode::Memory ||
-            chordMemoryCount_ > 0) break;
-        next += direction >= 0 ? 1 : -1;
-    } while (true);
-    setChordMode(static_cast<PerformanceChordMode>(next));
+    const int count = kChordDisplayCount;
+    int pos = 0;
+    for (int i = 0; i < count; ++i) {
+        if (kChordDisplayOrder[i] == chordMode_) { pos = i; break; }
+    }
+    const int step = direction >= 0 ? 1 : -1;
+    for (int tries = 0; tries < count; ++tries) {
+        pos = (pos + step + count) % count;
+        if (kChordDisplayOrder[pos] == PerformanceChordMode::Memory &&
+            chordMemoryCount_ == 0) continue;
+        break;
+    }
+    setChordMode(kChordDisplayOrder[pos]);
 }
 const char* PerformanceKeyboard::chordModeName() const {
     switch (chordMode_) {
