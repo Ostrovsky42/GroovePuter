@@ -108,7 +108,9 @@ int main() {
   assert(gfx.has("CHORD MODE"));
   popupSend(scan(GROOVEPUTER_DOWN));
   popupSend(key('\n'));
-  assert(keyboard.chordMode() == PerformanceChordMode::Major);
+  // One Down from OFF is the first entry of the display order: SCALE3 (0.9.23 step 2, 89eae22f);
+  // the old order had MAJ there: assert(keyboard.chordMode() == PerformanceChordMode::Major);
+  assert(keyboard.chordMode() == PerformanceChordMode::ScaleTriad);
 
   PerformPage perform(gfx, engine, keyboard);
   auto send = [&](UIEvent e) { perform.handleEvent(e); };
