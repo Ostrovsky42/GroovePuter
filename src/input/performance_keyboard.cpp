@@ -592,6 +592,10 @@ void PerformanceKeyboard::applyNearestVoiceLeading(uint8_t* notes,
         return;
     }
     std::sort(notes, notes + count);
+    // Pitch sum of the chord as built (before leading): the anchor that keeps
+    // per-voice nearest motion from walking the whole chord up or down.
+    int anchorSum = 0;
+    for (std::size_t i = 0; i < count; ++i) anchorSum += notes[i];
     const std::size_t matched = std::min(count, previousVoicingCount_);
     for (std::size_t i = 0; i < matched; ++i) {
         int best = notes[i];
@@ -606,6 +610,28 @@ void PerformanceKeyboard::applyNearestVoiceLeading(uint8_t* notes,
             }
         }
         notes[i] = static_cast<uint8_t>(best);
+    }
+    // Each voice only compares with its own predecessor, so fourth/fifth
+    // progressions gain a few semitones per chord and leave the register.
+    // Keep the chord centroid within half an octave of its as-built position
+    // by moving the whole chord an octave; ordinary leading never gets here.
+    const int n = static_cast<int>(count);
+    for (int guard = 0; guard < 8; ++guard) {
+        int sum = 0;
+        int lo = 127;
+        int hi = 0;
+        for (std::size_t i = 0; i < count; ++i) {
+            sum += notes[i];
+            lo = std::min<int>(lo, notes[i]);
+            hi = std::max<int>(hi, notes[i]);
+        }
+        if (sum - anchorSum > 6 * n && lo - 12 >= kMinNote) {
+            for (std::size_t i = 0; i < count; ++i) notes[i] = static_cast<uint8_t>(notes[i] - 12);
+        } else if (anchorSum - sum > 6 * n && hi + 12 <= kMaxNote) {
+            for (std::size_t i = 0; i < count; ++i) notes[i] = static_cast<uint8_t>(notes[i] + 12);
+        } else {
+            break;
+        }
     }
     std::sort(notes, notes + count);
 }
