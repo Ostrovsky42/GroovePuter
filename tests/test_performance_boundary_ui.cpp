@@ -395,7 +395,8 @@ int main() {
   const auto* patternOrigin = engine.generatedPatternHarmonyOrigin();
   assert(patternOrigin != nullptr);
   GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
-  assert(engine.tryCapturePatternHarmonyPlaybackPosition(patternPosition));
+  assert(engine.tryCapturePatternHarmonyPlaybackPosition(patternPosition) ==
+         HarmonyCapture::Valid);
   GroovePuterHarmony::HarmonySnapshot patternHarmony{};
   assert(GroovePuterPerformance::makePatternHarmonySnapshot(
       *patternOrigin, patternPosition, patternHarmony));
@@ -413,7 +414,9 @@ int main() {
   const int8_t savedNote = editedStep.note;
   editedStep.note = savedNote == 36 ? 37 : 36;
   GroovePuterPerformance::PatternHarmonyPlaybackPosition stalePattern{};
-  assert(!engine.tryCapturePatternHarmonyPlaybackPosition(stalePattern));
+  // A stale material version is an honest Invalid, never Unavailable.
+  assert(engine.tryCapturePatternHarmonyPlaybackPosition(stalePattern) ==
+         HarmonyCapture::Invalid);
   editedStep.note = savedNote;
   std::puts("GENRE project-scale and SOUND action feedback: PASS");
 }

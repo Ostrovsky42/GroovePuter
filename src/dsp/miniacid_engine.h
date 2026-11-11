@@ -134,6 +134,12 @@ enum class MiniAcidParamId : uint8_t {
 
 class AudioMutationGate;
 
+// Result of a control-side harmony capture. Unavailable = a seqlock reader
+// missed (transport snapshot or harmony publication was mid-update): the state
+// is UNKNOWN, so callers keep their previous harmony. Invalid = read honestly,
+// there is no usable harmony now: callers clear it. Valid = out is filled.
+enum class HarmonyCapture : uint8_t { Unavailable = 0, Invalid, Valid };
+
 class MiniAcid {
 public:
   static constexpr int kMin303Note = 24; // C1
@@ -618,10 +624,11 @@ public:
   int currentSongPosition() const;
   int songPlayheadPosition() const;
   // Control-side snapshot of the currently published Song Synth A material.
-  // Returns false while Song/page/material publication is incomplete.
-  bool tryCaptureHarmonyPlaybackPosition(
+  // Invalid while Song/page/material publication is incomplete; Unavailable on
+  // a seqlock miss (see HarmonyCapture).
+  HarmonyCapture tryCaptureHarmonyPlaybackPosition(
       GroovePuterPerformance::HarmonyPlaybackPosition& out) const;
-  bool tryCapturePatternHarmonyPlaybackPosition(
+  HarmonyCapture tryCapturePatternHarmonyPlaybackPosition(
       GroovePuterPerformance::PatternHarmonyPlaybackPosition& out) const;
   // Control-side fixed snapshot for the exact A/B material identities and
   // versions in one 1..8-row Song harmonic placement. No SD access occurs.
