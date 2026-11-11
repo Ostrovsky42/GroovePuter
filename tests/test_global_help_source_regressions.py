@@ -101,7 +101,7 @@ assert "two workflow pages" in readme
 
 assert quickstart_path.exists(), "0.9.19 user quick start is missing"
 quickstart = quickstart_path.read_text()
-assert quickstart.startswith("# GroovePuter 0.9.21 (unreleased) — First Five Minutes")
+assert quickstart.startswith("# GroovePuter 0.9.22 (unreleased) — First Five Minutes")
 for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
     assert action in quickstart, action
 for internal_term in ("provenance", "lineage", "MaterialVersion", "ReferenceRole"):
@@ -118,7 +118,7 @@ assert "tagged source baseline" in docs_index
 assert "latest packaged GitHub Release" in docs_index
 assert "older 0.9.1-era manual" not in docs_index
 
-assert manual.startswith("# GroovePuter 0.9.21 (unreleased) Manual")
+assert manual.startswith("# GroovePuter 0.9.22 (unreleased) Manual")
 assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "GEN is the optional local generation-target panel inside GENRE" in manual
@@ -161,7 +161,7 @@ assert "| `Alt+Backspace` | Discard working edits to accepted material |" in key
 assert "`Alt+X` is reserved globally for LiveMix" in keys
 
 # Canonical key map: current version plus beginner constitution and full expert reference.
-assert keys.startswith("# GroovePuter 0.9.21 (unreleased) Key Map")
+assert keys.startswith("# GroovePuter 0.9.22 (unreleased) Key Map")
 assert "## First Five Minutes" in keys
 for expected in (
     "`Space`",

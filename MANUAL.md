@@ -1,6 +1,6 @@
-# GroovePuter 0.9.21 (unreleased) Manual
+# GroovePuter 0.9.22 (unreleased) Manual
 
-This manual describes the current user-facing GroovePuter workflow on the **0.9.21 (unreleased)** development source. The last tagged and packaged release is **v0.9.20**. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the release notes of the tagged release for its exact binary and acceptance boundary.
+This manual describes the current user-facing GroovePuter workflow on the **0.9.22 (unreleased)** development source. The last tagged and packaged release is **v0.9.20**. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the release notes of the tagged release for its exact binary and acceptance boundary.
 
 If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
 

@@ -1,6 +1,6 @@
-# GroovePuter 0.9.21 (unreleased) Key Map — Cardputer ADV
+# GroovePuter 0.9.22 (unreleased) Key Map — Cardputer ADV
 
-This is the canonical external key reference for the 0.9.21 (unreleased) development source; the last tagged release is v0.9.20. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical external key reference for the 0.9.22 (unreleased) development source; the last tagged release is v0.9.20. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 
