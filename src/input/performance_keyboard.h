@@ -108,6 +108,10 @@ public:
     void cycleScale(int direction);
     const char* scaleName() const;
     void setRootPitchClass(uint8_t pitchClass);
+    // Project key push (the scene owns the key, not the keyboard record): sets root
+    // and scale and patches only those two fields of the persisted baseline, so a
+    // scene change does not mark keyboard_v2 dirty. Other pending edits stay dirty.
+    void syncProjectKey(uint8_t pitchClass, PerformanceScale scale);
     void cycleRoot(int direction);
     uint8_t rootPitchClass() const { return rootPitchClass_; }
     const char* rootName() const;

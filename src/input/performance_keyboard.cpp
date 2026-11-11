@@ -2299,6 +2299,13 @@ const char* PerformanceKeyboard::scaleName() const {
 void PerformanceKeyboard::setRootPitchClass(uint8_t pitchClass) {
     rootPitchClass_ = static_cast<uint8_t>(pitchClass % 12u);
 }
+void PerformanceKeyboard::syncProjectKey(uint8_t pitchClass, PerformanceScale scale) {
+    if (scale >= PerformanceScale::Count) return;
+    setRootPitchClass(pitchClass);
+    setScale(scale);
+    persistedConfig_.rootPitchClass = rootPitchClass_;
+    persistedConfig_.scale = scale_;
+}
 void PerformanceKeyboard::cycleRoot(int direction) {
     int next = static_cast<int>(rootPitchClass_) + (direction >= 0 ? 1 : -1);
     while (next < 0) next += 12;
