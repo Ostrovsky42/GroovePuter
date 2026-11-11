@@ -894,3 +894,15 @@ bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
   -o "${BUILD_DIR}/test_perform_key_header"
 
 "${BUILD_DIR}/test_perform_key_header"
+
+# 0.9.23 T14: UiViewContinuityState stays 16 bytes with the [LOOP] tab (pure).
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_ui_view_continuity_loop_tab.cpp" \
+  -o "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
+
+"${BUILD_DIR}/test_ui_view_continuity_loop_tab"

@@ -16,13 +16,17 @@ enum class PerformanceToolContext : uint8_t {
     Arp,
     Rhythm,
     Input,
+    Loop,  // [LOOP]: the looper in six rows (0.9.23)
     Count,
 };
 
 // PERFORM > INPUT rows that take the cursor, in screen order. The group
-// headings "--- MIDI IN ---", "--- LOOPER ---" and "--- PARTNER ---" are drawn
-// above MidiIn, Looper and Helper and never take the cursor (Up/Down skip them).
-// The KEY context owns TARGET/OUT; the USB role is shown on PROJECT > MIDI.
+// headings "--- MIDI IN ---", "--- LOOP SETUP ---" and "--- HELPER ---" are drawn
+// above MidiIn, LoopChannel and Helper and never take the cursor (Up/Down skip
+// them). The KEY context owns TARGET/OUT; the USB role is shown on PROJECT > MIDI.
+// The looper itself (LOOPER, REC, LOOP BARS, LAYER, MUTE LAYER, TO MELODY) lives
+// on the [LOOP] tab (PerformLoopRow); only its rarely used setup stays here.
+// 0.9.23 T14: INPUT was 20 rows (LOOPER 5..13, PARTNER 14..19), now 14.
 enum class PerformInputRow : uint8_t {
     // --- MIDI IN ---
     MidiIn = 0,     // MIDI IN: external MIDI input on/off
@@ -30,17 +34,11 @@ enum class PerformInputRow : uint8_t {
     SendTo,         // SEND TO: where external MIDI notes go
     PlayAs,         // PLAY AS: live-note role
     LeadStyle,      // LEAD STYLE: lead interpretation (PLAY AS LEAD)
-    // --- LOOPER ---
-    Looper,         // LOOPER (Enter = Z)
-    RecordSource,   // REC: KEYS / SOUND
-    LoopBars,       // LOOP BARS
+    // --- LOOP SETUP ---
     LoopChannel,    // LOOP CH (0 = DX ROUTE)
     NoteLength,     // NOTE LENGTH
     HoldLayer,      // HOLD LAYER (B)
-    Layer,          // LAYER (M)
-    MuteLayer,      // MUTE LAYER
-    ToMelody,       // TO MELODY (Left/Right A/B, Enter twice)
-    // --- PARTNER ---
+    // --- HELPER (the PARTNER) ---
     Helper,         // HELPER: OFF/ANSWER/DUET/RIFF (RIFF = Mode::Loop)
     ReplyBars,      // REPLY BARS
     ReplyChannel,   // REPLY CH
@@ -51,6 +49,19 @@ enum class PerformInputRow : uint8_t {
 };
 
 constexpr uint8_t performInputRow(PerformInputRow row) { return static_cast<uint8_t>(row); }
+
+// PERFORM > LOOP: six rows, one screen, no scroll. TO MELODY is always visible.
+enum class PerformLoopRow : uint8_t {
+    Looper = 0,     // LOOPER (Enter = Z)
+    RecordSource,   // REC: KEYS / SOUND
+    LoopBars,       // LOOP BARS
+    Layer,          // LAYER (M)
+    MuteLayer,      // MUTE LAYER
+    ToMelody,       // TO MELODY (Left/Right A/B, Enter twice)
+    Count,
+};
+
+constexpr uint8_t performLoopRow(PerformLoopRow row) { return static_cast<uint8_t>(row); }
 
 class PerformPage final : public IPage {
 public:
@@ -67,22 +78,26 @@ public:
     // LOOPER: leaving PERFORM ends recording; on the free clock the loop stops.
     void onExit() override;
 
-    // PERFORM > INPUT (see PerformInputRow): MIDI IN rows, then the LOOPER and
-    // its settings with TO MELODY last of the group (ENTER twice: the unmuted
-    // layers become the Working Melody of the picked synth), then PARTNER rows
-    // from HELPER. The groups are addressed by name, never by number.
+    // PERFORM > INPUT (see PerformInputRow): MIDI IN rows, the LOOP SETUP rows
+    // (LOOP CH, NOTE LENGTH, HOLD LAYER), then the HELPER (PARTNER) rows.
+    // PERFORM > LOOP (see PerformLoopRow): the looper, TO MELODY last (ENTER
+    // twice: the unmuted layers become the Working Melody of the picked synth).
+    // The groups are addressed by name, never by number.
     static constexpr uint8_t kInputRowCount = performInputRow(PerformInputRow::Count);
-    static constexpr uint8_t kLooperRowFirst = performInputRow(PerformInputRow::Looper);
-    static constexpr uint8_t kLooperRowLast = performInputRow(PerformInputRow::ToMelody);
-    static constexpr uint8_t kLooperExportRow = kLooperRowLast;
+    static constexpr uint8_t kLoopSetupRowFirst = performInputRow(PerformInputRow::LoopChannel);
+    static constexpr uint8_t kLoopSetupRowLast = performInputRow(PerformInputRow::HoldLayer);
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
-    static_assert(kLooperRowLast + 1 == kPartnerRowFirst, "PARTNER follows LOOPER");
+    static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
+    static_assert(kLoopSetupRowLast + 1 == kPartnerRowFirst, "HELPER follows LOOP SETUP");
     static_assert(kPartnerRowLast + 1 == kInputRowCount, "NEW RIFF IF is the last INPUT row");
+    static_assert(kLoopRowCount == 6, "the LOOP tab is six rows");
+    static_assert(static_cast<uint8_t>(PerformanceToolContext::Count) <= 8,
+                  "the context fits the 3-bit continuity field");
 
 private:
     void captureViewContinuity(UI::UiViewContinuityState& state) const override {
-        state.performToolsVisible = toolsLayerVisible_ ? 1 : 0;
+        state.performToolsVisible = toolsLayerVisible_ ? 1u : 0u;
         state.performContext = static_cast<uint8_t>(selectedContext_);
         for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             state.performRows[i] = selectedRow_[i];
@@ -94,7 +109,7 @@ private:
         uint8_t context = state.performContext;
         if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
         selectedContext_ = static_cast<PerformanceToolContext>(context);
-        constexpr uint8_t kMaxRowByContext[5] = {5, 5, 5, 5, kInputRowCount - 1};
+        constexpr uint8_t kMaxRowByContext[6] = {5, 5, 5, 5, kInputRowCount - 1, kLoopRowCount - 1};
         for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
                 ? state.performRows[i]
@@ -110,7 +125,10 @@ private:
     void toggleSelectedValue();
     void cyclePartnerMode(int direction);
     void cyclePartnerSetting(uint8_t row, int direction);
-    void cycleLooperSetting(uint8_t row, int direction);
+    enum class LooperSetting : uint8_t {
+        RecordSource, LoopBars, LoopChannel, NoteLength, HoldLayer, Layer, MuteLayer,
+    };
+    void cycleLooperSetting(LooperSetting setting, int direction);
     bool looperKey(char key);
     void exportLooperToMelody();
     void formatLooperState(char* out, std::size_t size) const;

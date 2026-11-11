@@ -25,10 +25,10 @@
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT",
+    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",
 };
 constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]",
+    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]", "[LOOP]",
 };
 // Same order as the keyboard's chord cycle; labels follow it one to one.
 constexpr const PerformanceChordMode* kChordPopupModes = PerformanceKeyboard::kChordDisplayOrder;
@@ -90,7 +90,7 @@ bool strumIsAudible(const PerformanceKeyboard& keyboard) {
 }
 
 // The live scale binding (bare LEFT/RIGHT, and , .) already changes the scale;
-// the toast names the new one. Keys are not changed here.
+// the toast names the scale just selected. Keys are not changed here.
 void cycleScaleWithToast(PerformanceKeyboard& keyboard, int direction) {
     keyboard.cycleScale(direction);
     char toast[32];
@@ -121,9 +121,12 @@ using GroovePuterLooper::Looper;
 using InRow = PerformInputRow;
 constexpr uint8_t ir(InRow row) { return performInputRow(row); }
 
+using LoopRow = PerformLoopRow;
+constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
+
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kLooperRowFirst ? 1u : 0u) +
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kLoopSetupRowFirst ? 1u : 0u) +
                                 (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
@@ -228,6 +231,8 @@ uint8_t PerformPage::rowCountForContext() const {
         // one ResponsePlayer and never play together. The group headings are
         // drawn only and are not rows.
         case PerformanceToolContext::Input: return kInputRowCount;
+        // The looper in six rows: one screen, no scroll, TO MELODY always visible.
+        case PerformanceToolContext::Loop: return kLoopRowCount;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -414,12 +419,35 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
-                case ir(InRow::ToMelody):
+                case ir(InRow::LoopChannel):
+                    cycleLooperSetting(LooperSetting::LoopChannel, direction);
+                    break;
+                case ir(InRow::NoteLength):
+                    cycleLooperSetting(LooperSetting::NoteLength, direction);
+                    break;
+                case ir(InRow::HoldLayer):
+                    cycleLooperSetting(LooperSetting::HoldLayer, direction);
+                    break;
+                default:
+                    break;
+            }
+            return;
+        case PerformanceToolContext::Loop:
+            switch (row) {
+                case lr(LoopRow::ToMelody):
                     exportTarget_ = static_cast<int8_t>(exportVoiceNow() == 1 ? 0 : 1);  // A <-> B
                     break;
-                case ir(InRow::RecordSource): case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
-                case ir(InRow::HoldLayer): case ir(InRow::Layer): case ir(InRow::MuteLayer):
-                    cycleLooperSetting(row, direction);
+                case lr(LoopRow::RecordSource):
+                    cycleLooperSetting(LooperSetting::RecordSource, direction);
+                    break;
+                case lr(LoopRow::LoopBars):
+                    cycleLooperSetting(LooperSetting::LoopBars, direction);
+                    break;
+                case lr(LoopRow::Layer):
+                    cycleLooperSetting(LooperSetting::Layer, direction);
+                    break;
+                case lr(LoopRow::MuteLayer):
+                    cycleLooperSetting(LooperSetting::MuteLayer, direction);
                     break;
                 default:
                     break;
@@ -511,14 +539,19 @@ void PerformPage::toggleSelectedValue() {
                 cyclePartnerMode(1);
             } else if (row > kPartnerRowFirst && row <= kPartnerRowLast) {
                 cyclePartnerSetting(row, 1);
-            } else if (row == kLooperRowFirst) {
-                looperKey('z');  // ENTER on LOOPER = Z
-            } else if (row == kLooperExportRow) {
-                exportLooperToMelody();
-            } else if (row > kLooperRowFirst && row < kLooperExportRow) {  // LOOP BARS .. MUTE LAYER
-                cycleLooperSetting(row, 1);
+            } else if (row >= kLoopSetupRowFirst && row <= kLoopSetupRowLast) {  // LOOP CH, NOTE LENGTH, HOLD LAYER
+                adjustSelectedValue(1);
             } else {
                 adjustInput(1);
+            }
+            return;
+        case PerformanceToolContext::Loop:
+            if (row == lr(LoopRow::Looper)) {
+                looperKey('z');  // ENTER on LOOPER = Z
+            } else if (row == lr(LoopRow::ToMelody)) {
+                exportLooperToMelody();
+            } else {  // REC, LOOP BARS, LAYER, MUTE LAYER
+                adjustSelectedValue(1);
             }
             return;
         case PerformanceToolContext::Count:
@@ -567,14 +600,14 @@ void PerformPage::cyclePartnerMode(int direction) {
 
 // LOOPER settings rows (session only, not saved). </> and ENTER both cycle;
 // HOLD is B, LAYER is M. BARS keeps the notes (longer repeats, shorter cuts, V).
-void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
+void PerformPage::cycleLooperSetting(LooperSetting setting, int direction) {
     auto& loop = GroovePuterLooper::looper();
-    switch (row) {
-        case ir(InRow::RecordSource):
+    switch (setting) {
+        case LooperSetting::RecordSource:
             if (!loop.setRecordSound(!loop.recordSound()))
                 UI::showToast("LOOP: STOP REC TO CHANGE", 1600);
             break;
-        case ir(InRow::LoopBars): {
+        case LooperSetting::LoopBars: {
             const bool notes = !loop.empty();
             const Looper::Result result = loop.cycleBars(direction);
             char toast[32];
@@ -583,11 +616,11 @@ void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
             if (notes || result != Looper::Result::Done) showLooperToast(result, toast);
             break;
         }
-        case ir(InRow::LoopChannel): loop.cycleChannel(direction); break;
-        case ir(InRow::NoteLength): loop.cycleLength(direction); break;
-        case ir(InRow::HoldLayer): looperKey('b'); break;
-        case ir(InRow::Layer): looperKey('m'); break;
-        case ir(InRow::MuteLayer): {
+        case LooperSetting::LoopChannel: loop.cycleChannel(direction); break;
+        case LooperSetting::NoteLength: loop.cycleLength(direction); break;
+        case LooperSetting::HoldLayer: looperKey('b'); break;
+        case LooperSetting::Layer: looperKey('m'); break;
+        case LooperSetting::MuteLayer: {
             const Looper::Result result = loop.toggleMute();
             char toast[32];
             std::snprintf(toast, sizeof(toast), "LOOP: LAYER %u %s",
@@ -596,7 +629,6 @@ void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
             showLooperToast(result, toast);
             break;
         }
-        default: break;
     }
 }
 
@@ -853,19 +885,24 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
-                case ir(InRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
-                case ir(InRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
-                case ir(InRow::LoopBars): return GroovePuterLooper::looper().empty()
-                    ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
                 case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
                 case ir(InRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
                 case ir(InRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
-                case ir(InRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
-                case ir(InRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
-                case ir(InRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
                 default: return "";
             }
         }
+
+        case PerformanceToolContext::Loop:
+            switch (row) {
+                case lr(LoopRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
+                case lr(LoopRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
+                case lr(LoopRow::LoopBars): return GroovePuterLooper::looper().empty()
+                    ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
+                case lr(LoopRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
+                case lr(LoopRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
+                case lr(LoopRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
+                default: return "";
+            }
 
         case PerformanceToolContext::Count:
             break;
@@ -921,7 +958,8 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 }
 
 void PerformPage::drawToolTabs(IGfx& gfx, int y) {
-    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [IN]". The bracket cell to the
+    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [INPUT] [LOOP]" (len + 2 cells each: six
+    // tabs of len + 3 would be 264 px wide, the screen is 240). The bracket cell to the
     // left of each label is always reserved, so labels never shift when the
     // active context changes.
     const UI::ThemePalette palette = UI::themePalette();
@@ -941,7 +979,7 @@ void PerformPage::drawToolTabs(IGfx& gfx, int y) {
             gfx.setTextColor(palette.secondary);
             gfx.drawText(x + charW, y, name);
         }
-        x += (len + 3) * charW;
+        x += (len + 2) * charW;
     }
 
 }
@@ -1190,16 +1228,10 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
 
-            // LOOPER (Z/C/V/B/Del/M on the live surface).
+            // LOOP SETUP: the rarely changed looper settings (the looper itself
+            // is on the [LOOP] tab; Z/C/V/B/Del/M work on the live surface).
             const auto& loop = GroovePuterLooper::looper();
-            drawHeading(inputLine(kLooperRowFirst) - 1u, "--- LOOPER ---");
-            formatLooperState(value, sizeof(value));
-            drawRow(ir(InRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
-            drawRow(ir(InRow::RecordSource), "REC", loop.recordSound() ? "SOUND" : "KEYS", true);
-            std::snprintf(value, sizeof(value), "%u BAR%s",
-                          static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
-            drawRow(ir(InRow::LoopBars), "LOOP BARS", value,
-                    loop.holdMask() == 0 && loop.state() != Looper::State::Record);
+            drawHeading(inputLine(kLoopSetupRowFirst) - 1u, "--- LOOP SETUP ---");
             if (loop.channel() == 0) {
                 std::snprintf(value, sizeof(value), "DX ROUTE");
             } else {
@@ -1211,13 +1243,27 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             const bool layerEmpty = loop.layerNoteCount(loop.activeLayer()) == 0;
             drawRow(ir(InRow::HoldLayer), "HOLD LAYER",
                     layerEmpty && !loop.hold() ? "N/A" : (loop.hold() ? "ON" : "OFF"), !layerEmpty);
+            break;
+        }
+
+        case PerformanceToolContext::Loop: {
+            const auto& partner = GroovePuterCallResponse::callResponseListener();
+            const bool partnerOn = partner.enabled();
+            const auto& loop = GroovePuterLooper::looper();
+            formatLooperState(value, sizeof(value));
+            drawRow(lr(LoopRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            drawRow(lr(LoopRow::RecordSource), "REC", loop.recordSound() ? "SOUND" : "KEYS", true);
+            std::snprintf(value, sizeof(value), "%u BAR%s",
+                          static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
+            drawRow(lr(LoopRow::LoopBars), "LOOP BARS", value,
+                    loop.holdMask() == 0 && loop.state() != Looper::State::Record);
             std::snprintf(value, sizeof(value), "%u  (%u NOTES)", static_cast<unsigned>(loop.activeLayer() + 1u),
                           static_cast<unsigned>(loop.layerNoteCount(loop.activeLayer())));
-            drawRow(ir(InRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
-            drawRow(ir(InRow::MuteLayer), "MUTE LAYER", loop.layerMuted(loop.activeLayer()) ? "ON" : "OFF", true);
+            drawRow(lr(LoopRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
+            drawRow(lr(LoopRow::MuteLayer), "MUTE LAYER", loop.layerMuted(loop.activeLayer()) ? "ON" : "OFF", true);
             std::snprintf(value, sizeof(value), "SYN %c",
                           static_cast<char>('A' + exportVoiceNow()));
-            drawRow(ir(InRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
+            drawRow(lr(LoopRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
             break;
         }
 

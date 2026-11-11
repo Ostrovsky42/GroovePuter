@@ -375,14 +375,14 @@ Fresh multi-row Phrase generation is STOP-only. Here `D` means derive, not the M
 
 ## 9. PERFORM and external keyboard
 
-PERFORM is a standalone live instrument: Cardputer keys work without a connected MIDI keyboard. `Tab` opens its tools; `Tab` and `Backspace` move between KEY / CHORD / ARP / RHYTHM / INPUT. The selected row is edited with arrows and activated with `Enter` where the row offers an action.
+PERFORM is a standalone live instrument: Cardputer keys work without a connected MIDI keyboard. `Tab` opens its tools; `Tab` and `Backspace` move between KEY / CHORD / ARP / RHYTHM / INPUT / LOOP. The selected row is edited with arrows and activated with `Enter` where the row offers an action.
 
 KEY sets the live note range, scale, velocity and target. CHORD configures voicing and chord memory. ARP configures its pitch source (held notes, chord memory, current harmony or role), order, octave range, latch and behavior when harmony changes. RHYTHM configures the shared clock, gate, ratchet, Euclidean rhythm and chord strum. A row marked `N/A` is not active in the current configuration; the hint line explains the requirement.
 
-INPUT is one scrollable list (a scroll bar appears on the right when it is longer than the screen) with three groups, from top to bottom; the headings are not selectable:
+LOOP is the looper on one screen, six rows and no scroll: `LOOPER`, `REC`, `LOOP BARS`, `LAYER`, `MUTE LAYER`, `TO MELODY` (always visible). INPUT is one scrollable list (a scroll bar appears on the right when it is longer than the screen) with three groups, from top to bottom; the headings are not selectable:
 
 - `--- MIDI IN ---`: `MIDI IN`, `LISTEN CH`, `SEND TO`, `PLAY AS`, `LEAD STYLE`. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. These choices transform newly played live notes; they do not rewrite a Pattern or an already-playing Song.
-- `--- LOOPER ---`: `LOOPER`, `REC`, `LOOP BARS`, `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER`, `LAYER`, `MUTE LAYER`, `TO MELODY`.
+- `--- LOOP SETUP ---`: `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER` (the rest of the looper is on the LOOP tab).
 - `--- HELPER ---`: `HELPER`, `REPLY BARS`, `REPLY CH`, `FREEZE RIFF`, `VARIATION`, `NEW RIFF IF`.
 
 ### LOOPER

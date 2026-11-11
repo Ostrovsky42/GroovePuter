@@ -6,9 +6,12 @@
 - GroovePuter.ino: the looper and the PARTNER both observe PERFORM input
   (fixed two-way fan-out), the looper borrows the PARTNER player,
   serviceLooper() runs after serviceCallResponseLog();
-- the PARTNER stays: its INPUT group (HELPER 14..NEW RIFF IF 19), its
-  mode/settings handlers; the LOOPER group sits above it at 5..13 (variant A:
-  PerformInputRow, group headings are not rows; HELPER shows RIFF for Mode::Loop);
+- the PARTNER stays: its INPUT group (HELPER 8..NEW RIFF IF 13), its
+  mode/settings handlers. 0.9.23 T14: the LOOPER group left INPUT (it was
+  LOOPER 5..13 above HELPER 14..19, 20 rows with scroll) for the [LOOP] tab,
+  PerformLoopRow 0..5 (LOOPER, REC, LOOP BARS, LAYER, MUTE LAYER, TO MELODY),
+  six rows without scroll; INPUT keeps LOOP SETUP 5..7 (LOOP CH, NOTE LENGTH,
+  HOLD LAYER) (group headings are not rows; HELPER shows RIFF for Mode::Loop);
 - PERFORM: Ctrl+Z (APP_EVENT_UNDO) is passed on when the looper has nothing to
   undo (the global "UNDO: EMPTY / NOT HERE" toast stays), Del clears only on
   the live surface, X keeps the layer;
@@ -110,15 +113,20 @@ for key in ("case 'z': case 'Z'", "case 'c': case 'C'", "case 'v': case 'V'", "c
             "case 'm': case 'M'"):
     assert key in handle, key
 assert "case PerformanceToolContext::Input: return kInputRowCount;" in page
+assert "case PerformanceToolContext::Loop: return kLoopRowCount;" in page
 header = read("src/ui/pages/perform_page.h")
-assert "kMaxRowByContext[5] = {5, 5, 5, 5, kInputRowCount - 1}" in header
-assert "kLooperRowFirst = performInputRow(PerformInputRow::Looper);" in header
-assert "kLooperRowLast = performInputRow(PerformInputRow::ToMelody);" in header
+assert "kMaxRowByContext[6] = {5, 5, 5, 5, kInputRowCount - 1, kLoopRowCount - 1}" in header
+assert "kLoopSetupRowFirst = performInputRow(PerformInputRow::LoopChannel);" in header
+assert "kLoopSetupRowLast = performInputRow(PerformInputRow::HoldLayer);" in header
+assert "kLoopRowCount = performLoopRow(PerformLoopRow::Count);" in header
 enum_body = header[header.index("enum class PerformInputRow"):header.index("Count,", header.index("enum class PerformInputRow"))]
 order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
-assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Looper", "RecordSource", "LoopBars",
-                 "LoopChannel", "NoteLength", "HoldLayer", "Layer", "MuteLayer", "ToMelody", "Helper",
-                 "ReplyBars", "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf"], order
+assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "LoopChannel", "NoteLength",
+                 "HoldLayer", "Helper", "ReplyBars", "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf"], order
+loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count,", header.index("enum class PerformLoopRow"))]
+loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
+assert loop_order == ["Looper", "RecordSource", "LoopBars", "Layer", "MuteLayer", "ToMelody"], loop_order
+assert 'kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",' in page
 assert "kPartnerRowFirst = performInputRow(PerformInputRow::Helper);" in header
 assert "kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);" in header
 # PARTNER rows and handlers stay.
@@ -126,22 +134,23 @@ for text in ('drawRow(ir(InRow::Helper), "HELPER", helperModeName(partner), true
              'drawRow(ir(InRow::Variation), "VARIATION"', 'drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF"',
              "cyclePartnerSetting(row, direction);", "partner.cycleMode(direction);",
              'partner.mode() == PartnerMode::Loop ? "RIFF" : partner.modeName()',
-             '"--- MIDI IN ---"', '"--- HELPER ---"', '"--- LOOPER ---"'):
+             '"--- MIDI IN ---"', '"--- HELPER ---"', '"--- LOOP SETUP ---"'):
     assert text in page, text
 # Gone from INPUT: TARGET/OUT/USB rows and the old labels; the USB role is a hint.
-tools_input = page[page.index('drawHeading(0, "--- MIDI IN ---");'):page.index('drawRow(ir(InRow::ToMelody)')]
+tools_input = page[page.index('drawHeading(0, "--- MIDI IN ---");'):page.index('drawRow(lr(LoopRow::ToMelody)')]
 for gone in ('"TARGET"', '"OUT"', '"USB"', '"LIVE MIDI"', '"ROUTE"', '" LP ', '"PARTNER"',
              '"LOCK LAYER"', '"PARTNER ON"', '"PARTNER ACTIVE"'):
     assert gone not in tools_input, gone
 # Words: DX ROUTE (value of LOOP CH 0), HOLD (one word for B), HELPER (never PARTNER, for the player).
 assert 'std::snprintf(value, sizeof(value), "DX ROUTE");' in tools_input
 assert '"HOLD LAYER"' in tools_input and '"HELPER ON"' in tools_input
+assert 'drawRow(lr(LoopRow::Looper), "LOOPER"' in tools_input  # the LOOP tab: six rows, TO MELODY last
 assert "LOOP: HOLD, B TO RELEASE" in page and "DX ROUTE: SAME CH AS PERFORM DX" in page and "AS KEYS" not in page and "LOOP: HELPER OFF FIRST" in page
 assert "UNLOCK" not in page and "LOCK LAYER" not in page and ", LOCK," not in page
 assert "LOOP: DX ROUTE, NO INTERNAL SOUND" in page and "dxRouteNoted_" in page
 # Counter: no U letter (undo = brighter), Z REC while the loop is empty and idle; one LOOP: prefix.
 assert 'loop.canUndo() ? "U" : ""' not in page and 'counterColor = COLOR_TEXT' in page and '"Z REC"' in page
-for old in ("LOOP EMPTY:", "BARS: NO ROOM", "LOOP FULL:", "LOOP STOPPED:", "AS KEYS", "--- PARTNER ---"):
+for old in ("LOOP EMPTY:", "BARS: NO ROOM", "LOOP FULL:", "LOOP STOPPED:", "AS KEYS", "--- PARTNER ---", "--- LOOPER ---"):
     assert old not in page, old
 # TO MELODY: GRAB's guard, an explicit question, Undo hint.
 export = page[page.index("void PerformPage::exportLooperToMelody() {"):page.index("bool PerformPage::looperKey")]
