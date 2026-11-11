@@ -1456,7 +1456,9 @@ void PerformPage::drawContent(IGfx& gfx) {
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
                              Layout::CONTENT.w - 8, line);
 
-    if (GroovePuterLooper::looper().takeFullNotice())
+    if (GroovePuterLooper::looper().takeTooManyNotice())
+        UI::showToast("LOOP: TOO MANY NOTES", 1000);
+    else if (GroovePuterLooper::looper().takeFullNotice())
         UI::showToast("LOOP: FULL, NOTES DROPPED", 1000);
     drawLooperStrip(gfx, LayoutManager::lineY(2));
 
@@ -1711,7 +1713,9 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
             tick = lane != activeLayer ? COLOR_LABEL
                                        : (note.isNew() ? palette.text : palette.secondary);
         }
-        gfx.fillRect(stepX(note.onset()), y + 2 + lane * 3, 1, 2, tick);
+        // The onset is in ticks (6 to a step): a triplet line is placed as played.
+        gfx.fillRect(stepX(static_cast<double>(note.onsetTicks()) / GroovePuterLooper::kTicksPerStep),
+                     y + 2 + lane * 3, 1, 2, tick);
     }
     if (position >= 0.0) gfx.fillRect(stepX(position), y + 1, 1, barH - 2, color);
 }
