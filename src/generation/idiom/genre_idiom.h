@@ -891,6 +891,7 @@ inline constexpr const IdiomVariant* kIdiomVariants[] = {
     &k_house_deep_offbeat, &k_outrun_drive, &k_darksynth_drive, &k_funk_pocket,
     &k_electro_machine, &k_broken_bruk, &k_dnb_dance, &k_dnb_neuro,
     &k_dnb_funk, &k_dnb_atmos, &k_chip_arp,
+    &k_house_piano_bass, &k_house_organ_stab,
 };
 constexpr uint8_t kIdiomVariantCount =
     static_cast<uint8_t>(sizeof(kIdiomVariants) / sizeof(kIdiomVariants[0]));
