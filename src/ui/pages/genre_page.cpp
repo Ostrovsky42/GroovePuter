@@ -1,5 +1,7 @@
 #include "genre_page.h"
 
+#include "src/midi/midi_device_profile_runtime.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
@@ -590,7 +592,24 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
   UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GENERATE");
 }
 
+void GenrePage::startSoundSend() {
+  if (GroovePuterMidi::midiDeviceProfileRuntime().profile() !=
+      GroovePuterMidi::MidiDeviceProfile::SeqtrakNative) {
+    UI::showToast("SOUND: SET SEQTRAK PROFILE", 1400);
+    return;
+  }
+  const auto* preset = GenreSound::presetFor(static_cast<uint8_t>(genre_index_));
+  if (preset == nullptr || !soundSender_.start(static_cast<uint8_t>(genre_index_), GroovePuterMidi::gCutoffControl)) {
+    UI::showToast("SOUND: NO PRESET", 1200);
+    return;
+  }
+  char message[48];
+  std::snprintf(message, sizeof(message), "SOUND: %s", preset->name);
+  UI::showToast(message, 1200);
+}
+
 void GenrePage::draw(IGfx& gfx) {
+  soundSender_.pump(GroovePuterMidi::gCutoffControl);  // one step per frame, after confirmation
   if (rhythmFallbackPending_) {
     UI::showToast("RHYTHM RESET TO AUTO", 1200);
     rhythmFallbackPending_ = false;
@@ -834,6 +853,7 @@ bool GenrePage::handleEvent(UIEvent& event) {
       return true;
     }
     applyCurrent();
+    startSoundSend();  // H8: the genre's sound, on SEQTRAK profile only
     return true;
   }
   if (keyG && !event.ctrl && !event.alt && !event.meta) {
