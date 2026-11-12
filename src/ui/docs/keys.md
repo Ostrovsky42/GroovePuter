@@ -481,8 +481,9 @@ unchanged. The result is `DEVELOP + BREAK 8B` or `BREAK ONLY 4B`; playback
 changes at the next bar boundary. `Ctrl+Z` removes the added cycle in one step.
 Non-4-bar, edited, P1/P2 Takes are refused (`P: SET P3, THEN G`); changing STYLE after making
 the TAKE does not convert it. Acid and House do not grow at all: `D` says
-`<GENRE> CAN'T GROW: FN+M GENRE`, since another TAKE in the same genre cannot
-help. On `MATERIAL BANK`, `D` still means derive.
+`<GENRE> CAN'T GROW: SONG F FORM`: the genre's form is the way to a longer song
+(F in SONG; the form of the genre is loaded, see the FORM section). Another TAKE in the same
+genre cannot help. On `MATERIAL BANK`, `D` still means derive.
 
 ### Make room (MATERIAL, `R`)
 

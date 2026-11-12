@@ -838,7 +838,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
     case S::NotAdmitted:
       // Another TAKE in the same genre is refused the same way; say what helps.
-      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: ALT+V GENRE",
+      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: SONG F FORM",
                     GenreManager::generativeModeName(
                         mini_acid_.genreManager().generativeMode()));
       for (char* c = genreMessage; *c; ++c) *c = static_cast<char>(std::toupper(*c));
