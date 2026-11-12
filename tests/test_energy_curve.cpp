@@ -121,6 +121,30 @@ int main() {
     assert(voicesFor(3, 2).lead == false && voicesFor(3, 3).lead == true);
   }
 
+  // H5: the genre forms: 32 bars, at most 8 sections, and they apply to a TAKE.
+  {
+    const uint8_t modes[] = {9, 13, 10, 0, 5, 6};  // House, UKG, Techno, Acid, Dub, Trip-Hop
+    for (uint8_t mode : modes) {
+      const Curve curve = genreCurve(mode);
+      assert(totalBars(curve) == 32 && curve.count <= kMaxSections);
+      Song song = takeSong();
+      assert(apply(song, curve, 0, 4, 4) == Status::Ok);
+      assert(song.length == 4 + 32);
+    }
+    // WAVE for the other modes (the preset, 16 bars).
+    assert(totalBars(genreCurve(3)) == totalBars(presetCurve(Preset::Wave)));
+    // A full song refuses with NoRoom and stays unchanged.
+    Song full{};
+    full.length = Song::kMaxPositions - 10;
+    for (int r = 0; r < full.length; ++r) full.positions[r].patterns[0] = static_cast<int16_t>(r % 8);
+    const Song before = full;
+    assert(apply(full, genreCurve(9), 0, 4, 4) == Status::NoRoom);
+    assert(full.length == before.length);
+    for (int r = 0; r < full.length; ++r)
+      for (int t = 0; t < SongPosition::kTrackCount; ++t)
+        assert(full.positions[r].patterns[t] == before.positions[r].patterns[t]);
+  }
+
   // H4: an 8-row source over two 4-bar sections: the second section reads rows 4..7.
   {
     Song song{};

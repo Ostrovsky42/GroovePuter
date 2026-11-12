@@ -89,6 +89,41 @@ inline Curve presetCurve(Preset preset) {
   return curve;
 }
 
+// H5: the form of each genre, as (energy, bars) segments. Six forms of 32 bars.
+// Other genres keep the WAVE preset (16 bars).
+struct Segment {
+  uint8_t energy;
+  uint8_t bars;
+};
+
+inline Curve curveFromSegments(const Segment* segments, uint8_t count) {
+  Curve curve{};
+  for (uint8_t i = 0; i < count && i < kMaxSections; ++i) {
+    curve.sections[i] = Section{segments[i].bars, segments[i].energy};
+  }
+  curve.count = count < kMaxSections ? count : kMaxSections;
+  return curve;
+}
+
+// Generative modes: Acid 0, Reggae (Dub) 5, TripHop 6, House 9, Techno 10, UK garage 13.
+inline Curve genreCurve(uint8_t mode) {
+  static constexpr Segment kHouse[] = {{1, 4}, {2, 4}, {3, 4}, {4, 8}, {5, 4}, {4, 8}};
+  static constexpr Segment kUkg[] = {{6, 4}, {3, 4}, {4, 8}, {5, 4}, {2, 4}, {4, 8}};
+  static constexpr Segment kTechno[] = {{1, 4}, {6, 4}, {2, 4}, {4, 8}, {6, 4}, {4, 8}};
+  static constexpr Segment kAcid[] = {{1, 4}, {2, 8}, {4, 8}, {5, 4}, {4, 8}};
+  static constexpr Segment kDub[] = {{2, 8}, {6, 4}, {4, 8}, {1, 4}, {4, 8}};
+  static constexpr Segment kTripHop[] = {{5, 4}, {2, 4}, {3, 8}, {4, 8}, {5, 4}, {3, 4}};
+  switch (mode) {
+    case 0: return curveFromSegments(kAcid, sizeof(kAcid) / sizeof(kAcid[0]));
+    case 5: return curveFromSegments(kDub, sizeof(kDub) / sizeof(kDub[0]));
+    case 6: return curveFromSegments(kTripHop, sizeof(kTripHop) / sizeof(kTripHop[0]));
+    case 9: return curveFromSegments(kHouse, sizeof(kHouse) / sizeof(kHouse[0]));
+    case 10: return curveFromSegments(kTechno, sizeof(kTechno) / sizeof(kTechno[0]));
+    case 13: return curveFromSegments(kUkg, sizeof(kUkg) / sizeof(kUkg[0]));
+    default: return presetCurve(Preset::Wave);
+  }
+}
+
 inline uint16_t totalBars(const Curve& curve) {
   uint16_t bars = 0;
   for (uint8_t i = 0; i < curve.count && i < kMaxSections; ++i) bars += curve.sections[i].bars;
