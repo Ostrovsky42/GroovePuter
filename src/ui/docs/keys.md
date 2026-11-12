@@ -433,7 +433,7 @@ Lane labels include their direct mute keys. Default mapping is `3KIK 4SNR 5HH1 6
 | `Ctrl+C/V` | Copy / Paste |
 | `P` | Cursor to playhead |
 | `Alt+J` | Jump to MATERIAL with this row as the explicit `TO` destination |
-| `F` | FORM: energy curve. `Up/Down` energy 0..4, `Left/Right` section, `Enter` 4/8 bars, `N` add, `Backspace` delete, `1/2/3` BUILD/DROP/WAVE, `G` insert rows after the source block (selection, else the TAKE at the cursor), one Ctrl+Z; `F`/`Esc` back to GRID |
+| `F` | FORM: energy curve. `Up/Down` energy in the order SILENCE, DR, DR+A, DR+B, A+B, +B SPACE, FULL, `Left/Right` section, `Enter` 4/8 bars, `N` add, `Backspace` delete, `1/2/3` BUILD/DROP/WAVE, `G` insert rows after the source block (selection, else the TAKE at the cursor), one Ctrl+Z; `F`/`Esc` back to GRID. Opening FORM loads the genre's own form (32 bars) when the genre changed since the last visit; `FORM: <GENRE>` |
 
 For Synth A/B, a Song row refers to a slot. The slot's saved descriptor selects
 Pattern or Melody playback; the row does not store a separate type. Accepted Melody
@@ -564,10 +564,20 @@ Fresh multi-row Phrase generation is STOP-only. During PLAY it reports
 
 ### SONG FORM energy levels
 
-`0` silence, `1` drums, `2` drums + bass (A), `3` + lead (B) resting on the
-third bar of every four, `4` everything incl. the Voice lane. The curve builds
-ordinary rows from existing material only; editing them later in GRID is never
-undone by the curve.
+Seven levels, in Up/Down order: `SILENCE` (0), `DR` (1, drums), `DR+A` (2, drums +
+bass), `DR+B` (6, drums + lead, no bass), `A+B` (5, bass + lead, no drums),
+`+B SPACE` (3, drums + bass + lead resting on the third bar of every four), `FULL`
+(4, everything incl. the Voice lane). The bass comes off on the last bar before a
+drop, only in a section with drums. A source longer than a section walks on through
+the source (an 8-row TAKE over two 4-bar sections plays rows 1-4, then 5-8). The
+curve builds ordinary rows from existing material only; editing them later in GRID
+is never undone by the curve.
+
+Genre forms (32 bars each, at most 8 sections): House `DR 4, DR+A 4, +B SPACE 4,
+FULL 8, A+B 4, FULL 8`; UK garage `DR+B 4, +B SPACE 4, FULL 8, A+B 4, DR+A 4, FULL 8`;
+Techno `DR 4, DR+B 4, DR+A 4, FULL 8, DR+B 4, FULL 8`; Acid `DR 4, DR+A 8, FULL 8,
+A+B 4, FULL 8`; Dub `DR+A 8, DR+B 4, FULL 8, DR 4, FULL 8`; Trip-Hop `A+B 4, DR+A 4,
++B SPACE 8, FULL 8, A+B 4, +B SPACE 4`. Other genres keep the WAVE curve.
 
 ### MIDI PLAYER LOOP
 

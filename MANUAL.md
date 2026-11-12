@@ -296,15 +296,15 @@ A working Melody can keep sounding while being edited. ACCEPT/DISCARD belongs to
 FORM builds ordinary Song rows from existing material using an energy curve. Press `F` on SONG to open it.
 
 - `Left/Right`: choose section;
-- `Up/Down`: energy `0..4`;
+- `Up/Down`: energy, in the order `SILENCE`, `DR`, `DR+A`, `DR+B`, `A+B`, `+B SPACE`, `FULL`;
 - `Enter`: section length `4/8` bars;
 - `N`: add a section;
 - `Backspace`: delete a section;
-- `1/2/3`: BUILD / DROP / WAVE curve;
+- `1/2/3`: BUILD / DROP / WAVE curve. Opening FORM loads the form of the current genre (`FORM: <GENRE>`) when the genre changed since the last visit; your edits in the same genre are kept;
 - `G`: insert generated form rows after the source block (selection, otherwise the TAKE at the cursor);
 - `F` / `Esc`: back to the normal Song grid.
 
-Energy is structural rather than a timbre macro: `0` is silence, `1` drums, `2` drums+bass, `3` adds the lead with a recurring rest, and `4` uses the full available arrangement including Voice. The inserted rows remain normal editable Song rows; one `Ctrl+Z` undoes the FORM insertion.
+Energy is structural rather than a timbre macro: `SILENCE` is silence, `DR` drums, `DR+A` drums+bass, `DR+B` drums+lead without bass, `A+B` bass+lead without drums, `+B SPACE` adds the lead with a recurring rest, and `FULL` uses the full available arrangement including Voice. The inserted rows remain normal editable Song rows; one `Ctrl+Z` undoes the FORM insertion.
 
 ## 7. MATERIAL — the first-session composition page
 
