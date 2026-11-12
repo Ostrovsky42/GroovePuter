@@ -1,6 +1,7 @@
 #include "genre_page.h"
 
 #include "src/midi/midi_device_profile_runtime.h"
+#include "src/ui/genre_sound_hint.h"
 
 #include <algorithm>
 #include <cctype>
@@ -726,7 +727,10 @@ void GenrePage::draw(IGfx& gfx) {
       statusIsNews ? value
       : tempoIsNews ? tempoLine
       : focus_ == FocusRow::Key ? "L/R ROOT  ENT SCALE  H HARM  N PRESET"
-                                : "G 1 BAR  ALT+8 MATERIAL 4 BARS",
+      : focus_ == FocusRow::Apply
+          ? GenreUi::applyEnterHint(GroovePuterMidi::midiDeviceProfileRuntime().profile() ==
+                                    GroovePuterMidi::MidiDeviceProfile::SeqtrakNative)
+          : "G 1 BAR  ALT+8 MATERIAL 4 BARS",
       statusIsNews ? UI::genreProfile(selectedGenre).tag : nullptr);
   char keyHint[40];
   std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");

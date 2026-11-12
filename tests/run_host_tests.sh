@@ -505,6 +505,11 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -o "${BUILD_DIR}/test_genre_sound_send"
 "${BUILD_DIR}/test_genre_sound_send"
 
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_genre_sound_hint.cpp" \
+  -o "${BUILD_DIR}/test_genre_sound_hint"
+"${BUILD_DIR}/test_genre_sound_hint"
+
 "${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
 
 "${BUILD_DIR}/test_smf_track_route_profile"
