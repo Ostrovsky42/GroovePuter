@@ -16,6 +16,9 @@ Status: code and host tests done for the parts listed under "Done". Device accep
 | H7 | baf2a7e5 | Sound presets for six genres: CUTOFF, ATTACK, RELEASE, REVERB, DELAY on Synth A (channel 8) and Synth B (channel 9). |
 | H8 | 67c8641f | ENTER on the SEQTRAK profile sends the preset, one step per frame, each confirmed before the next; the selected controller is restored. |
 | H9 | d08d755c | The D refusal reads `<GENRE> CAN'T GROW: SONG F FORM`; keys.md updated. |
+| hint | fe5a8563 | On GENRE's APPLY row the status line reads `ENT: STYLE + SOUND` (SEQTRAK) or `ENT: STYLE (SOUND: SEQTRAK)`. |
+| help | 3d643c79 | On-device help: GENRE Enter and LIVELY, SONG FORM keys, the D refusal. |
+| docs | e435c25b, then this batch | keys.md, MANUAL.md, this note; the GENRE and FORM texts were checked against the code. |
 
 ## Not done
 
@@ -24,16 +27,12 @@ Status: code and host tests done for the parts listed under "Done". Device accep
   bass notes CALM 46, NORMAL 43, LIVELY 35; Synth B onsets CALM 22, NORMAL 41, LIVELY 37. The change was
   reverted; the owner has to decide how the three levels should sound before H1 can land.
 - **H10 (listening kit for the forms) — skipped**, because it depends on H1.
-- **H8 hint line on GENRE** — the preset hint (for example `A: SHORT BASS  B: PIANO/ORGAN`) is shown only
-  in the toast's text if at all; it is not drawn on the GENRE page yet.
-- **H11 items beyond this file** — `global_help_content.h` is unchanged; `MANUAL.md` and `keys.md` describe
-  FORM as built here.
 
 ## Scenario to try on the device
 
 GENRE, Enter (SEQTRAK profile: the sound is sent to the synths) → SONG, `T` (take) → `F` (FORM, opens the
-genre's form) → `G` (insert the form rows) → Play. Step M (NEW TAKE + TEMPO) as in the plan. *Not checked
-in the code for this release.*
+genre's form) → `G` (insert the form rows) → Play. On GENRE, `M` on the APPLY row cycles the
+apply mode `STYLE ONLY` / `NEW TAKE` / `NEW TAKE + TEMPO` (keys.md). *Not checked on the device.*
 
 ## Acceptance (device) — not done, waiting for the owner
 

@@ -213,7 +213,7 @@ The scrollable INPUT list on PERFORM has two groups, top to bottom: `--- MIDI IN
 |---|---|
 | `Tab` / `Up/Down` | Select Genre/Variant/Rhythm/Apply field |
 | `Left/Right` | Adjust selected field |
-| `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy |
+| `Enter` | Open `RECIPE` or `SCALE` list; otherwise apply selected policy. On `APPLY` with the SEQTRAK profile the genre's sound is also sent (see Sound presets) |
 | `G` | Explicit full Stage 15 generation |
 | `P` | Cycle the request level `P1` -> `P2` -> `P3` (P1 faithful to the classic, canon and recipe; P2 variation, a recognisable pattern with limited changes; P3 rework, freer transformation, default since 0.9.17; only on P3 can MATERIAL `D` develop a phrase, on P2 it shows `P: SET P3, THEN G`) |
 | `Left/Right` on KEY | Choose the project tonic; affects the next generation |
@@ -232,6 +232,28 @@ GENRE/RECIPE/RHYTHM selections remain pending until the `APPLY` row is confirmed
 the project `KEY` is changed immediately and affects the next generation.
 The harmony strategy selected with `H` also waits for `APPLY`.
 
+### Sound presets (SEQTRAK)
+
+ENTER on `APPLY` with the SEQTRAK profile sends the genre's sound to the two synths:
+Synth A on MIDI channel 8, Synth B on channel 9. Five controllers per synth, in this order:
+`CUTOFF` (74), `ATTACK` (73), `RELEASE` (75), `REVERB` (91), `DELAY` (94). `VOLUME` and `PAN`
+are not part of a preset. The steps go out one per frame; each one waits until the
+dispatcher has applied the previous one. The controller selected on the synth page before
+the send is selected again afterwards. Other profiles only show the hint `ENT: STYLE (SOUND: SEQTRAK)`;
+on the SEQTRAK profile the hint is `ENT: STYLE + SOUND`, on the APPLY row.
+
+| Genre | Synth A | Synth B | Hint |
+|---|---|---|---|
+| House | CUTOFF 70, ATTACK 0, RELEASE 40, REVERB 0, DELAY 0 | 90 / 0 / 50 / 30 / 10 | A: SHORT BASS  B: PIANO/ORGAN |
+| UK garage | 60 / 0 / 45 / 0 / 0 | 85 / 0 / 40 / 25 / 20 | A: SUB BASS  B: ORGAN STAB |
+| Techno | 55 / 0 / 40 / 0 / 0 | 60 / 0 / 70 / 60 / 70 | A: SUB  B: CHORD STAB |
+| Acid | 75 / 0 / 30 / 0 / 15 | 80 / 0 / 35 / 20 / 30 | A: SAW MONO  B: STAB |
+| Dub (Reggae) | 45 / 0 / 60 / 0 / 0 | 70 / 0 / 30 / 50 / 80 | A: ROUND SUB  B: SKANK ORGAN |
+| Trip-Hop | 50 / 0 / 60 / 0 / 0 | 60 / 30 / 80 / 60 / 40 | A: DEEP BASS  B: EP/PAD |
+
+The values are the controller values in the order CUTOFF / ATTACK / RELEASE / REVERB / DELAY.
+Listen on the device before judging them.
+
 ## GEN 2/3
 
 `Tab` from GENRE opens GEN, `Tab` again goes on to FEEL, `Esc` returns to GENRE.
@@ -241,7 +263,7 @@ The harmony strategy selected with `H` also waits for `APPLY`.
 | `TARGET` | `STEPS` / `MELODY A` / `MELODY B` | Where plain `G` writes. `MELODY A/B`: `G` on GENRE writes a phrase into that synth's Melody; `G` on a synth's STEPS writes that synth's Melody. The synth switches to its Melody first; drums and steps stay. |
 | `DRUMS` | `NEW` / `KEEP` | With `TARGET STEPS`: `NEW` makes a whole new TAKE (drums and both synths); `KEEP` rebuilds only the two synths against the drums already in the slot. A Melody never touches the drums. Enter with APPLY NEW TAKE follows it too. |
 | `LENGTH` | `1/2/4/8` bars | Phrase length for a Melody (`G`, `Alt+G`) and for the MATERIAL TAKE; the same value as MATERIAL `LENGTH`. |
-| `LIVELY` | `CALM` / `NORMAL` / `LIVELY` | How busy Synth B comes out: the lead in melodic genres, the chords in chord genres (Reggae, TripHop). `CALM` prefers sparse cells and long chords, `LIVELY` dense lines and stabs; `NORMAL` is the genre as it is. |
+| `LIVELY` | `CALM` / `NORMAL` / `LIVELY` | Which template level Synth B reads (the lead in melodic genres, the chords in chord genres). `CALM` always reads the sparse level (P3 template); `LIVELY` always reads the variation level (P2); `NORMAL` follows the style `P`: P1 the base level, P2 and P3 the variation level. |
 | `NOTES` | `SHORT` / `MIXED` / `LONG` | How long generated Melody notes ring: the genre's gate, some held on to the next note (more before rests), or all legato. Steps have no note length. |
 
 Settings live for the session.

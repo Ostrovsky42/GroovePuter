@@ -109,8 +109,8 @@ Main controls:
 - `Left/Right`: change the selected Genre/Variant/Rhythm/Apply field;
 - `G`: full Stage 15 generation;
 - `P`: `P1 -> P2 -> P3` (see "P1 / P2 / P3" below);
-- `M`: cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM`;
-- `Enter`: apply the selected policy.
+- `M`: cycle the apply mode: `STYLE ONLY`, `NEW TAKE`, `NEW TAKE + TEMPO`;
+- `Enter`: apply the selected policy. On `APPLY` with the SEQTRAK profile it also sends the genre's sound (see "Sound presets" below).
 
 While stopped, accepted generation commits immediately. During PLAY the full Synth A + Synth B + Drums result publishes at the next real `BAR_START` instead of replacing the sounding bar mid-cycle.
 
@@ -122,6 +122,13 @@ On supported GENRE/scale combinations, the `HARMONY` row can select `GRAPH` for 
 
 The development host package includes deterministic event traces for all 17 harmonic profiles. Eight profiles are host-only today; nine map to existing device genre settings. These traces are evidence for inspection, not rendered audio or a substitute for listening on the Cardputer.
 
+### Sound presets (SEQTRAK)
+
+On the SEQTRAK profile, `Enter` on `APPLY` also sends the genre's sound to both synths: a
+few filter, attack, release, reverb and delay values per synth. The steps go out one at a
+time, and the synth page keeps the controller it had before. On other profiles you only get
+a hint. The keys and the values are listed in `keys.md`.
+
 ### GEN 2/3
 
 GEN is the optional local generation-target panel inside GENRE. `Tab` from GENRE opens GEN; `Tab` again requests FEEL; `Esc` returns to GENRE.
@@ -131,7 +138,7 @@ Its musician-facing choices are:
 - `TARGET`: `STEPS`, `MELODY A` or `MELODY B`;
 - `DRUMS`: `NEW` or `KEEP`;
 - `LENGTH`: `1/2/4/8` bars for generated Melody/TAKE material;
-- `LIVELY`: calm/normal/lively activity intent;
+- `LIVELY`: `CALM` reads the sparse template level, `LIVELY` the variation level, `NORMAL` follows the style `P`;
 - `NOTES`: short/mixed/long note-length intent.
 
 The First Five Minutes path does not require visiting GEN: its defaults are enough for an initial full generation. Use GEN when you want to decide what kind of material the next generation should write, rather than changing the Genre itself.
