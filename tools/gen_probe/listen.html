@@ -60,16 +60,19 @@
     </label>
   </div>
 
+  <div class="row" id="versions">
+    <label>Версия A <select id="verA" disabled></select></label>
+    <label>Версия B <select id="verB" disabled></select></label>
+    <button id="manual" class="hidden">выбрать папки вручную (запасной вариант)</button>
+  </div>
+
   <div id="normal-setup">
+    <p class="dim">Запасной вариант, нужен только без индекса (listen_index.js).</p>
     <div class="row">
       <label>Каталог WAV (render, нормализованные _norm.wav)
         <input type="file" id="wavdir" webkitdirectory></label>
       <label>Каталог манифеста и MIDI (manifest_*.tsv, *.mid)
         <input type="file" id="mandir" webkitdirectory></label>
-    </div>
-    <div class="row">
-      <label>Версия A <select id="verA" disabled></select></label>
-      <label>Версия B <select id="verB" disabled></select></label>
     </div>
   </div>
 
@@ -100,6 +103,7 @@
 
 <main id="pairs"></main>
 
+<script src="listen_index.js"></script>
 <script>
 (function () {
   "use strict";
@@ -115,6 +119,8 @@
     pairs: [],                // all pairs of the current setup
     keyRows: null,            // blind: Map blind_id -> key row
     revealed: false,
+    index: null,              // window.LISTEN_INDEX when listen_index.js is present
+    manualOpen: false,        // folder pickers shown on top of the index
     scores: loadScores(),     // pairId -> { score, comment, time, meta }
     audio: null,              // { el, pairId, which }
     urls: new WeakMap(),      // File -> object URL
@@ -166,6 +172,24 @@
     });
   }
 
+  function mediaSrc(x) {
+    return x.url ? x.url : urlFor(x);
+  }
+
+  function applySetupVisibility() {
+    const blind = state.mode === "blind";
+    $("blind-setup").classList.toggle("hidden", !blind);
+    $("normal-setup").classList.toggle("hidden", blind || (!!state.index && !state.manualOpen));
+    $("versions").classList.toggle("hidden", blind);
+    $("manual").classList.toggle("hidden", blind || !state.index);
+    $("manual").textContent = state.manualOpen ? "скрыть выбор папок" : "выбрать папки вручную (запасной вариант)";
+  }
+
+  $("manual").addEventListener("click", () => {
+    state.manualOpen = !state.manualOpen;
+    applySetupVisibility();
+  });
+
   function urlFor(file) {
     let u = state.urls.get(file);
     if (!u) { u = URL.createObjectURL(file); state.urls.set(file, u); }
@@ -181,9 +205,12 @@
   // ---- setup: mode, folders, key ----
   $("mode").addEventListener("change", (e) => {
     state.mode = e.target.value;
-    $("normal-setup").classList.toggle("hidden", state.mode === "blind");
-    $("blind-setup").classList.toggle("hidden", state.mode === "normal");
+    applySetupVisibility();
     $("reveal").classList.toggle("hidden", state.mode === "normal");
+    if (state.mode === "normal" && state.index) {
+      rebuild();
+      return;
+    }
     $("verA").disabled = $("verB").disabled = true;
     resetPairs();
     setStatus(state.mode === "blind" ? "Выберите каталог слепых WAV и key.tsv." : "Выберите каталог WAV и каталог манифеста.");
@@ -276,6 +303,15 @@
 
   // ---- pair construction ----
   function rebuild() {
+    if (state.mode === "normal" && state.index) {
+      state.pairs = indexPairs();
+      fillGenres();
+      const a = $("verA").value, b = $("verB").value;
+      setStatus(b ? state.pairs.length + " пар " + a + " / " + b + " (из listen_index.js)."
+                  : state.pairs.length + " дублей, версия " + a + " (кандидата в индексе нет).");
+      render();
+      return;
+    }
     if (state.mode === "blind") {
       state.pairs = blindPairs();
       if (!state.pairs.length && state.wavFiles.size) {
@@ -313,6 +349,53 @@
     else setStatus(state.pairs.length + " пар " + a + " / " + b + ".");
     fillGenres();
     render();
+  }
+
+  function rowOf(entry) {
+    return { file: entry.name.replace(/_norm\.wav$/, ".wav"), norm_rms_dbfs: entry.rmsDb };
+  }
+
+  function indexPairs() {
+    const idx = state.index;
+    const a = $("verA").value, b = $("verB").value;
+    const out = [];
+    if (!a || (b && a === b)) return out;
+    for (const t of idx.takes) {
+      const ea = t.versions[a];
+      const eb = b ? t.versions[b] : null;
+      if (!ea || (b && !eb)) continue;
+      out.push({
+        blind: false, single: !b,
+        id: t.genre + "|" + t.take + "|" + a + "|" + (b || "-"),
+        genre: t.genre, take: String(t.take), verA: a, verB: b || "",
+        rowA: rowOf(ea), rowB: eb ? rowOf(eb) : null,
+        wavA: ea, wavB: eb,
+        midA: ea, midB: eb,
+        midNameA: ea.midName, midNameB: eb ? eb.midName : "",
+      });
+    }
+    return out;
+  }
+
+  function initFromIndex(idx) {
+    state.index = idx;
+    const tags = idx.tags || [];
+    for (const id of ["verA", "verB"]) {
+      const sel = $(id);
+      sel.textContent = "";
+      for (const t of tags) sel.appendChild(el("option", { value: t, text: t }));
+      sel.disabled = false;
+    }
+    if (tags.length < 2) {
+      $("verB").appendChild(el("option", { value: "", text: "кандидата нет" }));
+      $("verB").value = "";
+      $("verB").disabled = true;
+    }
+    $("verA").value = tags.includes("base") ? "base" : tags[0];
+    const other = tags.find((t) => t !== $("verA").value);
+    if (other) $("verB").value = other;
+    applySetupVisibility();
+    rebuild();
   }
 
   function blindPairs() {
@@ -360,7 +443,7 @@
     if (!file) { setStatus("Нет нормализованного WAV для " + which + " (нужен _norm.wav в каталоге WAV).", true); return; }
     if (state.audio && state.audio.pairId === pair.id && state.audio.which === which) { stopAll(); return; }
     stopAll();
-    const audio = new Audio(urlFor(file));
+    const audio = new Audio(mediaSrc(file));
     audio.volume = 1;
     audio.addEventListener("ended", stopAll);
     audio.addEventListener("error", () => setStatus("Браузер не открыл " + file.name, true));
@@ -444,10 +527,34 @@
     return el("div", { class: "files" + (ok ? "" : " missing"), text: label + ": " + name + (ok ? "" : " (нет в каталоге WAV)") });
   }
 
+  function copyText(text) {
+    const done = () => setStatus("Путь скопирован: " + text);
+    try {
+      navigator.clipboard.writeText(text).then(done, () => setStatus("Путь: " + text));
+    } catch (e) {
+      setStatus("Путь: " + text);
+    }
+  }
+
   function midLine(label, present, name, file) {
     if (!present) return el("div", { class: "midi missing", text: label + ": " + name + " — нет в каталоге манифеста" });
-    const path = file.webkitRelativePath || file.name;
-    return el("div", { class: "midi present", text: label + ": " + path + "  (импорт в SEQTRAK)" });
+    const path = file.path || file.webkitRelativePath || file.name;
+    const kids = [document.createTextNode(label + ": " + path + "  ")];
+    if (file.url) {
+      kids.push(el("a", { href: file.midUrl || file.url, download: file.midName || file.name, text: "скачать MIDI" }));
+      kids.push(document.createTextNode(" "));
+      kids.push(el("button", { text: "копировать путь", on: { click: () => copyText(path) } }));
+      kids.push(document.createTextNode(" "));
+    }
+    kids.push(document.createTextNode("(импорт в SEQTRAK)"));
+    return el("div", { class: "midi present" }, kids);
+  }
+
+  // An index entry describes its MIDI as midName/midUrl/midPath; a File keeps its own fields.
+  function midOf(x) {
+    if (!x) return {};
+    if (x.midUrl) return { name: x.midName, url: x.midUrl, midUrl: x.midUrl, midName: x.midName, path: x.midPath };
+    return x;
   }
 
   function normRms(pair) {
@@ -477,9 +584,9 @@
 
     if (!pair.blind) {
       card.appendChild(fileLine("A", pair.wavA, pair.wavA ? pair.wavA.name : pair.rowA.file.replace(/\.wav$/, "_norm.wav")));
-      card.appendChild(fileLine("B", pair.wavB, pair.wavB ? pair.wavB.name : pair.rowB.file.replace(/\.wav$/, "_norm.wav")));
-      card.appendChild(midLine("MIDI A (" + pair.verA + ")", !!pair.midA, pair.midNameA, pair.midA));
-      card.appendChild(midLine("MIDI B (" + pair.verB + ")", !!pair.midB, pair.midNameB, pair.midB));
+      if (!pair.single) card.appendChild(fileLine("B", pair.wavB, pair.wavB ? pair.wavB.name : pair.rowB.file.replace(/\.wav$/, "_norm.wav")));
+      card.appendChild(midLine("MIDI A (" + pair.verA + ")", !!pair.midA, pair.midNameA, midOf(pair.midA)));
+      if (pair.verB) card.appendChild(midLine("MIDI B (" + pair.verB + ")", !!pair.midB, pair.midNameB, midOf(pair.midB)));
       const rms = normRms(pair);
       if (rms) card.appendChild(el("div", { class: "dim", text: rms }));
     } else {
@@ -492,7 +599,7 @@
                                  : { better: "лучше (B)", same: "так же", worse: "хуже (B)" };
     for (const key of ["better", "same", "worse"]) {
       rate.appendChild(el("button", {
-        text: labelsMap[key], class: cur && cur.score === key ? "on" : "",
+        text: labelsMap[key], class: cur && cur.score === key ? "on" : "", disabled: !!pair.single,
         on: { click: () => setScore(pair, key) },
       }));
     }
@@ -501,6 +608,7 @@
 
     const ta = el("textarea", { placeholder: "комментарий", on: { change: (e) => setComment(pair, e.target.value) } });
     ta.value = cur && cur.comment ? cur.comment : "";
+    ta.disabled = !!pair.single;
     card.appendChild(ta);
     return card;
   }
@@ -509,8 +617,10 @@
     const box = $("pairs");
     box.textContent = "";
     const list = visiblePairs();
+    const single = list.length && list[0].single;
     $("count").textContent = list.length
-      ? list.length + " пар, оценено " + list.filter((p) => state.scores[p.id] && state.scores[p.id].score).length
+      ? list.length + (single ? " дублей (одна версия, оценка отключена)" : " пар, оценено " +
+          list.filter((p) => state.scores[p.id] && state.scores[p.id].score).length)
       : "";
     $("next").disabled = !list.length;
     $("export").disabled = !Object.keys(state.scores).length;
@@ -518,9 +628,14 @@
     list.forEach((p, i) => box.appendChild(buildCard(p, i)));
   }
 
-  // Start with the page empty; no network, no external resources.
-  render();
-  setStatus("Выберите каталог WAV и каталог манифеста.");
+  // With listen_index.js the pairs are there at once; without it the folder pickers are the way in.
+  if (window.LISTEN_INDEX && Array.isArray(window.LISTEN_INDEX.takes)) {
+    initFromIndex(window.LISTEN_INDEX);
+  } else {
+    applySetupVisibility();
+    render();
+    setStatus("Индекса нет (tools/gen_probe/listen_index.js): выберите каталоги вручную или запустите make_listen_index.py.");
+  }
   $("export").disabled = !Object.keys(state.scores).length;
 })();
 </script>
