@@ -7,13 +7,21 @@
 //
 // Output (TSV on stdout, '#' lines are comments):
 //   T rows   one per genre/take: comparable numeric features of the 4-bar TAKE
-//   G rows   one per genre: means over the takes + how many takes D could grow
-//   X rows   genre-by-genre distance of bar-1 onset masks (drums / bass / lead)
+//            columns after the lanes: A.att412 (bass attacks on steps 4 and 12,
+//            mean per bar), adjSame (1 = bar 1 equals the previous take's bar 1,
+//            - for take 0), idiom (the idiom template the engine wrote, or none),
+//            grow (rows D added, then the D outcome: "DEVELOP + BREAK 8B", "NO ROOM", ...)
+//   G rows   one per genre: means over the takes; grow column = takes D grew,
+//            distinct takes, DEVELOP + BREAK 8B count, CAN'T GROW (refused by
+//            the genre) count, adjacent equal pairs
+//   X rows   genre-by-genre distance of bar-1 onset masks (drums / bass / lead);
+//            the diagonal is the spread inside a genre
 //
 // The numbers find mistakes (wrong tempo, no kick on the beat, a bass that does
 // not move, takes that are all the same, D refused). They do not prove that a
 // genre sounds good: only listening does.
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -27,6 +35,7 @@
 #include "platform_sdl/scene_storage_sdl.h"
 #include "src/audio/pattern_paging.h"
 #include "src/generation/composition/generation_profile.h"
+#include "src/generation/idiom/genre_idiom.h"
 #include "src/input/performance_keyboard.h"
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/state/generation_request_state.h"
@@ -92,8 +101,36 @@ struct Take {
   std::vector<Bar> bars;
   float bpm = 0;
   int grow = -1;  // rows added by D, 0 = refused
-  std::string growText;
+  std::string growText;  // the D outcome (outcomeOf), "none" when the UI said nothing
+  std::string idiom = "none";
 };
+
+// The D outcome as the UI words it. Only a text that STARTS with one of these
+// phrases counts: "BREAKS 132 BPM" is the genre label and must not match BREAK.
+// A bar count right after the phrase is kept: "DEVELOP + BREAK 8B IN SONG"
+// gives "DEVELOP + BREAK 8B".
+static std::string outcomeOf(const std::string& text) {
+  // "HOUSE CAN'T GROW: ALT+V GENRE": the genre does not grow at all (the name
+  // before the phrase varies, so this one is found anywhere in the text).
+  if (text.find("CAN'T GROW") != std::string::npos) return "CAN'T GROW";
+  static const char* kPhrases[] = {"GROW FAILED", "DEVELOP + BREAK", "DEVELOP ONLY",
+                                   "BREAK ONLY", "GROW", "NO ROOM", "NO SLOTS", "SET 4B",
+                                   "PRESS G", "THEN G", "TAKE: G"};
+  for (const char* p : kPhrases) {
+    const size_t n = std::strlen(p);
+    if (text.compare(0, n, p) != 0) continue;
+    std::string out = p;
+    if (n < text.size() && text[n] == ' ') {
+      size_t d = n + 1, e = d;
+      while (e < text.size() && std::isdigit(static_cast<unsigned char>(text[e]))) ++e;
+      if (e > d && e < text.size() && text[e] == 'B' &&
+          (e + 1 == text.size() || text[e + 1] == ' '))
+        out += " " + text.substr(d, e - d + 1);
+    }
+    return out;
+  }
+  return "";
+}
 
 static int pop(uint16_t v) { return __builtin_popcount(v); }
 
@@ -156,6 +193,7 @@ struct Feat {
   double onKick[2] = {0, 0}, off8[2] = {0, 0}, odd16[2] = {0, 0}, len[2] = {0, 0};
   double root[2] = {0, 0}, slides[2] = {0, 0}, barsDiffer[2] = {0, 0};
   double barRoots = 0;  // distinct lowest-bass-note pitch classes over the bars
+  double att412 = 0;    // lane A (bass) attacks on steps 4 and 12, mean per bar (0..2)
 };
 
 static Feat measure(const Take& t, int rootPc) {
@@ -218,20 +256,24 @@ static Feat measure(const Take& t, int rootPc) {
     f.len[lane] = (attacks + held) / a;
     f.root[lane] = root / a; f.slides[lane] = slides / n;
   }
+  for (const Bar& bar : t.bars)
+    for (int i : {4, 12})
+      if (isAttack(bar, 0, i)) f.att412 += 1;
+  f.att412 /= n;
   return f;
 }
 
 static void printHeader(const char* tag) {
   std::printf("%s\tgenre\ttake\tbpm\tkick/bar\tkick4fl\tsnr/bar\tbackbeat\tsnrOn3\that/bar\thatOff8\tdrOdd16\tdrBarsDiff"
               "\tA.n/bar\tA.lo\tA.hi\tA.dist\tA.onKick\tA.off8\tA.odd16\tA.len\tA.root\tA.slide/bar\tA.barsDiff\tA.barRoots"
-              "\tB.n/bar\tB.lo\tB.hi\tB.dist\tB.onKick\tB.off8\tB.odd16\tB.len\tB.root\tB.barsDiff\tgrow\n", tag);
+              "\tB.n/bar\tB.lo\tB.hi\tB.dist\tB.onKick\tB.off8\tB.odd16\tB.len\tB.root\tB.barsDiff\tA.att412\tadjSame\tidiom\tgrow\n", tag);
 }
 
 static void printFeat(const char* tag, const char* genre, const char* take, const Feat& f,
-                      const char* grow) {
+                      const char* adj, const char* idiom, const char* grow) {
   std::printf("%s\t%s\t%s\t%.0f\t%.1f\t%.2f\t%.1f\t%.2f\t%.2f\t%.1f\t%.2f\t%.2f\t%.1f"
               "\t%.1f\t%s\t%s\t%.1f\t%.2f\t%.2f\t%.2f\t%.1f\t%.2f\t%.1f\t%.1f\t%.1f"
-              "\t%.1f\t%s\t%s\t%.1f\t%.2f\t%.2f\t%.2f\t%.1f\t%.2f\t%.1f\t%s\n",
+              "\t%.1f\t%s\t%s\t%.1f\t%.2f\t%.2f\t%.2f\t%.1f\t%.2f\t%.1f\t%.2f\t%s\t%s\t%s\n",
               tag, genre, take, f.bpm, f.kickPerBar, f.kick4, f.snarePerBar, f.backbeat,
               f.snareOn3, f.hatPerBar, f.hatOff, f.drumOdd, f.drumBarsDiffer,
               f.notes[0], nm(static_cast<int>(std::lround(f.lo[0]))).c_str(),
@@ -239,7 +281,8 @@ static void printFeat(const char* tag, const char* genre, const char* take, cons
               f.off8[0], f.odd16[0], f.len[0], f.root[0], f.slides[0], f.barsDiffer[0], f.barRoots,
               f.notes[1], nm(static_cast<int>(std::lround(f.lo[1]))).c_str(),
               nm(static_cast<int>(std::lround(f.hi[1]))).c_str(), f.distinct[1], f.onKick[1],
-              f.off8[1], f.odd16[1], f.len[1], f.root[1], f.barsDiffer[1], grow);
+              f.off8[1], f.odd16[1], f.len[1], f.root[1], f.barsDiffer[1], f.att412, adj, idiom,
+              grow);
 }
 
 int main(int argc, char** argv) {
@@ -318,6 +361,12 @@ int main(int argc, char** argv) {
       }
       Take take;
       take.bpm = engine.bpm();
+      // The idiom template the engine wrote for this TAKE, if it kept one.
+      if (const auto* origin = engine.generatedSynthAOrigin()) {
+        uint8_t level = 0;
+        if (const auto* v = GenreIdiom::idiomTemplateVariant(origin->common.idiomTemplate, level))
+          take.idiom = v->name;
+      }
       for (int row = std::max(0, afterG - 4); row < afterG; ++row) {
         Bar bar{};
         readBar(engine, scene, row, bar);
@@ -329,13 +378,14 @@ int main(int argc, char** argv) {
       for (int i = 0; i < 3; ++i) display.update();
       const int afterD = scene.songs[songSlot].length;
       take.grow = afterD - afterG;
+      take.growText = "none";
+      // GP_PROBE_TEXTS=1: every text the UI drew during D, before the outcome is picked.
+      if (std::getenv("GP_PROBE_TEXTS") != nullptr)
+        for (const auto& t : gfx.texts) std::printf("#D %s t%d: %s\n", kGenre[mode], k, t.c_str());
       for (const auto& t : gfx.texts) {
-        if (t.find("G:TAKE") != std::string::npos) continue;
-        if (t.find("GROW") != std::string::npos || t.find("DEVELOP") != std::string::npos ||
-            t.find("BREAK") != std::string::npos || t.find("PRESS G") != std::string::npos ||
-            t.find("TAKE: G") != std::string::npos || t.find("NO ROOM") != std::string::npos ||
-            t.find("THEN G") != std::string::npos) {
-          take.growText = t;
+        const std::string outcome = outcomeOf(t);
+        if (!outcome.empty()) {
+          take.growText = outcome;
           break;
         }
       }
@@ -348,10 +398,16 @@ int main(int argc, char** argv) {
   for (int mode = 0; mode < kGenerativeModeCount; ++mode) {
     for (size_t k = 0; k < all[mode].size(); ++k) {
       const Feat f = measure(all[mode][k], rootPc);
-      char grow[64];
+      char grow[96];
       std::snprintf(grow, sizeof(grow), "%d:%s", all[mode][k].grow,
                     all[mode][k].growText.c_str());
-      printFeat("T", kGenre[mode], std::to_string(k).c_str(), f, grow);
+      // Bar 1 of this take equal to bar 1 of the previous take (all lanes, drums too).
+      const char* adj = "-";
+      if (k > 0 && !all[mode][k].bars.empty() && !all[mode][k - 1].bars.empty())
+        adj = std::memcmp(&all[mode][k].bars[0], &all[mode][k - 1].bars[0], sizeof(Bar)) == 0
+                  ? "1" : "0";
+      printFeat("T", kGenre[mode], std::to_string(k).c_str(), f, adj,
+                all[mode][k].idiom.c_str(), grow);
       if (print && k < 2) {
         for (size_t b = 0; b < all[mode][k].bars.size(); ++b) {
           const Bar& bar = all[mode][k].bars[b];
@@ -381,13 +437,17 @@ int main(int argc, char** argv) {
     Feat sum;
     const auto& v = all[mode];
     const double c = v.empty() ? 1 : v.size();
-    int grown = 0, unique = 0;
+    int grown = 0, unique = 0, developBreak8 = 0, adjSame = 0, refused = 0;
     for (size_t k = 0; k < v.size(); ++k) {
       const Feat f = measure(v[k], rootPc);
       const double* src = reinterpret_cast<const double*>(&f);
       double* dst = reinterpret_cast<double*>(&sum);
       for (size_t i = 0; i < sizeof(Feat) / sizeof(double); ++i) dst[i] += src[i] / c;
       grown += v[k].grow > 0;
+      developBreak8 += v[k].growText == "DEVELOP + BREAK 8B";
+      refused += v[k].growText == "CAN'T GROW";
+      if (k > 0 && !v[k].bars.empty() && !v[k - 1].bars.empty())
+        adjSame += std::memcmp(&v[k].bars[0], &v[k - 1].bars[0], sizeof(Bar)) == 0;
       bool same = false;
       for (size_t j = 0; j < k && !same; ++j) {
         same = v[j].bars.size() == v[k].bars.size();
@@ -396,9 +456,12 @@ int main(int argc, char** argv) {
       }
       unique += !same;
     }
-    char grow[48];
-    std::snprintf(grow, sizeof(grow), "grown %d/%zu uniq %d/%zu", grown, v.size(), unique, v.size());
-    printFeat("G", kGenre[mode], "mean", sum, grow);
+    char grow[200];
+    std::snprintf(grow, sizeof(grow),
+                  "grown %d/%zu uniq %d/%zu DEVELOP+BREAK8B %d/%zu CANTGROW %d/%zu adjSame %d/%zu",
+                  grown, v.size(), unique, v.size(), developBreak8, v.size(), refused, v.size(),
+                  adjSame, v.size() > 1 ? v.size() - 1 : 0);
+    printFeat("G", kGenre[mode], "mean", sum, "-", "-", grow);
   }
 
   // Genre-by-genre distance: mean Hamming distance (steps of 16) between the
