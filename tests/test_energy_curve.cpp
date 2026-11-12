@@ -121,6 +121,24 @@ int main() {
     assert(voicesFor(3, 2).lead == false && voicesFor(3, 3).lead == true);
   }
 
+  // H4: an 8-row source over two 4-bar sections: the second section reads rows 4..7.
+  {
+    Song song{};
+    song.length = 8;
+    for (int r = 0; r < 8; ++r) song.positions[r].patterns[0] = static_cast<int16_t>(r);
+    EnergyCurve::Curve two{};
+    two.sections[0] = EnergyCurve::Section{4, 2};
+    two.sections[1] = EnergyCurve::Section{4, 2};
+    two.count = 2;
+    assert(apply(song, two, 0, 8, 8) == Status::Ok);
+    for (int b = 0; b < 8; ++b) assert(patternAt(song, 8 + b, SongTrack::SynthA) == b);
+    // A 4-row source keeps the old repeat: the second section starts again on row 0.
+    Song four = takeSong();
+    assert(apply(four, two, 0, 4, 4) == Status::Ok);
+    for (int b = 0; b < 4; ++b) assert(patternAt(four, 4 + b, SongTrack::SynthA) == b);
+    for (int b = 0; b < 4; ++b) assert(patternAt(four, 8 + b, SongTrack::SynthA) == b);
+  }
+
   // H3: the bass comes off before a drop only in a section that has drums.
   {
     // A+B (5) -> DR (1): no drums in the section, so the bass stays on its last bar.

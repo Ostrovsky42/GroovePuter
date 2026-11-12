@@ -162,11 +162,16 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
   if (length + bars > Song::kMaxPositions) return Status::NoRoom;
 
   int row = insertAt;
+  uint16_t inserted = 0;  // bars written so far, across all sections (H4)
   for (uint8_t s = 0; s < curve.count; ++s) {
     const Section& section = curve.sections[s];
-    for (uint16_t bar = 0; bar < section.bars; ++bar, ++row) {
+    for (uint16_t bar = 0; bar < section.bars; ++bar, ++row, ++inserted) {
       insertRow(song, row);
-      const SongPosition& from = source[bar % sourceCount];
+      // H4: a source longer than the section walks on through the whole source
+      // (an 8-row TAKE over two 4-bar sections: rows 0..3, then 4..7). A source no
+      // longer than the section repeats from its first row, as before.
+      const uint16_t sourceBar = sourceCount > section.bars ? inserted : bar;
+      const SongPosition& from = source[sourceBar % sourceCount];
       Voices v = voicesFor(section.energy, bar);
       const bool lastBar = bar + 1 == section.bars;
       if (lastBar && s + 1 < curve.count) {
