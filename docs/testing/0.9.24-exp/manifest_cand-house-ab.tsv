@@ -1,0 +1,2 @@
+file	genre	take	tag	bpm	idiom	notes	notes_A	notes_B	notes_D	peak	rms_dbfs	samples	norm_gain_db	norm_gain	norm_capped	norm_rms_dbfs	norm_peak_dbfs	sha256_norm_wav	norm_wav_path
+house_t0_cand-house-ab.wav	House	0	cand-house-ab	122.00	house_piano_bass+house_organ_stab	230	44	50	136	0.1261	-30.5	347016	8.55	2.67549	0	-22.00	-9.44	04e3e848d6199f7300ae7ef21ef75cb5a9050548044e501f343f3cd4c19b88d5	/home/gg/pro/gp-0924-artifacts/0.9.24-exp/cand-house-ab/house_t0_cand-house-ab_norm.wav

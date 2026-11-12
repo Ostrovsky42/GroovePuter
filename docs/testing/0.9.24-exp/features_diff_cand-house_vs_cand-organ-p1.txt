@@ -1,0 +1,4 @@
+genre	metric	was	now
+House	attA412	1.03	0.53
+House	synthB.diag	3.40	6.30
+changed: 2 of 128 values
