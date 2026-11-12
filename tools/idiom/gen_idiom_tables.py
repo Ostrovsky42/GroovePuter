@@ -198,7 +198,7 @@ HAND = {
                     ("4|8|10|12|16", "Cm9|Cm9|Fm9|Cm9|Fm9", "1|1|2|1|1", "74|66|72|70|68"),
                     ("7|15", "Eb4|G4", "2|1", "66|72")),
         "P3": level(("1|9", "C2|C2", "4|4", "100|92", ""),
-                    ("4|12", "Cm9|Fm9", "3|3", "72|70"), NONE4)},
+                    ("4|10", "Cm9|Fm9", "3|3", "72|70"), NONE4)},  # was 4|12: the answer bar lead gesture starts at step 11, so a stab on 12 was overwritten (test_cr_phase8 caught it)
     # ORGAN STAB: sustained organ chords on the e-and-a offsets (2, 6, 10, 14),
     # a sparse root bass that leaves the kick alone; progression i-i-v-v.
     "house_organ_stab": {"progression": (0, 0, 3, 3),

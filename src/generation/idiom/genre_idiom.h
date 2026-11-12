@@ -142,9 +142,11 @@ inline void connectSlides(SynthPattern& pattern, const uint8_t (&slideOut)[16]) 
 }  // namespace detail
 
 // The template for a genre/recipe, or nullptr where the genre keeps the
-// regular generator.
+// regular generator. press = Request::press (the G attempt count): House takes its
+// variant from the parity of press, so consecutive G presses alternate; a press
+// undone with Ctrl+Z and retried takes the same attempt number, and so the same variant.
 inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
-                                      uint32_t salt) {
+                                      uint32_t salt, uint32_t press = 0) {
   switch (generativeMode) {
     case 0:  // Acid
       if (recipe != 0) return nullptr;
@@ -173,8 +175,9 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
         case 21: return &k_dnb_neuro;
         default: return nullptr;
       }
-    case 9:  // House
-      return recipe == 0 ? &k_house_deep_offbeat : nullptr;
+    case 9:  // House: the two hand-written variants, alternating per press
+      if (recipe != 0) return nullptr;
+      return (press & 1u) ? &k_house_organ_stab : &k_house_piano_bass;
     case 11:  // HipHop
       if (recipe == 0 || recipe == 16) return &k_boombap_golden_era;
       if (recipe == 17) return &k_boombap_dusty_jazz;
@@ -563,7 +566,7 @@ inline int barDegreeShift(const IdiomVariant& variant, uint8_t barOrdinal, uint8
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
                   IdeaPlan* planOut = nullptr, DrumPatternSet* drums = nullptr) {
   const IdiomVariant* variant =
-      variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
+      variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7, request.press);
   if (variant == nullptr) return false;
   const IdiomLevel& level = variant->levels[request.level > 2 ? 2 : request.level];
   if (level.bass == nullptr) return false;
@@ -923,7 +926,7 @@ static_assert(kIdiomVariantCount <= 31, "idiom template index must fit 5 bits");
 
 // The template apply() uses for this request (the same selection).
 inline const IdiomVariant* variantForRequest(const Request& request) {
-  return variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
+  return variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7, request.press);
 }
 
 namespace detail {
