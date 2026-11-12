@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A/B прослушивание</title>
+<style>
+  :root { --fg: #1d1d1f; --dim: #6b6b70; --line: #d8d8dc; --bg: #fafaf8; --card: #ffffff;
+          --accent: #2f6fd6; --bad: #b3261e; --ok: #1e7b3a; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --fg: #e8e8ea; --dim: #9a9aa0; --line: #3a3a40; --bg: #161618; --card: #1f1f23;
+          --accent: #7aa7f0; --bad: #f08a84; --ok: #7fd096; }
+  }
+  :root[data-theme="dark"] { --fg: #e8e8ea; --dim: #9a9aa0; --line: #3a3a40; --bg: #161618; --card: #1f1f23;
+          --accent: #7aa7f0; --bad: #f08a84; --ok: #7fd096; }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.45 system-ui, sans-serif; }
+  header, section, main { padding: 12px 16px; max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 8px 0 4px; }
+  .dim { color: var(--dim); font-size: 13px; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin: 6px 0; }
+  label { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--dim); }
+  input[type=file], select, textarea { font: inherit; color: var(--fg); background: var(--card);
+          border: 1px solid var(--line); border-radius: 6px; padding: 4px 6px; max-width: 100%; }
+  button { font: inherit; color: var(--fg); background: var(--card); border: 1px solid var(--line);
+           border-radius: 6px; padding: 5px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: default; }
+  button.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+  #status { min-height: 1.4em; margin: 6px 0; font-size: 14px; }
+  #status.err { color: var(--bad); }
+  .pair { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; margin: 12px 0; }
+  .pair h2 { font-size: 16px; margin: 0 0 6px; }
+  .pair .players { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .pair .files { font-size: 12px; color: var(--dim); margin: 4px 0; word-break: break-all; }
+  .pair .midi { font-size: 12px; margin: 4px 0; word-break: break-all; }
+  .missing { color: var(--bad); }
+  .present { color: var(--ok); }
+  .rate { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; }
+  textarea { width: 100%; box-sizing: border-box; min-height: 38px; margin-top: 6px; }
+  .wide { width: 100%; }
+  .hidden { display: none !important; }
+  .current { outline: 2px solid var(--accent); outline-offset: 2px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Прослушивание A/B</h1>
+  <p class="dim">Всё читается с диска в этой вкладке и никуда не отправляется. Громкость выровнена файлами
+  (_norm.wav, RMS -22 dBFS), громкость плеера не трогается. «лучше» значит: B лучше A.
+  MIDI страница не проигрывает: ссылка на файл нужна для импорта в SEQTRAK.</p>
+</header>
+
+<section>
+  <div class="row">
+    <label>Режим
+      <select id="mode">
+        <option value="normal">обычный (версии видны)</option>
+        <option value="blind">слепой (версии скрыты)</option>
+      </select>
+    </label>
+  </div>
+
+  <div id="normal-setup">
+    <div class="row">
+      <label>Каталог WAV (render, нормализованные _norm.wav)
+        <input type="file" id="wavdir" webkitdirectory></label>
+      <label>Каталог манифеста и MIDI (manifest_*.tsv, *.mid)
+        <input type="file" id="mandir" webkitdirectory></label>
+    </div>
+    <div class="row">
+      <label>Версия A <select id="verA" disabled></select></label>
+      <label>Версия B <select id="verB" disabled></select></label>
+    </div>
+  </div>
+
+  <div id="blind-setup" class="hidden">
+    <div class="row">
+      <label>Каталог слепых WAV (blind_NN_A.wav, blind_NN_B.wav)
+        <input type="file" id="blinddir" webkitdirectory></label>
+      <label>key.tsv (отдельный файл, из каталога со звуком не берётся)
+        <input type="file" id="keyfile" accept=".tsv,text/tab-separated-values,text/plain"></label>
+    </div>
+    <p class="dim">В слепом режиме жанр и дубль не показаны, пока не открыт ключ. Порядок A/B уже перемешан
+    при render_ab.sh blind; ключ даёт соответствие файлов версиям.</p>
+  </div>
+
+  <div id="status" role="status"></div>
+</section>
+
+<section>
+  <div class="row">
+    <label>Жанр
+      <select id="genre" disabled><option value="">все</option></select></label>
+    <button id="next" disabled>следующая не оценённая пара</button>
+    <button id="reveal" class="hidden" disabled>показать ключ</button>
+    <button id="export" disabled>скачать оценки (TSV)</button>
+    <span id="count" class="dim"></span>
+  </div>
+</section>
+
+<main id="pairs"></main>
+
+<script>
+(function () {
+  "use strict";
+
+  const SCORE_STORE = "gp-ab-scores-v1";
+  const SCORE_LABELS = { better: "лучше", same: "так же", worse: "хуже" };
+
+  const state = {
+    mode: "normal",
+    wavFiles: new Map(),      // name -> File (render folder, all files)
+    manFiles: new Map(),      // name -> File (manifest folder)
+    manifests: new Map(),     // tag -> { rows: [...], name }
+    pairs: [],                // all pairs of the current setup
+    keyRows: null,            // blind: Map blind_id -> key row
+    revealed: false,
+    scores: loadScores(),     // pairId -> { score, comment, time, meta }
+    audio: null,              // { el, pairId, which }
+    urls: new WeakMap(),      // File -> object URL
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const el = (tag, props, children) => {
+    const n = document.createElement(tag);
+    if (props) for (const k of Object.keys(props)) {
+      if (k === "class") n.className = props[k];
+      else if (k === "text") n.textContent = props[k];
+      else if (k === "on") for (const ev of Object.keys(props.on)) n.addEventListener(ev, props.on[ev]);
+      else if (k === "disabled") n.disabled = !!props[k];
+      else n.setAttribute(k, props[k]);
+    }
+    for (const c of children || []) n.appendChild(c);
+    return n;
+  };
+
+  function setStatus(msg, isErr) {
+    const s = $("status");
+    s.textContent = msg || "";
+    s.className = isErr ? "err" : "";
+  }
+
+  // ---- storage (a convenience only: the in-memory scores are the working copy) ----
+  function loadScores() {
+    try {
+      const raw = localStorage.getItem(SCORE_STORE);
+      return raw ? JSON.parse(raw) : {};
+    } catch (e) {
+      return {};
+    }
+  }
+  function saveScores() {
+    try { localStorage.setItem(SCORE_STORE, JSON.stringify(state.scores)); } catch (e) { /* private window: ignore */ }
+  }
+
+  // ---- TSV parsing ----
+  function parseTsv(text) {
+    const lines = text.split(/\r?\n/).filter((l) => l.length && !l.startsWith("#"));
+    if (!lines.length) return [];
+    const head = lines[0].split("\t");
+    return lines.slice(1).map((l) => {
+      const cols = l.split("\t");
+      const o = {};
+      head.forEach((h, i) => { o[h] = cols[i] !== undefined ? cols[i] : ""; });
+      return o;
+    });
+  }
+
+  function urlFor(file) {
+    let u = state.urls.get(file);
+    if (!u) { u = URL.createObjectURL(file); state.urls.set(file, u); }
+    return u;
+  }
+
+  function fileMap(input) {
+    const m = new Map();
+    for (const f of input.files) m.set(f.name, f);
+    return m;
+  }
+
+  // ---- setup: mode, folders, key ----
+  $("mode").addEventListener("change", (e) => {
+    state.mode = e.target.value;
+    $("normal-setup").classList.toggle("hidden", state.mode === "blind");
+    $("blind-setup").classList.toggle("hidden", state.mode === "normal");
+    $("reveal").classList.toggle("hidden", state.mode === "normal");
+    $("verA").disabled = $("verB").disabled = true;
+    resetPairs();
+    setStatus(state.mode === "blind" ? "Выберите каталог слепых WAV и key.tsv." : "Выберите каталог WAV и каталог манифеста.");
+  });
+
+  $("wavdir").addEventListener("change", (e) => {
+    state.wavFiles = fileMap(e.target);
+    rebuild();
+  });
+
+  $("mandir").addEventListener("change", (e) => {
+    state.manFiles = fileMap(e.target);
+    loadManifests(e.target.files);
+  });
+
+  $("blinddir").addEventListener("change", (e) => {
+    state.wavFiles = fileMap(e.target);
+    rebuild();
+  });
+
+  $("keyfile").addEventListener("change", (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    f.text().then((text) => {
+      const rows = parseTsv(text);
+      if (!rows.length || !("blind_id" in rows[0]) || !("A_is" in rows[0])) {
+        state.keyRows = null;
+        setStatus("key.tsv: нет столбцов blind_id и A_is. Выберите файл, который создал render_ab.sh blind.", true);
+        return;
+      }
+      state.keyRows = new Map(rows.map((r) => [r.blind_id, r]));
+      setStatus("Ключ загружен (" + rows.length + " пар). Нажмите «показать ключ», когда все оценки готовы.");
+      $("reveal").disabled = false;
+      render();
+    }).catch(() => setStatus("Не удалось прочитать key.tsv.", true));
+  });
+
+  $("reveal").addEventListener("click", () => {
+    if (!state.keyRows) { setStatus("Сначала выберите key.tsv.", true); return; }
+    state.revealed = !state.revealed;
+    $("reveal").textContent = state.revealed ? "скрыть ключ" : "показать ключ";
+    render();
+  });
+
+  function loadManifests(files) {
+    const manFiles = [...files].filter((f) => /^manifest_.*\.tsv$/.test(f.name));
+    state.manifests = new Map();
+    if (!manFiles.length) {
+      resetPairs();
+      setStatus("В выбранном каталоге нет manifest_*.tsv. Выберите каталог, где лежит manifest_base.tsv (например, docs/testing/0.9.24-base).", true);
+      return;
+    }
+    Promise.all(manFiles.map((f) => f.text().then((t) => ({ f, t })))).then((list) => {
+      for (const { f, t } of list) {
+        const rows = parseTsv(t);
+        if (!rows.length || !("file" in rows[0]) || !("tag" in rows[0]) || !("genre" in rows[0])) {
+          setStatus(f.name + ": не манифест (нужны столбцы file, genre, tag).", true);
+          return;
+        }
+        const tag = rows[0].tag;
+        state.manifests.set(tag, { rows, name: f.name });
+      }
+      fillVersions();
+      rebuild();
+    }).catch(() => setStatus("Не удалось прочитать манифест.", true));
+  }
+
+  function fillVersions() {
+    const tags = [...state.manifests.keys()];
+    for (const id of ["verA", "verB"]) {
+      const sel = $(id);
+      sel.textContent = "";
+      for (const t of tags) sel.appendChild(el("option", { value: t, text: t }));
+      sel.disabled = false;
+    }
+    $("verA").value = tags.includes("base") ? "base" : tags[0];
+    const other = tags.find((t) => t !== $("verA").value);
+    $("verB").value = other || tags[0];
+  }
+
+  $("verA").addEventListener("change", rebuild);
+  $("verB").addEventListener("change", rebuild);
+
+  function resetPairs() {
+    state.pairs = [];
+    state.keyRows = state.keyRows && state.mode === "blind" ? state.keyRows : null;
+    $("reveal").disabled = true;
+    render();
+  }
+
+  // ---- pair construction ----
+  function rebuild() {
+    if (state.mode === "blind") {
+      state.pairs = blindPairs();
+      if (!state.pairs.length && state.wavFiles.size) {
+        setStatus("В каталоге нет blind_NN_A.wav / blind_NN_B.wav.", true);
+      } else if (state.pairs.length) {
+        setStatus(state.pairs.length + " слепых пар. Оценки сохраняются в этой вкладке.");
+      }
+      render();
+      return;
+    }
+    const a = $("verA").value, b = $("verB").value;
+    if (!a || !b) { render(); return; }
+    if (a === b) { setStatus("Выберите разные версии A и B.", true); state.pairs = []; render(); return; }
+    const ma = state.manifests.get(a), mb = state.manifests.get(b);
+    if (!ma || !mb) { state.pairs = []; render(); return; }
+    const byKey = new Map(mb.rows.map((r) => [r.genre + "|" + r.take, r]));
+    state.pairs = [];
+    for (const ra of ma.rows) {
+      const rb = byKey.get(ra.genre + "|" + ra.take);
+      if (!rb) continue;
+      state.pairs.push({
+        blind: false,
+        id: ra.genre + "|" + ra.take + "|" + a + "|" + b,
+        genre: ra.genre, take: ra.take, verA: a, verB: b,
+        rowA: ra, rowB: rb,
+        wavA: state.wavFiles.get(ra.file.replace(/\.wav$/, "_norm.wav")) || null,
+        wavB: state.wavFiles.get(rb.file.replace(/\.wav$/, "_norm.wav")) || null,
+        midA: state.manFiles.get(ra.file.replace(/\.wav$/, ".mid")) || null,
+        midB: state.manFiles.get(rb.file.replace(/\.wav$/, ".mid")) || null,
+        midNameA: ra.file.replace(/\.wav$/, ".mid"),
+        midNameB: rb.file.replace(/\.wav$/, ".mid"),
+      });
+    }
+    if (!state.pairs.length) setStatus("Нет общих пар для версий " + a + " и " + b + ".", true);
+    else setStatus(state.pairs.length + " пар " + a + " / " + b + ".");
+    fillGenres();
+    render();
+  }
+
+  function blindPairs() {
+    const ids = new Map();
+    for (const name of state.wavFiles.keys()) {
+      const m = /^blind_(\d+)_([AB])\.wav$/.exec(name);
+      if (!m) continue;
+      const entry = ids.get(m[1]) || {};
+      entry[m[2]] = state.wavFiles.get(name);
+      ids.set(m[1], entry);
+    }
+    return [...ids.keys()].sort().map((n) => {
+      const e = ids.get(n);
+      return {
+        blind: true, blindId: n, id: "blind|" + n,
+        wavA: e.A || null, wavB: e.B || null,
+        genre: "", take: "",
+      };
+    });
+  }
+
+  function fillGenres() {
+    const sel = $("genre");
+    const cur = sel.value;
+    sel.textContent = "";
+    sel.appendChild(el("option", { value: "", text: "все" }));
+    const genres = [...new Set(state.pairs.map((p) => p.genre))];
+    for (const g of genres) sel.appendChild(el("option", { value: g, text: g }));
+    sel.value = genres.includes(cur) ? cur : "";
+    sel.disabled = state.mode === "blind";
+  }
+  $("genre").addEventListener("change", render);
+
+  // ---- playback ----
+  function stopAll() {
+    if (state.audio) {
+      state.audio.el.pause();
+      state.audio = null;
+    }
+    document.querySelectorAll("button.playing").forEach((b) => b.classList.remove("playing"));
+  }
+
+  function play(pair, which, btn) {
+    const file = which === "A" ? pair.wavA : pair.wavB;
+    if (!file) { setStatus("Нет нормализованного WAV для " + which + " (нужен _norm.wav в каталоге WAV).", true); return; }
+    if (state.audio && state.audio.pairId === pair.id && state.audio.which === which) { stopAll(); return; }
+    stopAll();
+    const audio = new Audio(urlFor(file));
+    audio.volume = 1;
+    audio.addEventListener("ended", stopAll);
+    audio.addEventListener("error", () => setStatus("Браузер не открыл " + file.name, true));
+    state.audio = { el: audio, pairId: pair.id, which };
+    btn.classList.add("playing");
+    audio.play().catch((e) => setStatus("Не удалось играть: " + e.message, true));
+  }
+
+  // ---- scoring ----
+  function setScore(pair, score) {
+    const cur = state.scores[pair.id] || {};
+    state.scores[pair.id] = Object.assign(cur, { score: score, time: new Date().toISOString(), meta: metaOf(pair) });
+    saveScores();
+    render();
+  }
+
+  function setComment(pair, text) {
+    const cur = state.scores[pair.id] || {};
+    state.scores[pair.id] = Object.assign(cur, { comment: text, meta: metaOf(pair) });
+    if (!state.scores[pair.id].time) state.scores[pair.id].time = new Date().toISOString();
+    saveScores();
+  }
+
+  function metaOf(pair) {
+    if (pair.blind) return { blind: true, blindId: pair.blindId };
+    return { blind: false, genre: pair.genre, take: pair.take, verA: pair.verA, verB: pair.verB };
+  }
+
+  // Versions as they may be written to the export: hidden until the key is revealed.
+  function exportVersions(pair) {
+    if (!pair.blind) return [pair.verA, pair.verB];
+    const k = state.keyRows && state.revealed ? state.keyRows.get(pair.blindId) : null;
+    return k ? [k.A_is.replace(/^.*_t\d+_(.+)\.wav$/, "$1"), k.B_is.replace(/^.*_t\d+_(.+)\.wav$/, "$1")] : ["скрыто", "скрыто"];
+  }
+
+  function exportRows() {
+    const rows = [["жанр", "дубль", "A_version", "B_version", "оценка", "комментарий", "время"]];
+    for (const id of Object.keys(state.scores)) {
+      const s = state.scores[id];
+      const m = s.meta || {};
+      if (m.blind) {
+        const key = state.keyRows && state.revealed ? state.keyRows.get(m.blindId) : null;
+        const genre = key ? key.genre : "blind_" + m.blindId;
+        const take = key ? key.take : "";
+        const [va, vb] = exportVersions({ blind: true, blindId: m.blindId });
+        rows.push([genre, take, va, vb, SCORE_LABELS[s.score] || "", s.comment || "", s.time || ""]);
+      } else {
+        rows.push([m.genre, m.take, m.verA, m.verB, SCORE_LABELS[s.score] || "", s.comment || "", s.time || ""]);
+      }
+    }
+    return rows.map((r) => r.map((c) => String(c).replace(/[\t\r\n]+/g, " ")).join("\t")).join("\n") + "\n";
+  }
+
+  $("export").addEventListener("click", () => {
+    const text = exportRows();
+    const blob = new Blob([text], { type: "text/tab-separated-values" });
+    const a = el("a", { href: URL.createObjectURL(blob), download: "ab_scores_" + new Date().toISOString().slice(0, 10) + ".tsv" });
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setStatus("Оценок в файле: " + (text.split("\n").length - 2) + ".");
+  });
+
+  // ---- next unrated ----
+  function visiblePairs() {
+    const g = $("genre").value;
+    return state.pairs.filter((p) => !g || p.genre === g);
+  }
+  $("next").addEventListener("click", () => {
+    const pending = visiblePairs().find((p) => !(state.scores[p.id] && state.scores[p.id].score));
+    if (!pending) { setStatus("Все пары в этом списке оценены."); return; }
+    const node = document.getElementById("pair-" + cssId(pending.id));
+    if (node) { node.scrollIntoView({ behavior: "smooth", block: "start" }); node.classList.add("current"); }
+  });
+
+  function cssId(s) { return s.replace(/[^A-Za-z0-9_-]/g, "_"); }
+
+  // ---- rendering ----
+  function fileLine(label, file, name) {
+    const ok = !!file;
+    return el("div", { class: "files" + (ok ? "" : " missing"), text: label + ": " + name + (ok ? "" : " (нет в каталоге WAV)") });
+  }
+
+  function midLine(label, present, name, file) {
+    if (!present) return el("div", { class: "midi missing", text: label + ": " + name + " — нет в каталоге манифеста" });
+    const path = file.webkitRelativePath || file.name;
+    return el("div", { class: "midi present", text: label + ": " + path + "  (импорт в SEQTRAK)" });
+  }
+
+  function normRms(pair) {
+    const a = pair.rowA && pair.rowA.norm_rms_dbfs, b = pair.rowB && pair.rowB.norm_rms_dbfs;
+    return a !== undefined && b !== undefined ? "RMS A " + a + " / B " + b + " dBFS" : "";
+  }
+
+  function buildCard(pair, index) {
+    const id = pair.id;
+    const hideNames = pair.blind && !(state.revealed && state.keyRows);
+    const title = pair.blind
+      ? "Пара " + pair.blindId
+      : pair.genre + " · дубль t" + pair.take + " · " + pair.verA + " vs " + pair.verB;
+    const card = el("article", { class: "pair", id: "pair-" + cssId(id) });
+    card.appendChild(el("h2", { text: title }));
+
+    if (pair.blind && state.revealed && state.keyRows && state.keyRows.get(pair.blindId)) {
+      const k = state.keyRows.get(pair.blindId);
+      card.appendChild(el("div", { class: "files", text: "ключ: A = " + k.A_is + ", B = " + k.B_is + "; " + k.genre + " · t" + k.take }));
+    }
+
+    const players = el("div", { class: "players" });
+    players.appendChild(el("button", { text: "играть A", disabled: !pair.wavA, on: { click: (e) => play(pair, "A", e.currentTarget) } }));
+    players.appendChild(el("button", { text: "играть B", disabled: !pair.wavB, on: { click: (e) => play(pair, "B", e.currentTarget) } }));
+    players.appendChild(el("button", { text: "стоп", on: { click: stopAll } }));
+    card.appendChild(players);
+
+    if (!pair.blind) {
+      card.appendChild(fileLine("A", pair.wavA, pair.wavA ? pair.wavA.name : pair.rowA.file.replace(/\.wav$/, "_norm.wav")));
+      card.appendChild(fileLine("B", pair.wavB, pair.wavB ? pair.wavB.name : pair.rowB.file.replace(/\.wav$/, "_norm.wav")));
+      card.appendChild(midLine("MIDI A (" + pair.verA + ")", !!pair.midA, pair.midNameA, pair.midA));
+      card.appendChild(midLine("MIDI B (" + pair.verB + ")", !!pair.midB, pair.midNameB, pair.midB));
+      const rms = normRms(pair);
+      if (rms) card.appendChild(el("div", { class: "dim", text: rms }));
+    } else {
+      card.appendChild(el("div", { class: "dim", text: hideNames ? "версии скрыты до открытия ключа" : "" }));
+    }
+
+    const cur = state.scores[id];
+    const rate = el("div", { class: "rate" });
+    const labelsMap = pair.blind ? { better: "лучше", same: "так же", worse: "хуже" }
+                                 : { better: "лучше (B)", same: "так же", worse: "хуже (B)" };
+    for (const key of ["better", "same", "worse"]) {
+      rate.appendChild(el("button", {
+        text: labelsMap[key], class: cur && cur.score === key ? "on" : "",
+        on: { click: () => setScore(pair, key) },
+      }));
+    }
+    rate.appendChild(el("span", { class: "dim", text: cur && cur.time ? "оценено " + cur.time.slice(0, 16).replace("T", " ") : "не оценено" }));
+    card.appendChild(rate);
+
+    const ta = el("textarea", { placeholder: "комментарий", on: { change: (e) => setComment(pair, e.target.value) } });
+    ta.value = cur && cur.comment ? cur.comment : "";
+    card.appendChild(ta);
+    return card;
+  }
+
+  function render() {
+    const box = $("pairs");
+    box.textContent = "";
+    const list = visiblePairs();
+    $("count").textContent = list.length
+      ? list.length + " пар, оценено " + list.filter((p) => state.scores[p.id] && state.scores[p.id].score).length
+      : "";
+    $("next").disabled = !list.length;
+    $("export").disabled = !Object.keys(state.scores).length;
+    if (state.mode === "blind") $("genre").disabled = true;
+    list.forEach((p, i) => box.appendChild(buildCard(p, i)));
+  }
+
+  // Start with the page empty; no network, no external resources.
+  render();
+  setStatus("Выберите каталог WAV и каталог манифеста.");
+  $("export").disabled = !Object.keys(state.scores).length;
+})();
+</script>
+</body>
+</html>
