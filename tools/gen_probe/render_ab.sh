@@ -50,9 +50,9 @@ done
 
 render() {
   [ -n "$TAG" ] && [ -n "$OUT" ] || { echo "render needs --tag and --out" >&2; exit 2; }
-  if [ ! -x "$BIN" ] || [ "$ROOT/tools/gen_probe/genreab.cpp" -nt "$BIN" ]; then
-    "$ROOT/tools/gen_probe/build.sh" "$ROOT/tools/gen_probe/genreab.cpp" "$BIN"
-  fi
+  # Always rebuild: genreab links the generator headers, so a header change
+  # (a new idiom variant, say) does not touch genreab.cpp and a timestamp check misses it.
+  "$ROOT/tools/gen_probe/build.sh" "$ROOT/tools/gen_probe/genreab.cpp" "$BIN"
   mkdir -p "$OUT"
   OUT="$(cd "$OUT" && pwd)"
   local log="$OUT/genreab_$TAG.log"

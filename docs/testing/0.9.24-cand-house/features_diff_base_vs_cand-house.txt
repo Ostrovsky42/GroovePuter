@@ -1,1 +1,5 @@
-no change: 128 values compared
+genre	metric	was	now
+House	attA412	0.03	1.03
+House	bass.diag	0.00	4.00
+House	synthB.diag	0.00	3.40
+changed: 3 of 128 values
