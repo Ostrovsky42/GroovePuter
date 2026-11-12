@@ -11,6 +11,8 @@ Prints one line per changed value per genre, "genre  metric  was -> now":
   attA412     bass attacks on steps 4 and 12, mean per bar (G row)
   noRoom      takes where D answered NO ROOM (of N)
   dev+brk8B   takes where D answered DEVELOP + BREAK 8B (of N)
+  brk4B       takes where D answered BREAK ONLY 4B (of N; its develop section was skipped)
+  grown       takes where D added rows (G row, of N)
 
 Exit codes: 0 no value changed; 1 values changed (table printed);
 2 unreadable or malformed file (row width does not match its header, missing
@@ -93,6 +95,11 @@ def metrics(rows, xdata, path):
         out[(g, "attA412")] = float(next(r for r in rows["G"] if r["genre"] == g)["A.att412"])
         out[(g, "noRoom")] = f"{sum('NO ROOM' in t['grow'] for t in takes)}/{len(takes)}"
         out[(g, "dev+brk8B")] = f"{dev.group(1)}/{dev.group(2)}"
+        out[(g, "brk4B")] = f"{sum('BREAK ONLY 4B' in t['grow'] for t in takes)}/{len(takes)}"
+        grown = re.search(r"grown (\d+)/(\d+)", grow_g)
+        if not grown:
+            raise FormatError(f"{path}: G row {g} has no grown field")
+        out[(g, "grown")] = f"{grown.group(1)}/{grown.group(2)}"
     return out
 
 

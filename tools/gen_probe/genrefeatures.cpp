@@ -40,6 +40,7 @@
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/state/generation_request_state.h"
 #include "src/ui/miniacid_display.h"
+#include "src/ui/ui_common.h"
 #include "src/ui/workflow_mode.h"
 
 SerialMock Serial;
@@ -48,10 +49,17 @@ SDMock SD;
 class NullGfx : public IGfx {
  public:
   std::vector<std::string> texts;
+  std::vector<std::string> toasts;
   void begin() override {}
   void clear(IGfxColor) override {}
   void drawPixel(int, int, IGfxColor) override {}
-  void drawText(int, int, const char* s) override { if (s && *s) texts.push_back(s); }
+  // The global toast is the only text drawn at y = height - 25 (ui_common drawToast).
+  // Page status lines such as "NO SLOTS" or "NO ROOM" are drawn elsewhere and are not outcomes.
+  void drawText(int, int y, const char* s) override {
+    if (!s || !*s) return;
+    texts.push_back(s);
+    if (y == height() - 25) toasts.push_back(s);
+  }
   void drawImage(int, int, const uint16_t*, int, int) override {}
   void drawRect(int, int, int, int, IGfxColor) override {}
   void drawCircle(int, int, int, IGfxColor) override {}
@@ -372,7 +380,17 @@ int main(int argc, char** argv) {
         readBar(engine, scene, row, bar);
         take.bars.push_back(bar);
       }
+      // Clear the toast left by G (an empty toast with 0 ms expires at once), so the
+      // toast read after D is the one D showed.
+      // D is growKeptPhrase (phrase_page.cpp): the same keys as the owner's path in
+      // src/ui/docs/keys.md (G on the defaults, LENGTH 4B and STYLE P3, then D on the
+      // unedited TAKE). Its outcome is the toast it shows: BREAK ONLY 4B means the
+      // DEVELOP section was skipped (developSkipped), DEVELOP + BREAK 8B means both.
+      // NO ROOM is refused here without the R step that keys.md asks for.
+      UI::showToast("", 0);
+      display.update();
       gfx.texts.clear();
+      gfx.toasts.clear();
       auto d = key('d');
       display.handleEvent(d);
       for (int i = 0; i < 3; ++i) display.update();
@@ -381,8 +399,8 @@ int main(int argc, char** argv) {
       take.growText = "none";
       // GP_PROBE_TEXTS=1: every text the UI drew during D, before the outcome is picked.
       if (std::getenv("GP_PROBE_TEXTS") != nullptr)
-        for (const auto& t : gfx.texts) std::printf("#D %s t%d: %s\n", kGenre[mode], k, t.c_str());
-      for (const auto& t : gfx.texts) {
+        for (const auto& t : gfx.toasts) std::printf("#D %s t%d toast: %s\n", kGenre[mode], k, t.c_str());
+      for (const auto& t : gfx.toasts) {
         const std::string outcome = outcomeOf(t);
         if (!outcome.empty()) {
           take.growText = outcome;
