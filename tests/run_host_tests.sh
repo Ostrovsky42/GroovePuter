@@ -48,6 +48,30 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_genre_defaults"
 
+# H2: Acid, Techno and UK garage variants alternate with the G press.
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -Wno-unused-parameter \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  "${ROOT_DIR}/src/generation/composition/tonal_profile.cpp" \
+  "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp" \
+  "${ROOT_DIR}/src/generation/roles/bass_rhythm.cpp" \
+  "${ROOT_DIR}/src/generation/roles/bass_pitch_behavior.cpp" \
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+  "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp" \
+  "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp" \
+  "${ROOT_DIR}/src/generation/migration/tonal_pattern_adapter.cpp" \
+  "${ROOT_DIR}/tests/test_genre_press_alternation.cpp" \
+  -o "${BUILD_DIR}/test_genre_press_alternation"
+
+"${BUILD_DIR}/test_genre_press_alternation"
+
 
 "${CXX}" \
   -std=c++17 \

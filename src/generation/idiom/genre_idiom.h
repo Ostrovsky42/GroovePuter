@@ -150,7 +150,7 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
   switch (generativeMode) {
     case 0:  // Acid
       if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_acid_rolling : &k_acid_chicago_jack;
+      return (press & 1u) ? &k_acid_rolling : &k_acid_chicago_jack;  // H2: alternates per G press
     case 1:  // Outrun
       return recipe == 0 ? &k_outrun_drive : nullptr;
     case 2:  // Darksynth
@@ -163,7 +163,7 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
       return recipe == 0 ? &k_chip_arp : nullptr;
     case 10:  // Techno: dub-techno stab and repetition
       if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;
+      return (press & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;  // H2: alternates per G press
     case 12:  // FunkSoul
       return recipe == 0 ? &k_funk_pocket : nullptr;
     case 14:  // DnB: four poles on one two-step core; BASE plays the dance pole.
@@ -184,7 +184,7 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
       return nullptr;
     case 13:  // UK garage
       if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_ukg_dark_skippy : &k_ukg_classic_2step;
+      return (press & 1u) ? &k_ukg_dark_skippy : &k_ukg_classic_2step;  // H2: alternates per G press
     case 15:  // LoFi
       if (recipe == 0 || recipe == 12) return &k_lofi_classic_chill;
       if (recipe == 13) return &k_lofi_drunken;
