@@ -126,10 +126,10 @@ constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
 
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kLoopSetupRowFirst ? 1u : 0u) +
-                                (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
+constexpr uint8_t kLoopLineCount = PerformPage::kLoopRowCount;  // no headings on the LOOP tab
 
 using PartnerMode = GroovePuterCallResponse::CallResponseListener::Mode;
 using PartnerReplace = GroovePuterCallResponse::CallResponseListener::LoopReplace;
@@ -231,7 +231,7 @@ uint8_t PerformPage::rowCountForContext() const {
         // one ResponsePlayer and never play together. The group headings are
         // drawn only and are not rows.
         case PerformanceToolContext::Input: return kInputRowCount;
-        // The looper in six rows: one screen, no scroll, TO MELODY always visible.
+        // The looper: nine rows, six visible, scrolling (TO MELODY is the last).
         case PerformanceToolContext::Loop: return kLoopRowCount;
         case PerformanceToolContext::Count: break;
     }
@@ -419,15 +419,6 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
-                case ir(InRow::LoopChannel):
-                    cycleLooperSetting(LooperSetting::LoopChannel, direction);
-                    break;
-                case ir(InRow::NoteLength):
-                    cycleLooperSetting(LooperSetting::NoteLength, direction);
-                    break;
-                case ir(InRow::HoldLayer):
-                    cycleLooperSetting(LooperSetting::HoldLayer, direction);
-                    break;
                 default:
                     break;
             }
@@ -442,6 +433,15 @@ void PerformPage::adjustSelectedValue(int direction) {
                     break;
                 case lr(LoopRow::LoopBars):
                     cycleLooperSetting(LooperSetting::LoopBars, direction);
+                    break;
+                case lr(LoopRow::LoopChannel):
+                    cycleLooperSetting(LooperSetting::LoopChannel, direction);
+                    break;
+                case lr(LoopRow::NoteLength):
+                    cycleLooperSetting(LooperSetting::NoteLength, direction);
+                    break;
+                case lr(LoopRow::HoldLayer):
+                    cycleLooperSetting(LooperSetting::HoldLayer, direction);
                     break;
                 case lr(LoopRow::Layer):
                     cycleLooperSetting(LooperSetting::Layer, direction);
@@ -539,8 +539,6 @@ void PerformPage::toggleSelectedValue() {
                 cyclePartnerMode(1);
             } else if (row > kPartnerRowFirst && row <= kPartnerRowLast) {
                 cyclePartnerSetting(row, 1);
-            } else if (row >= kLoopSetupRowFirst && row <= kLoopSetupRowLast) {  // LOOP CH, NOTE LENGTH, HOLD LAYER
-                adjustSelectedValue(1);
             } else {
                 adjustInput(1);
             }
@@ -550,7 +548,7 @@ void PerformPage::toggleSelectedValue() {
                 looperKey('z');  // ENTER on LOOPER = Z
             } else if (row == lr(LoopRow::ToMelody)) {
                 exportLooperToMelody();
-            } else {  // REC, LOOP BARS, LAYER, MUTE LAYER
+            } else {  // REC, LOOP BARS, LOOP CH, NOTE LENGTH, HOLD LAYER, LAYER, MUTE LAYER
                 adjustSelectedValue(1);
             }
             return;
@@ -885,9 +883,6 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
-                case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
-                case ir(InRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
-                case ir(InRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
                 default: return "";
             }
         }
@@ -898,6 +893,9 @@ const char* PerformPage::selectedRowHint() const {
                 case lr(LoopRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
                 case lr(LoopRow::LoopBars): return GroovePuterLooper::looper().empty()
                     ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
+                case lr(LoopRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
+                case lr(LoopRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
+                case lr(LoopRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
                 case lr(LoopRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
                 case lr(LoopRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
                 case lr(LoopRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
@@ -999,10 +997,13 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int valueW = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X - valueX;
     const uint8_t selected = currentRow();
     constexpr uint8_t kVisibleRows = 6;
-    // INPUT draws a group heading line above MIDI IN, LOOP SETUP and HELPER; the
-    // window scrolls by screen lines so the selected row is always visible.
+    // INPUT draws a group heading line above MIDI IN and HELPER; LOOP has nine
+    // rows and no headings. The window scrolls by screen lines so the selected
+    // row is always visible.
     const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
+    const bool loopContext = selectedContext_ == PerformanceToolContext::Loop;
     auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
+    const uint8_t totalLines = inputContext ? kInputLineCount : (loopContext ? kLoopLineCount : kVisibleRows);
     const uint8_t selectedLine = lineOf(selected);
     const uint8_t firstVisibleRow = selectedLine >= kVisibleRows
         ? static_cast<uint8_t>(selectedLine - kVisibleRows + 1u) : 0u;
@@ -1228,21 +1229,6 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
 
-            // LOOP SETUP: the rarely changed looper settings (the looper itself
-            // is on the [LOOP] tab; Z/C/V/B/Del/M work on the live surface).
-            const auto& loop = GroovePuterLooper::looper();
-            drawHeading(inputLine(kLoopSetupRowFirst) - 1u, "--- LOOP SETUP ---");
-            if (loop.channel() == 0) {
-                std::snprintf(value, sizeof(value), "DX ROUTE");
-            } else {
-                std::snprintf(value, sizeof(value), "CH%u", static_cast<unsigned>(loop.channel()));
-            }
-            drawRow(ir(InRow::LoopChannel), "LOOP CH", value, true);
-            std::snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(loop.lengthPercent()));
-            drawRow(ir(InRow::NoteLength), "NOTE LENGTH", value, true);
-            const bool layerEmpty = loop.layerNoteCount(loop.activeLayer()) == 0;
-            drawRow(ir(InRow::HoldLayer), "HOLD LAYER",
-                    layerEmpty && !loop.hold() ? "N/A" : (loop.hold() ? "ON" : "OFF"), !layerEmpty);
             break;
         }
 
@@ -1257,6 +1243,17 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                           static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
             drawRow(lr(LoopRow::LoopBars), "LOOP BARS", value,
                     loop.holdMask() == 0 && loop.state() != Looper::State::Record);
+            if (loop.channel() == 0) {
+                std::snprintf(value, sizeof(value), "DX ROUTE");
+            } else {
+                std::snprintf(value, sizeof(value), "CH%u", static_cast<unsigned>(loop.channel()));
+            }
+            drawRow(lr(LoopRow::LoopChannel), "LOOP CH", value, true);
+            std::snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(loop.lengthPercent()));
+            drawRow(lr(LoopRow::NoteLength), "NOTE LENGTH", value, true);
+            const bool layerEmpty = loop.layerNoteCount(loop.activeLayer()) == 0;
+            drawRow(lr(LoopRow::HoldLayer), "HOLD LAYER",
+                    layerEmpty && !loop.hold() ? "N/A" : (loop.hold() ? "ON" : "OFF"), !layerEmpty);
             std::snprintf(value, sizeof(value), "%u  (%u NOTES)", static_cast<unsigned>(loop.activeLayer() + 1u),
                           static_cast<unsigned>(loop.layerNoteCount(loop.activeLayer())));
             drawRow(lr(LoopRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
@@ -1271,14 +1268,14 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             break;
     }
 
-    // INPUT is longer than the window: a 2 px scroll bar on the right edge
-    // (outside the row highlight and the clipped value text).
-    if (inputContext && kInputLineCount > kVisibleRows) {
+    // INPUT and LOOP are longer than the window: a 2 px scroll bar on the right
+    // edge (outside the row highlight and the clipped value text).
+    if (totalLines > kVisibleRows) {
         const int trackY = LayoutManager::lineY(1) - 1;
         const int trackH = kVisibleRows * Layout::LINE_HEIGHT - 2;
         const int barX = rowX + rowW;
-        const int thumbH = std::max(4, trackH * kVisibleRows / kInputLineCount);
-        const int span = kInputLineCount - kVisibleRows;
+        const int thumbH = std::max(4, trackH * kVisibleRows / totalLines);
+        const int span = totalLines - kVisibleRows;
         const int thumbY = trackY + (trackH - thumbH) * firstVisibleRow / span;
         gfx.fillRect(barX, trackY, 2, trackH, palette.dim);
         gfx.fillRect(barX, thumbY, 2, thumbH, palette.secondary);

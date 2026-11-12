@@ -16,17 +16,17 @@ enum class PerformanceToolContext : uint8_t {
     Arp,
     Rhythm,
     Input,
-    Loop,  // [LOOP]: the looper in six rows (0.9.23)
+    Loop,  // [LOOP]: the looper, nine rows (0.9.23)
     Count,
 };
 
 // PERFORM > INPUT rows that take the cursor, in screen order. The group
-// headings "--- MIDI IN ---", "--- LOOP SETUP ---" and "--- HELPER ---" are drawn
-// above MidiIn, LoopChannel and Helper and never take the cursor (Up/Down skip
-// them). The KEY context owns TARGET/OUT; the USB role is shown on PROJECT > MIDI.
-// The looper itself (LOOPER, REC, LOOP BARS, LAYER, MUTE LAYER, TO MELODY) lives
-// on the [LOOP] tab (PerformLoopRow); only its rarely used setup stays here.
-// 0.9.23 T14: INPUT was 20 rows (LOOPER 5..13, PARTNER 14..19), now 14.
+// headings "--- MIDI IN ---" and "--- HELPER ---" are drawn above MidiIn and
+// Helper and never take the cursor (Up/Down skip them). The KEY context owns
+// TARGET/OUT; the USB role is shown on PROJECT > MIDI. The whole looper
+// (PerformLoopRow) lives on the [LOOP] tab.
+// 0.9.23 T14: INPUT was 20 rows (LOOPER 5..13, PARTNER 14..19); after the LOOP
+// tab 14 rows (LOOP SETUP 5..7, HELPER 8..13); now 11 rows.
 enum class PerformInputRow : uint8_t {
     // --- MIDI IN ---
     MidiIn = 0,     // MIDI IN: external MIDI input on/off
@@ -34,10 +34,6 @@ enum class PerformInputRow : uint8_t {
     SendTo,         // SEND TO: where external MIDI notes go
     PlayAs,         // PLAY AS: live-note role
     LeadStyle,      // LEAD STYLE: lead interpretation (PLAY AS LEAD)
-    // --- LOOP SETUP ---
-    LoopChannel,    // LOOP CH (0 = DX ROUTE)
-    NoteLength,     // NOTE LENGTH
-    HoldLayer,      // HOLD LAYER (B)
     // --- HELPER (the PARTNER) ---
     Helper,         // HELPER: OFF/ANSWER/DUET/RIFF (RIFF = Mode::Loop)
     ReplyBars,      // REPLY BARS
@@ -50,11 +46,15 @@ enum class PerformInputRow : uint8_t {
 
 constexpr uint8_t performInputRow(PerformInputRow row) { return static_cast<uint8_t>(row); }
 
-// PERFORM > LOOP: six rows, one screen, no scroll. TO MELODY is always visible.
+// PERFORM > LOOP: all looper settings, nine rows (the window shows six and
+// scrolls). TO MELODY is the last row.
 enum class PerformLoopRow : uint8_t {
     Looper = 0,     // LOOPER (Enter = Z)
     RecordSource,   // REC: KEYS / SOUND
     LoopBars,       // LOOP BARS
+    LoopChannel,    // LOOP CH (0 = DX ROUTE)
+    NoteLength,     // NOTE LENGTH
+    HoldLayer,      // HOLD LAYER (B)
     Layer,          // LAYER (M)
     MuteLayer,      // MUTE LAYER
     ToMelody,       // TO MELODY (Left/Right A/B, Enter twice)
@@ -78,20 +78,19 @@ public:
     // LOOPER: leaving PERFORM ends recording; on the free clock the loop stops.
     void onExit() override;
 
-    // PERFORM > INPUT (see PerformInputRow): MIDI IN rows, the LOOP SETUP rows
-    // (LOOP CH, NOTE LENGTH, HOLD LAYER), then the HELPER (PARTNER) rows.
-    // PERFORM > LOOP (see PerformLoopRow): the looper, TO MELODY last (ENTER
-    // twice: the unmuted layers become the Working Melody of the picked synth).
-    // The groups are addressed by name, never by number.
+    // PERFORM > INPUT (see PerformInputRow): MIDI IN rows, then the HELPER
+    // (PARTNER) rows. PERFORM > LOOP (see PerformLoopRow): the looper and all
+    // its settings, TO MELODY last (ENTER twice: the unmuted layers become the
+    // Working Melody of the picked synth). The groups are addressed by name,
+    // never by number.
     static constexpr uint8_t kInputRowCount = performInputRow(PerformInputRow::Count);
-    static constexpr uint8_t kLoopSetupRowFirst = performInputRow(PerformInputRow::LoopChannel);
-    static constexpr uint8_t kLoopSetupRowLast = performInputRow(PerformInputRow::HoldLayer);
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
     static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
-    static_assert(kLoopSetupRowLast + 1 == kPartnerRowFirst, "HELPER follows LOOP SETUP");
     static_assert(kPartnerRowLast + 1 == kInputRowCount, "NEW RIFF IF is the last INPUT row");
-    static_assert(kLoopRowCount == 6, "the LOOP tab is six rows");
+    static_assert(kLoopRowCount == 9, "the LOOP tab has nine rows");
+    static_assert(kLoopRowCount <= 16 && kInputRowCount <= 16,
+                  "a row index fits the continuity byte per tab");
     static_assert(static_cast<uint8_t>(PerformanceToolContext::Count) <= 8,
                   "the context fits the 3-bit continuity field");
 

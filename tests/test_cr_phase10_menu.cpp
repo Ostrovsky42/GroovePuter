@@ -1,13 +1,13 @@
 // CALL/RESPONSE phase 10: PERFORM > INPUT no longer shows the PARTNER GENRE
 // and LENGTH rows. The listener keeps AUTO (project genre) and 100 %; the
 // setters stay (test_cr_partner_settings.cpp, test_cr_phase9_length.cpp).
-// Layout (0.9.23 T14): the [INPUT] tab (PerformInputRow) has three groups under
+// Layout (0.9.23 T14): the [INPUT] tab (PerformInputRow) has two groups under
 // headings that never take the cursor. --- MIDI IN ---: MIDI IN, LISTEN CH,
-// SEND TO, PLAY AS, LEAD STYLE. --- LOOP SETUP ---: LOOP CH (value DX ROUTE),
-// NOTE LENGTH, HOLD LAYER. --- HELPER ---: HELPER (OFF/ANSWER/DUET/RIFF),
+// SEND TO, PLAY AS, LEAD STYLE. --- HELPER ---: HELPER (OFF/ANSWER/DUET/RIFF),
 // REPLY BARS, REPLY CH, FREEZE RIFF, VARIATION, NEW RIFF IF. The [LOOP] tab
-// (PerformLoopRow, six rows, no scroll): LOOPER, REC, LOOP BARS, LAYER,
-// MUTE LAYER, TO MELODY.
+// (PerformLoopRow, nine rows, six visible, scrolls): LOOPER, REC, LOOP BARS,
+// LOOP CH (value DX ROUTE), NOTE LENGTH, HOLD LAYER, LAYER, MUTE LAYER,
+// TO MELODY.
 // TARGET, OUT and USB are not INPUT rows any more (KEY / PROJECT > MIDI).
 #include <cassert>
 #include <cstdio>
@@ -155,12 +155,11 @@ int main() {
   assert(inputRow(base) == 0);
   assertDefaults(partner);  // entering INPUT changes nothing
 
-  // DOWN visits exactly the 14 rows 0..13 (headings are not rows) and wraps;
-  // UP wraps back to 13.
-  static_assert(PerformPage::kLoopSetupRowFirst == 5 && PerformPage::kLoopSetupRowLast == 7 &&
-                    PerformPage::kPartnerRowFirst == 8 && kLast == 13,
-                "MIDI IN 0..4, LOOP SETUP 5..7, PARTNER 8..13");
-  static_assert(PerformPage::kLoopRowCount == 6, "the LOOP tab has six rows");
+  // DOWN visits exactly the 11 rows 0..10 (headings are not rows) and wraps;
+  // UP wraps back to 10. (Before the LOOP SETUP move: 14 rows, HELPER 8..13.)
+  static_assert(PerformPage::kPartnerRowFirst == 5 && kLast == 10,
+                "MIDI IN 0..4, PARTNER 5..10");
+  static_assert(PerformPage::kLoopRowCount == 9, "the LOOP tab has nine rows");
   static_assert(PerformPage::kInputRowCount == kLast + 1, "NEW RIFF IF is the last row");
   for (uint8_t expected = 1; expected <= kLast; ++expected) {
     send(base, nav(GROOVEPUTER_DOWN));
@@ -176,9 +175,8 @@ int main() {
   // (TARGET, OUT, USB, LIVE MIDI, LP ...) and the PARTNER mode word LOOP gone.
   const char* const kLabels[] = {
       "MIDI IN", "LISTEN CH", "SEND TO", "PLAY AS", "LEAD STYLE",
-      "LOOP CH", "NOTE LENGTH", "HOLD LAYER",
       "HELPER", "REPLY BARS", "REPLY CH", "FREEZE RIFF", "VARIATION", "NEW RIFF IF",
-      "--- MIDI IN ---", "--- LOOP SETUP ---", "--- HELPER ---",
+      "--- MIDI IN ---", "--- HELPER ---",
   };
   constexpr int kLabelCount = sizeof(kLabels) / sizeof(kLabels[0]);
   bool sawLabel[kLabelCount] = {};
@@ -203,22 +201,36 @@ int main() {
     if (!sawLabel[i]) std::printf("missing label %s\n", kLabels[i]);
     assert(sawLabel[i]);
   }
-  // The [LOOP] tab: six rows, all on one screen (no scroll bar), every label
-  // and TO MELODY on screen at once, whichever row is selected.
+  // The [LOOP] tab: nine rows, six visible, a scroll bar; whichever row is
+  // selected its label is on screen, and TO MELODY (the last row) is reachable.
   {
-    const char* const kLoopLabels[] = {"LOOPER", "REC", "LOOP BARS", "LAYER", "MUTE LAYER", "TO MELODY"};
+    const char* const kLoopLabels[] = {"LOOPER", "REC", "LOOP BARS", "LOOP CH", "NOTE LENGTH",
+                                       "HOLD LAYER", "LAYER", "MUTE LAYER", "TO MELODY"};
+    static_assert(sizeof(kLoopLabels) / sizeof(kLoopLabels[0]) == PerformPage::kLoopRowCount, "labels");
+    bool sawLoopLabel[PerformPage::kLoopRowCount] = {};
     for (uint8_t r = 0; r < PerformPage::kLoopRowCount; ++r) {
       goLoop(base, static_cast<PerformLoopRow>(r));
       gfx.texts.clear();
       gfx.rects.clear();
       page.drawContent(gfx);
-      for (const char* label : kLoopLabels) assert(gfx.sawExact(label));
+      assert(gfx.sawExact(kLoopLabels[r]));  // the selected row is on screen
+      for (uint8_t i = 0; i < PerformPage::kLoopRowCount; ++i) sawLoopLabel[i] |= gfx.sawExact(kLoopLabels[i]);
       assert(gfx.sawExact("[LOOP]"));
-      for (const auto& rc : gfx.rects) assert(!(rc.w == 2 && rc.x >= 236));  // no scroll bar
+      bool bar = false;
+      for (const auto& rc : gfx.rects) bar |= (rc.w == 2 && rc.x >= 236 && rc.x + rc.w <= 240);
+      assert(bar);  // scroll bar inside the 240 px screen
+      // The window never shows more than six rows.
+      int rowsShown = 0;
+      for (const char* label : kLoopLabels) rowsShown += gfx.sawExact(label) ? 1 : 0;
+      assert(rowsShown <= 6);
     }
+    for (bool seen : sawLoopLabel) assert(seen);
     goLoop(base, L::Looper);
-    send(base, nav(GROOVEPUTER_UP));  // wraps within the six rows
+    send(base, nav(GROOVEPUTER_UP));  // wraps within the nine rows
     assert(loopRow(base) == performLoopRow(L::ToMelody));
+    gfx.texts.clear();
+    page.drawContent(gfx);
+    assert(gfx.sawExact("TO MELODY") && gfx.sawExact("MUTE LAYER") && !gfx.sawExact("LOOPER"));
     send(base, nav(GROOVEPUTER_DOWN));
     assert(loopRow(base) == 0);
   }
@@ -241,14 +253,13 @@ int main() {
   assert(!gfx.sawExact("AS KEYS"));
   assert(gfx.sawExact("ENDING"));   // VARIATION default 1
   assert(gfx.sawExact("3 NOTES"));  // NEW RIFF IF default
-  // Up/Down never land on a heading: from LEAD STYLE one DOWN is LOOP CH,
-  // from HOLD LAYER one DOWN is HELPER, and back with UP.
+  // Up/Down never land on a heading: from LEAD STYLE one DOWN is HELPER, and
+  // back with UP.
   goInput(base, row(R::LeadStyle));
   send(base, nav(GROOVEPUTER_DOWN));
-  assert(inputRow(base) == row(R::LoopChannel));
+  assert(inputRow(base) == row(R::Helper));
   send(base, nav(GROOVEPUTER_UP));
   assert(inputRow(base) == row(R::LeadStyle));
-  goInput(base, row(R::HoldLayer));
   send(base, nav(GROOVEPUTER_DOWN));
   assert(inputRow(base) == row(R::Helper));
   // The selected row and its heading are on screen at the top of a group.
@@ -374,13 +385,13 @@ int main() {
   send(base, nav(GROOVEPUTER_LEFT));
   send(base, nav(GROOVEPUTER_LEFT));
   assert(loop.bars() == lpBars);
-  goInput(base, row(R::LoopChannel));
+  goLoop(base, L::LoopChannel);
   const uint8_t lpChannel = loop.channel();
   send(base, nav(GROOVEPUTER_RIGHT));
   assert(loop.channel() != lpChannel);
   send(base, nav(GROOVEPUTER_LEFT));
   assert(loop.channel() == lpChannel);
-  goInput(base, row(R::NoteLength));
+  goLoop(base, L::NoteLength);
   const uint8_t lpLength = loop.lengthPercent();
   send(base, nav(GROOVEPUTER_RIGHT));
   assert(loop.lengthPercent() != lpLength);
@@ -391,11 +402,11 @@ int main() {
   assertDefaults(partner);
 
   // LOOP CH 0 reads DX ROUTE; HOLD LAYER on an empty loop: nothing to hold.
-  goInput(base, row(R::LoopChannel));
+  goLoop(base, L::LoopChannel);
   gfx.texts.clear();
   page.drawContent(gfx);
   assert(gfx.sawExact("DX ROUTE") && !gfx.sawExact("AS KEYS"));
-  goInput(base, row(R::HoldLayer));
+  goLoop(base, L::HoldLayer);
   send(base, key('\r'));
   assert(!loop.hold());
 

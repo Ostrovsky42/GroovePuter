@@ -23,8 +23,11 @@ int main() {
   assert(s.performToolsVisible == 1 && s.performContext == 7);
   s.performToolsVisible = 0;
   assert(s.performContext == 7);
-  // six per-tab rows
+  // six per-tab rows; the LOOP tab has nine rows (0..8), a row index is a
+  // value, not a slot, so a byte per tab holds it and the struct does not grow.
   assert(sizeof(s.performRows) == 6);
+  s.performRows[5] = 8;  // TO MELODY, the last of nine LOOP rows
+  assert(s.performRows[5] == 8 && s.feelFocus == 9);
   std::puts("test_ui_view_continuity_loop_tab: OK");
   return 0;
 }
