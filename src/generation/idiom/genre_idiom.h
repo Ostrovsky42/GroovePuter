@@ -147,6 +147,9 @@ inline void connectSlides(SynthPattern& pattern, const uint8_t (&slideOut)[16]) 
 // undone with Ctrl+Z and retried takes the same attempt number, and so the same variant.
 inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
                                       uint32_t salt, uint32_t press = 0) {
+  // Every genre now picks its variant by press (H2 and the House choice); the salt is kept
+  // in the signature for the callers.
+  (void)salt;
   switch (generativeMode) {
     case 0:  // Acid
       if (recipe != 0) return nullptr;
