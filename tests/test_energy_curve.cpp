@@ -106,6 +106,42 @@ int main() {
     assert(song.length == before.length);
   }
 
+  // H3: seven levels in the Up/Down order, codes 5 (A+B) and 6 (DR+B).
+  {
+    const uint8_t order[] = {0, 1, 2, 6, 5, 3, 4};  // SILENCE DR DR+A DR+B A+B +B SPACE FULL
+    for (uint8_t r = 0; r < EnergyCurve::kEnergyLevels; ++r) {
+      assert(EnergyCurve::energyRank(order[r]) == r && EnergyCurve::energyAtRank(r) == order[r]);
+    }
+    assert(EnergyCurve::kEnergyLevels == 7 && EnergyCurve::kMaxEnergy == 6);
+    const Voices a = voicesFor(5, 0), dB = voicesFor(6, 0);
+    assert(!a.drums && a.bass && a.lead && !a.voice);  // A+B: no drums
+    assert(dB.drums && !dB.bass && dB.lead && !dB.voice);  // DR+B: no bass
+    // Codes 0..4 keep their voices (the bar-3 lead rest of code 3 included).
+    assert(voicesFor(4, 0).voice && voicesFor(4, 0).lead && voicesFor(4, 0).bass && voicesFor(4, 0).drums);
+    assert(voicesFor(3, 2).lead == false && voicesFor(3, 3).lead == true);
+  }
+
+  // H3: the bass comes off before a drop only in a section that has drums.
+  {
+    // A+B (5) -> DR (1): no drums in the section, so the bass stays on its last bar.
+    EnergyCurve::Curve curve{};
+    curve.sections[0] = EnergyCurve::Section{4, 5};
+    curve.sections[1] = EnergyCurve::Section{4, 1};
+    curve.count = 2;
+    Song song = takeSong();
+    assert(apply(song, curve, 0, 4, 4) == Status::Ok);
+    assert(patternAt(song, 7, SongTrack::SynthA) == 3);  // last bar of A+B keeps the bass
+    // FULL (4) -> DR (1): drums in the section, so the bass goes on its last bar.
+    EnergyCurve::Curve drop{};
+    drop.sections[0] = EnergyCurve::Section{4, 4};
+    drop.sections[1] = EnergyCurve::Section{4, 1};
+    drop.count = 2;
+    Song song2 = takeSong();
+    assert(apply(song2, drop, 0, 4, 4) == Status::Ok);
+    assert(patternAt(song2, 7, SongTrack::SynthA) < 0);
+    assert(patternAt(song2, 6, SongTrack::SynthA) == 2);
+  }
+
   std::puts("energy curve (SONG FORM): PASS");
   return 0;
 }

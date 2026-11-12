@@ -24,11 +24,30 @@
 //   3  drums + bass + lead (Synth B) with space: the lead rests on the third
 //      bar of every four (A A' _ B, the call/response shape)
 //   4  everything (lead every bar, plus the Voice lane)
+//   5  A+B: bass and lead, no drums (H3)
+//   6  DR+B: drums and lead, no bass (H3)
+// The FORM view orders the seven levels by rank (energyRank): SILENCE, DR, DR+A,
+// DR+B, A+B, +B SPACE, FULL. Codes 0..4 keep their meaning.
 namespace EnergyCurve {
 
 constexpr uint8_t kMaxSections = 8;
-constexpr uint8_t kMaxEnergy = 4;
+constexpr uint8_t kMaxEnergy = 6;
+constexpr uint8_t kEnergyLevels = 7;
 constexpr uint8_t kMaxSourceRows = 8;
+
+// Rank of an energy code in the Up/Down order (0 = silence, 6 = full).
+inline uint8_t energyRank(uint8_t energy) {
+  static constexpr uint8_t kOrder[kEnergyLevels] = {0, 1, 2, 6, 5, 3, 4};
+  for (uint8_t i = 0; i < kEnergyLevels; ++i) {
+    if (kOrder[i] == energy) return i;
+  }
+  return 0;
+}
+
+inline uint8_t energyAtRank(uint8_t rank) {
+  static constexpr uint8_t kOrder[kEnergyLevels] = {0, 1, 2, 6, 5, 3, 4};
+  return rank < kEnergyLevels ? kOrder[rank] : 0;
+}
 
 struct Section {
   uint8_t bars = 4;    // 4 or 8
@@ -85,12 +104,14 @@ struct Voices {
 
 inline Voices voicesFor(uint8_t energy, uint16_t barInSection) {
   Voices v{};
-  if (energy >= 1) v.drums = true;
-  if (energy >= 2) v.bass = true;
-  if (energy == 3) v.lead = (barInSection % 4u) != 2u;
-  if (energy >= 4) {
-    v.lead = true;
-    v.voice = true;
+  switch (energy) {
+    case 1: v.drums = true; break;
+    case 2: v.drums = v.bass = true; break;
+    case 3: v.drums = v.bass = true; v.lead = (barInSection % 4u) != 2u; break;  // A A' _ B
+    case 4: v.drums = v.bass = v.lead = v.voice = true; break;
+    case 5: v.bass = v.lead = true; break;  // A+B: no drums
+    case 6: v.drums = v.lead = true; break;  // DR+B: no bass
+    default: break;
   }
   return v;
 }
@@ -150,13 +171,16 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
       const bool lastBar = bar + 1 == section.bars;
       if (lastBar && s + 1 < curve.count) {
         const uint8_t nextEnergy = curve.sections[s + 1].energy;
-        if (nextEnergy > section.energy && nextEnergy >= 3 &&
-            !v.lead &&
+        const uint8_t rank = energyRank(section.energy);
+        const uint8_t nextRank = energyRank(nextEnergy);
+        const bool nextHasLead = nextEnergy == 3 || nextEnergy == 4 || nextEnergy == 5 || nextEnergy == 6;
+        if (nextRank > rank && nextHasLead && !v.lead &&
             from.patterns[GroovePuterUndo::SongEdit::trackIndex(
                 SongTrack::SynthB)] >= 0) {
           v.lead = true;
         }
-        if (nextEnergy < section.energy && section.energy >= 2) {
+        // H3: the bass comes off on the last bar before a drop, only in a section that has drums.
+        if (nextRank < rank && v.drums && v.bass) {
           v.bass = false;
         }
       }
