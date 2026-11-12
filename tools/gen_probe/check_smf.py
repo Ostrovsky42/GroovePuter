@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Check a genreab SMF against its TSV (0.9.24 T01 gate).
 
-Usage: check_smf.py <file.mid> <file.tsv>
+Usage: check_smf.py <file.mid> <file.tsv> [file.wav]
 Parses the SMF independently (header, every MTrk length, running status) and
 compares the number of note-on events with the TSV data rows, per channel and
-in total. Exit 0 when the file parses and the counts match, 1 otherwise.
+in total. With a WAV, also compares the bar count: the SMF end-of-track tick
+(in 4/4 bars of 1920 ticks at 480 PPQ) with the WAV duration times the tempo
+from the TSV header. Exit 0 when everything matches, 1 otherwise.
 """
 import sys
+import wave
 
 
 def read_vlq(data, pos):
@@ -103,8 +106,24 @@ def tsv_counts(path):
     return total, by_channel
 
 
+def tsv_bpm(path):
+    with open(path) as f:
+        for line in f:
+            if line.startswith("#"):
+                for field in line.split():
+                    if field.startswith("bpm="):
+                        return float(field[4:])
+    raise ValueError(f"{path}: no bpm= in the TSV header")
+
+
+def bars_of_wav(path, bpm):
+    with wave.open(path, "rb") as w:
+        seconds = w.getnframes() / w.getframerate()
+    return seconds * bpm / 60.0 / 4.0
+
+
 def main():
-    if len(sys.argv) != 3:
+    if len(sys.argv) not in (3, 4):
         print(__doc__)
         return 2
     try:
@@ -114,10 +133,22 @@ def main():
         return 1
     total, by_channel = tsv_counts(sys.argv[2])
     ok = smf["note_on_total"] == total and smf["note_on_by_channel"] == by_channel
-    print(f"{'OK' if ok else 'MISMATCH'} format={smf['format']} tracks={smf['tracks']} "
-          f"division={smf['division']} note_on={smf['note_on_total']} tsv_rows={total} "
-          f"channels_smf={dict(sorted(smf['note_on_by_channel'].items()))} "
-          f"channels_tsv={dict(sorted(by_channel.items()))}")
+    eot = max(t["last_tick"] for t in smf["track_info"])
+    midi_bars = eot / (4 * smf["division"])
+    line = (f"format={smf['format']} tracks={smf['tracks']} division={smf['division']} "
+            f"note_on={smf['note_on_total']} tsv_rows={total} "
+            f"channels_smf={dict(sorted(smf['note_on_by_channel'].items()))} "
+            f"channels_tsv={dict(sorted(by_channel.items()))} midi_bars={midi_bars:g}")
+    if len(sys.argv) == 4:
+        try:
+            wav_bars = bars_of_wav(sys.argv[3], tsv_bpm(sys.argv[2]))
+        except (ValueError, wave.Error, OSError) as e:
+            print(f"FAIL wav {sys.argv[3]}: {e}")
+            return 1
+        bars_ok = abs(wav_bars - midi_bars) < 0.01 and abs(midi_bars - round(midi_bars)) < 1e-9
+        ok = ok and bars_ok
+        line += f" wav_bars={wav_bars:.3f} bars_match={'yes' if bars_ok else 'NO'}"
+    print(("OK " if ok else "MISMATCH ") + line)
     return 0 if ok else 1
 
 

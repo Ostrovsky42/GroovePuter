@@ -4,8 +4,8 @@
 // genrefeatures (k throwaway G + Ctrl+Z, then the measured G on MATERIAL), the
 // genre tempo, and the product engine. Each take yields
 //   <genre>_t<k>_<tag>.wav   the 4-bar TAKE looped twice (8 bars), 22050 Hz, mix C
-//   <genre>_t<k>_<tag>.mid   the same 4 bars as a format-1 SMF (loop it in SEQTRAK)
-//   <genre>_t<k>_<tag>.tsv   one row per sounding note: bar, step, track, channel, pitch, steps, velocity
+//   <genre>_t<k>_<tag>.mid   the same 8 bars as the WAV (the TAKE, then the same TAKE again), format-1 SMF
+//   <genre>_t<k>_<tag>.tsv   one row per sounding note of those 8 bars: bar, step, track, channel, pitch, steps, velocity
 // plus manifest_<tag>.tsv (without sha256; render_ab.sh adds those).
 //
 // Usage: genreab --tag <tag> --out <dir> [--takes N] [--genres a,b,c]
@@ -319,7 +319,10 @@ static bool renderTake(const GenreKey& g, int k, const std::string& tag, const s
     return false;
   }
 
-  const std::vector<NoteEv> notes = collectNotes(scene, songSlot, first);
+  // MIDI and TSV carry the same 8 bars as the WAV: the TAKE, then the same TAKE again.
+  const std::vector<NoteEv> take = collectNotes(scene, songSlot, first);
+  std::vector<NoteEv> notes = take;
+  for (NoteEv n : take) { n.bar += kTakeBars; notes.push_back(n); }
   const float bpm = engine.bpm();
   std::string idiom = "none";
   if (const auto* origin = engine.generatedSynthAOrigin()) {
@@ -352,13 +355,13 @@ static bool renderTake(const GenreKey& g, int k, const std::string& tag, const s
 
   const std::string stem = out + "/" + g.key + "_t" + std::to_string(k) + "_" + tag;
   writeWav(stem + ".wav", pcm, kSampleRate);
-  writeFile(stem + ".mid", buildSmf(notes, bpm, kTakeBars));
+  writeFile(stem + ".mid", buildSmf(notes, bpm, kTakeBars * kLoops));
 
   // TSV: header comment, column row, one row per note.
   int counts[3] = {0, 0, 0};
   FILE* tsv = std::fopen((stem + ".tsv").c_str(), "w");
-  std::fprintf(tsv, "# genre=%s take=%d tag=%s bpm=%.2f idiom=%s bars=%d loops=%d\n",
-               g.label, k, tag.c_str(), bpm, idiom.c_str(), kTakeBars, kLoops);
+  std::fprintf(tsv, "# genre=%s take=%d tag=%s bpm=%.2f idiom=%s bars=%d take_bars=%d loops=%d\n",
+               g.label, k, tag.c_str(), bpm, idiom.c_str(), kTakeBars * kLoops, kTakeBars, kLoops);
   std::fprintf(tsv, "bar\tstep\ttrack\tchannel\tpitch\tsteps\tvelocity\tname\n");
   for (const NoteEv& n : notes) {
     ++counts[n.track];
