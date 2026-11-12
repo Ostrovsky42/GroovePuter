@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Write tools/gen_probe/listen_index.js from the A/B manifests (0.9.24).
 
-Usage: make_listen_index.py [--docs DIR] [--out FILE] [--base TAG]
-  --docs  directory with manifest_<tag>.tsv and the MIDI files
-          (default: docs/testing/0.9.24-base in this repository)
+Usage: make_listen_index.py [--docs DIR ...] [--out FILE] [--base TAG]
+  --docs  directory with manifest_<tag>.tsv and the MIDI files; repeat for several
+          runs. Default: docs/testing/0.9.24-base plus every docs/testing/0.9.24-cand-*
   --out   the JavaScript file that listen.html loads (default: tools/gen_probe/listen_index.js)
   --base  the reference version; every other tag is paired against it (default: base)
 
@@ -32,20 +32,26 @@ def read_manifest(path):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--docs", default=str(ROOT / "docs/testing/0.9.24-base"))
+    ap.add_argument("--docs", action="append",
+                    help="repeatable; default: 0.9.24-base and every 0.9.24-cand-* in docs/testing")
     ap.add_argument("--out", default=str(ROOT / "tools/gen_probe/listen_index.js"))
     ap.add_argument("--base", default="base")
     args = ap.parse_args()
 
-    docs = Path(args.docs).resolve()
-    manifests = sorted(glob.glob(str(docs / "manifest_*.tsv")))
-    if not manifests:
-        sys.exit(f"make_listen_index: no manifest_*.tsv in {docs}")
+    testing = ROOT / "docs/testing"
+    docs_dirs = [Path(d).resolve() for d in args.docs] if args.docs else (
+        [testing / "0.9.24-base"] + sorted(testing.glob("0.9.24-cand-*")))
+    manifests = []  # (docs dir, manifest path)
+    for d in docs_dirs:
+        found = sorted(glob.glob(str(d / "manifest_*.tsv")))
+        if not found:
+            sys.exit(f"make_listen_index: no manifest_*.tsv in {d}")
+        manifests += [(d, m) for m in found]
 
     tags = []
     takes = {}  # (genre, take) -> {"genre", "take", "versions": {tag: entry}}
     problems = []
-    for mpath in manifests:
+    for docs, mpath in manifests:
         rows = read_manifest(mpath)
         if not rows or "tag" not in rows[0] or "norm_wav_path" not in rows[0]:
             sys.exit(f"make_listen_index: {mpath} has no tag/norm_wav_path columns (run loudness first)")
@@ -54,7 +60,7 @@ def main():
             if tag not in tags:
                 tags.append(tag)
             wav = Path(r["norm_wav_path"])
-            mid = docs / (Path(r["file"]).stem + ".mid")
+            mid = docs / (Path(r["file"]).stem + ".mid")  # MIDI sits next to its manifest
             if not wav.is_file():
                 problems.append(f"missing WAV: {wav}")
             if not mid.is_file():
@@ -86,7 +92,7 @@ def main():
 
     index = {
         "generated": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds"),
-        "docs": str(docs),
+        "docs": [str(d) for d in docs_dirs],
         "tags": ordered,
         "takes": take_list,
         "pairs": pairs,
