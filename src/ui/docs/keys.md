@@ -190,7 +190,7 @@ The scrollable INPUT list on PERFORM has two groups, top to bottom: `--- MIDI IN
   DRUMS), `PLAY AS` (live-note role, new notes only), `LEAD STYLE` (with
   `PLAY AS` LEAD). `PLAY AS` and `LEAD STYLE` act only when `SEND TO` is
   PERFORM; with SYN A/SYN B/DRUMS both show `N/A` and the hint says to set
-  `SEND TO` to PERFORM. BASS without a published harmony shows `NO HARMONY`. Target and output live in KEY; the USB role is set on
+  `SEND TO` to PERFORM. Without a published harmony BASS and LEAD pull notes to the KEY scale (ROOT and SCALE from KEY); the hint reads `NO HARMONY: USING KEY SCALE`. A published harmony always wins. Target and output live in KEY; the USB role is set on
   PROJECT > MIDI.
 - HELPER (`HELPER`, `REPLY BARS`, `REPLY CH`, `FREEZE RIFF`, `VARIATION`, `NEW RIFF IF`): `HELPER` OFF/ANSWER/DUET/RIFF replies over MIDI to what you play
   (RIFF repeats a short riff built from your playing). `REPLY BARS` 1/2/4,

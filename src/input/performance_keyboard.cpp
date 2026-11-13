@@ -124,6 +124,22 @@ bool noteBelongsToScale(uint8_t note,
     }
     return false;
 }
+
+// Pitch-class mask (bit n = pitch class n) of the KEY tab's ROOT and SCALE. Chromatic or
+// an unknown scale gives the full 0x0fff mask, i.e. no narrowing.
+uint16_t keyScalePitchMask(uint8_t rootPitchClass, PerformanceScale scale) {
+    const ScaleDefinitionView definition =
+        GroovePuterRhythm::scaleDefinitionFor(catalogScaleFor(scale));
+    if (definition.intervals == nullptr || definition.count == 0) return 0x0fffu;
+    uint16_t mask = 0;
+    for (uint8_t i = 0; i < definition.count; ++i) {
+        const int interval = definition.intervals[i];
+        if (interval < 0) continue;
+        mask = static_cast<uint16_t>(
+            mask | (1u << ((rootPitchClass + static_cast<unsigned>(interval)) % 12u)));
+    }
+    return mask == 0 ? static_cast<uint16_t>(0x0fffu) : mask;
+}
 }  // namespace
 
 char PerformanceKeyboard::normalizeKey(char key) {
@@ -1014,6 +1030,11 @@ bool PerformanceKeyboard::interpretLiveInput(uint8_t inputNote,
     gesture.note = inputNote;
     gesture.velocity = velocity;
     GroovePuterPerformance::PerformanceContext context = performanceContext_;
+    // No published harmony and no narrower scale in the context: the roles pull the note
+    // to the scale the player set in KEY (ROOT + SCALE). A published harmony, or an
+    // explicit scale mask supplied with the context, keeps priority.
+    if (!context.hasHarmony && context.scalePitchClasses == 0x0fffu)
+        context.scalePitchClasses = keyScalePitchMask(rootPitchClass_, scale_);
     uint8_t roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
     if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass)
         roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass);

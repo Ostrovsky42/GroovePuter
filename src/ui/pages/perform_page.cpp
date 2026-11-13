@@ -877,7 +877,7 @@ const char* PerformPage::selectedRowHint() const {
                     if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
                     if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass &&
                         !keyboard_.performanceHarmonyAvailable())
-                        return "NO HARMONY: SCALE FALLBACK";
+                        return "NO HARMONY: USING KEY SCALE";
                     return "SHAPES NEW LIVE NOTES ONLY";
                 case ir(InRow::LeadStyle):
                     if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
@@ -885,7 +885,7 @@ const char* PerformPage::selectedRowHint() const {
                         return "N/A: SET PLAY AS TO LEAD";
                     if (keyboard_.leadMode() != GroovePuterPerformance::LeadMode::Raw &&
                         !keyboard_.performanceHarmonyAvailable())
-                        return "NO HARMONY: SCALE FALLBACK";
+                        return "NO HARMONY: USING KEY SCALE";
                     return "HOW LEAD NOTES FIT THE HARMONY";
                 case ir(InRow::Helper): return "MIDI REPLIES TO WHAT YOU PLAY";
                 case ir(InRow::ReplyBars): return "LENGTH OF CALL AND REPLY";
