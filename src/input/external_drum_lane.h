@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_EXTERNAL_DRUM_LANE_H
+#define GROOVEPUTER_EXTERNAL_DRUM_LANE_H
 
 #include <cstdint>
 
@@ -20,3 +21,5 @@ inline bool externalDrumLaneForNote(uint8_t note, uint8_t& zeroBasedLane) {
 }
 
 }  // namespace GroovePuterInput
+
+#endif  // GROOVEPUTER_EXTERNAL_DRUM_LANE_H
