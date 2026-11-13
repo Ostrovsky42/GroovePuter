@@ -174,6 +174,28 @@ int main() {
   assert(keyboard.target() == MusicalEventTarget::Dx);
   gfx.texts.clear(); perform.drawContent(gfx);
   assert(gfx.has("N/A"));
+  // SEND TO a direct synth: PLAY AS and LEAD STYLE both say they do not apply.
+  assert(gfx.has("N/A: SET SEND TO TO PERFORM"));
+  send(scan(GROOVEPUTER_UP));  // LEAD STYLE -> PLAY AS
+  gfx.texts.clear(); perform.drawContent(gfx);
+  assert(gfx.has("N/A: SET SEND TO TO PERFORM"));
+  assert(!gfx.has("BASS"));
+  gfx.bodyFits();
+  // Back to PERFORM: the role is shown again; BASS without a published harmony says so.
+  send(scan(GROOVEPUTER_UP));  // PLAY AS -> SEND TO
+  for (int i = 0; i < 4 && GroovePuterPlatform::cardputerMidiInputRoutingConfig().target !=
+                               GroovePuterMidi::MidiInputTarget::Perform; ++i) {
+    send(scan(GROOVEPUTER_RIGHT));
+  }
+  assert(GroovePuterPlatform::cardputerMidiInputRoutingConfig().target ==
+         GroovePuterMidi::MidiInputTarget::Perform);
+  send(scan(GROOVEPUTER_DOWN));  // SEND TO -> PLAY AS
+  assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
+  assert(!keyboard.performanceHarmonyAvailable());
+  gfx.texts.clear(); perform.drawContent(gfx);
+  assert(gfx.has("BASS"));
+  assert(gfx.has("NO HARMONY"));
+  assert(!gfx.has("SET SEND TO TO PERFORM"));
   gfx.bodyFits();
   std::puts("MIDI/PERFORM UI polish: PASS");
 }
