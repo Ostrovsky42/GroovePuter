@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 
+#include "src/input/external_drum_lane.h"
 #include "src/input/musical_event_router.h"
 #include "src/input/performance_intent.h"
 #include "midi_input_queue.h"
@@ -206,8 +207,11 @@ private:
             case 47: lane = 5; return true;  // high tom
             case 37: lane = 6; return true;  // rim
             case 39: lane = 7; return true;  // clap
-            default: return false;
+            default: break;
         }
+        // Every other note follows the note class (same layout as PERFORM drums),
+        // so no key is silently dropped.
+        return GroovePuterInput::externalDrumLaneForNote(note, lane);
     }
 
     static uint8_t clampSynthNote(uint8_t note) {
