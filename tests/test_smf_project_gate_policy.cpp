@@ -44,7 +44,7 @@ int main() {
     // (smfSnapshotMissDrops), not as an epoch drop.
     assert(smfProjectGateAction(Type::NoteOn, SmfGatePhase::Late, SmfProjectRead::Unavailable, false,
                                 kMaxImmediateRereads) == SmfProjectGateAction::DropStale);
-    
+
     // Driver: bounded re-reads, no unbounded loop, no sleep.
     {
         int calls = 0;

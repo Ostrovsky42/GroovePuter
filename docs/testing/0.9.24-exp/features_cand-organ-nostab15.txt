@@ -149,7 +149,7 @@ G	DnB	mean	174	2.0	0.00	2.2	0.97	0.00	15.9	0.25	0.03	0.4	6.6	G1	C3	4.0	0.15	0.28
 G	LoFi	mean	72	3.5	0.38	1.8	0.75	0.25	4.8	0.85	0.02	1.2	6.0	G1	F2	4.5	0.31	0.37	0.46	1.8	0.34	0.0	1.1	1.0	5.2	D#4	C5	6.4	0.38	0.13	0.35	2.5	0.13	2.4	0.03	-	-	grown 0/8 uniq 7/8 DEVELOP+BREAK8B 0/8 CANTGROW 5/8 adjSame 1/7	0.195	0.209	3.00
 #
 # X rows, drums(K+S): mean onset distance, steps of 32
-X.drums(K+S)	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi	
+X.drums(K+S)	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi
 X.drums(K+S)	Acid	1.6	2.6	1.9	5.7	1.5	4.3	5.5	4.9	5.8	2.3	3.1	6.2	5.7	4.5	3.5	4.1
 X.drums(K+S)	Synthwave	2.6	1.5	2.1	5.5	2.5	5.7	5.3	4.1	5.9	0.9	3.6	6.2	5.5	4.5	5.5	4.5
 X.drums(K+S)	Darksynth	1.9	2.1	2.1	5.8	1.7	4.9	5.7	4.7	6.0	1.7	3.2	6.4	5.8	4.5	4.2	4.2
@@ -168,7 +168,7 @@ X.drums(K+S)	DnB	3.5	5.5	4.2	3.5	3.8	4.8	3.4	2.6	3.5	5.8	3.0	4.0	3.2	2.9	0.0	3.5
 X.drums(K+S)	LoFi	4.1	4.5	4.2	5.3	4.2	5.1	4.4	4.1	5.4	4.5	4.1	4.8	4.4	4.3	3.5	4.9
 #
 # X rows, bass: mean onset distance, steps of 16
-X.bass	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi	
+X.bass	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi
 X.bass	Acid	0.0	9.0	3.0	11.0	11.2	11.5	12.2	7.0	11.0	9.5	8.0	9.0	6.0	8.0	6.0	9.0
 X.bass	Synthwave	9.0	0.0	6.0	4.0	4.8	7.5	8.8	10.0	2.0	5.5	5.0	6.0	5.0	9.0	5.0	8.0
 X.bass	Darksynth	3.0	6.0	0.0	10.0	10.8	13.5	14.0	10.0	8.0	9.5	11.0	10.0	7.0	11.0	9.0	10.0
@@ -187,7 +187,7 @@ X.bass	DnB	6.0	5.0	9.0	5.0	6.8	6.8	7.8	5.0	7.0	5.5	2.0	5.0	4.0	6.0	0.0	7.0
 X.bass	LoFi	9.0	8.0	10.0	4.0	7.0	5.8	6.2	8.0	8.0	6.5	7.0	2.0	5.0	7.0	7.0	0.0
 #
 # X rows, lead: mean onset distance, steps of 16
-X.lead	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi	
+X.lead	Acid	Synt	Dark	Elec	Rave	Dub/	Trip	Brea	Chip	Hous	Tech	HipH	Funk	UKGa	DnB	LoFi
 X.lead	Acid	0.0	9.0	8.0	4.0	9.2	6.6	7.2	4.0	9.0	6.0	0.0	9.0	9.0	6.0	6.0	9.0
 X.lead	Synthwave	9.0	0.0	5.0	5.0	8.2	5.4	5.2	9.0	10.0	8.0	9.0	2.0	8.0	9.0	5.0	4.0
 X.lead	Darksynth	8.0	5.0	0.0	8.0	5.2	6.4	7.0	10.0	9.0	6.0	8.0	3.0	11.0	6.0	10.0	5.0
