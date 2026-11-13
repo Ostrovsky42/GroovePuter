@@ -187,7 +187,7 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
       return nullptr;
     case 13:  // UK garage
       if (recipe != 0) return nullptr;
-      return (press & 1u) ? &k_ukg_dark_skippy : &k_ukg_classic_2step;  // H2: alternates per G press
+      return (salt & 1u) ? &k_ukg_dark_skippy : &k_ukg_classic_2step;
     case 15:  // LoFi
       if (recipe == 0 || recipe == 12) return &k_lofi_classic_chill;
       if (recipe == 13) return &k_lofi_drunken;
