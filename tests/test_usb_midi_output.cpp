@@ -494,6 +494,64 @@ void testMidiInputReachesWire() {
     std::puts("MIDI input source reaches the external output as live synth notes (Host only): PASS");
 }
 
+// External keyboard drums (SEND TO = DRUMS): the note class picks the SEQTRAK lane, the
+// PERFORM drum lane owns the wire note, and nothing sounds without thru.
+void testMidiInputDrumsFollowNoteClass() {
+    {
+        UsbMidiOutput::setMidiInputThru(true);
+        FakeUsbMidiTransport transport;
+        transport.mountedState = true;
+        UsbMidiOutput output(transport);
+        assert(output.begin());
+        output.pollConnection();
+        // 60 -> class 0 -> lane 0 (CH1); 62 -> class 2 -> lane 1 (CH2); 71 -> class 11 -> lane 6.
+        output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 3));
+        assert(transport.packets.size() == 1);
+        expectPacket(transport.packets[0], PacketType::NoteOn, 0, 60, 100);
+        output.handleMusicalEvent(event(MusicalEventType::NoteOn, 62, 90,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 3));
+        assert(transport.packets.size() == 2);
+        expectPacket(transport.packets[1], PacketType::NoteOn, 1, 60, 90);
+        output.handleMusicalEvent(event(MusicalEventType::NoteOn, 71, 80,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 3));
+        assert(transport.packets.size() == 3);
+        expectPacket(transport.packets[2], PacketType::NoteOn, 6, 60, 80);
+        // Thru off: the held hit is still released, a new one is not started.
+        UsbMidiOutput::setMidiInputThru(false);
+        output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 0));
+        assert(transport.packets.size() == 3);
+        output.handleMusicalEvent(event(MusicalEventType::NoteOff, 60, 0,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 0));
+        assert(transport.packets.size() == 4);
+        expectPacket(transport.packets[3], PacketType::NoteOff, 0, 60, 0);
+        output.handleMusicalEvent(event(MusicalEventType::AllNotesOff, 0, 0,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums));
+        assert(transport.packets.size() == 6);
+    }
+    {
+        UsbMidiOutput::setMidiInputThru(false);
+        FakeUsbMidiTransport transport;
+        transport.mountedState = true;
+        UsbMidiOutput output(transport);
+        assert(output.begin());
+        output.pollConnection();
+        output.handleMusicalEvent(event(MusicalEventType::NoteOn, 60, 100,
+                                        MusicalEventSource::MidiInput,
+                                        MusicalEventTarget::Drums, 0));
+        assert(transport.packets.empty());
+    }
+    UsbMidiOutput::setMidiInputThru(false);
+    std::puts("MIDI input drums follow the note class onto SEQTRAK lanes (thru only): PASS");
+}
+
 // D5: a NoteOff the wire refused is retried by the cadence, not by the next
 // event on the lane. No new musical event is sent after the failure.
 void testPendingNoteOffRetriedWithoutNewEvent() {
@@ -559,6 +617,7 @@ int main() {
     testHelperStillMono();
     testPendingNoteOffRetriedWithoutNewEvent();
     testMidiInputReachesWire();
+    testMidiInputDrumsFollowNoteClass();
     FakeUsbMidiTransport transport;
     UsbMidiOutput output(transport);
 

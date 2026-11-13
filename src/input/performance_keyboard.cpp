@@ -1,5 +1,7 @@
 #include "performance_keyboard.h"
 
+#include "external_drum_lane.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -217,16 +219,7 @@ int PerformanceKeyboard::findHeldExternal(uint8_t note) const {
 
 bool PerformanceKeyboard::drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel) {
     // Same lane layout as the GM/SEQTRAK drum map used by the built-in keys, by pitch class.
-    switch (note % 12) {
-        case 0: case 1: zeroBasedChannel = 0; return true;   // kick
-        case 2: zeroBasedChannel = 1; return true;           // snare
-        case 3: case 4: zeroBasedChannel = 2; return true;   // clap
-        case 5: case 6: zeroBasedChannel = 3; return true;   // hat 1
-        case 7: case 8: case 10: zeroBasedChannel = 4; return true;  // hat 2 / open hat
-        case 9: zeroBasedChannel = 5; return true;           // perc 1
-        case 11: zeroBasedChannel = 6; return true;          // perc 2
-        default: return false;
-    }
+    return GroovePuterInput::externalDrumLaneForNote(note, zeroBasedChannel);
 }
 
 bool PerformanceKeyboard::isPitchClassHeld(uint8_t pitchClass) const {

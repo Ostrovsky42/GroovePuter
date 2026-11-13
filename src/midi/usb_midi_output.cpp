@@ -3,6 +3,7 @@
 #include <atomic>
 
 #include "midi_pattern_startup_routes.h"
+#include "../input/external_drum_lane.h"
 #include "../output/output_ownership.h"
 
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
@@ -1382,7 +1383,13 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     releasePendingChannelPanics();
 
     if (event.type == MusicalEventType::AllNotesOff) {
-        releaseTargetAllNotes(event.source, event.target);
+        // MIDI-input drums sound on the PERFORM drum lanes, so a panic releases those.
+        const MusicalEventSource panicSource =
+            (event.source == MusicalEventSource::MidiInput &&
+             event.target == MusicalEventTarget::Drums)
+                ? MusicalEventSource::PerformanceKeyboard
+                : event.source;
+        releaseTargetAllNotes(panicSource, event.target);
         return;
     }
 
@@ -1447,7 +1454,24 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
         return;
     }
 
-    MidiVoiceLane* lane = laneFor(event.source, event.target, event.channel);
+    MusicalEvent drumEvent = event;
+    if (event.source == MusicalEventSource::MidiInput &&
+        event.target == MusicalEventTarget::Drums) {
+        // External keyboard drums (Host MIDI IN + thru): the note class picks the
+        // SEQTRAK lane and the lane's own route note is used, exactly like PERFORM.
+        // The PERFORM drum lane owns the NoteOff; there is no second owner.
+        // NoteOff always passes: turning thru off must not strand a held drum note.
+        if (event.type == MusicalEventType::NoteOn &&
+            !g_midiInputThru.load(std::memory_order_relaxed)) {
+            return;
+        }
+        uint8_t drumLane = 0;
+        if (!GroovePuterInput::externalDrumLaneForNote(event.note, drumLane)) return;
+        drumEvent.source = MusicalEventSource::PerformanceKeyboard;
+        drumEvent.channel = drumLane;
+        drumEvent.note = kSeqtrakDrumNote;
+    }
+    MidiVoiceLane* lane = laneFor(drumEvent.source, drumEvent.target, drumEvent.channel);
     if (!accepts(lane)) return;
     if (lane->pendingRelease) {
         const bool released = event.target == MusicalEventTarget::Drums
@@ -1458,7 +1482,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     }
 
     if (event.target == MusicalEventTarget::Drums) {
-        const uint8_t wireNote = wireNoteFor(*lane, event.note);
+        const uint8_t wireNote = wireNoteFor(*lane, drumEvent.note);
         switch (event.type) {
             case MusicalEventType::NoteOn:
                 acquirePercussiveNote(*lane, wireNote, event.velocity);
