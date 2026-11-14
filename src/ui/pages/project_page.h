@@ -32,7 +32,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Device, Led, Midi };
   enum class MainFocus {
-    Load = 0, SaveAs, New, ImportMidi, ClearProject,
+    Load = 0, SaveAs, New, ImportMidi, ExportMidi, ClearProject,
     VisualStyle, Volume,
     LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest,
     UsbRole, MidiDevice, MidiOutput, MidiInputEnabled, MidiInputChannel,
@@ -72,6 +72,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void openMidiAdvanceDialog();
   void returnToMidiBrowser();
   bool importMidiAtSelection();
+  bool exportMidiAtSelection();
   void drawMidiAdvanceDialog(IGfx& gfx);
   void drawMidiImportTracks(IGfx& gfx);
   bool handleMidiImportTracks(UIEvent& ui_event);

@@ -22,6 +22,8 @@ python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_song_export_ui_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_parse_smf_export_file_parser.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_perform_t13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
@@ -797,6 +799,57 @@ echo "Tee MIDI transport: OK"
   -o "${BUILD_DIR}/test_midi_file_name_policy"
 
 "${BUILD_DIR}/test_midi_file_name_policy"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  -o "${BUILD_DIR}/test_smf_export_writer"
+
+"${BUILD_DIR}/test_smf_export_writer" "${BUILD_DIR}/smf_export_fixture.mid"
+python3 "${ROOT_DIR}/tests/parse_smf_export_fixture.py" \
+  "${BUILD_DIR}/smf_export_fixture.mid"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_document.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  -o "${BUILD_DIR}/test_midi_song_export"
+
+"${BUILD_DIR}/test_midi_song_export"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_song_export_file.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export_file.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_stream.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  -o "${BUILD_DIR}/test_midi_song_export_file"
+
+"${BUILD_DIR}/test_midi_song_export_file" \
+  "${BUILD_DIR}/smf_song_export_fixture.mid"
+python3 "${ROOT_DIR}/tests/parse_smf_export_file.py" \
+  "${BUILD_DIR}/smf_song_export_fixture.mid" --expect-file-fixture
 
 
 "${CXX}" \

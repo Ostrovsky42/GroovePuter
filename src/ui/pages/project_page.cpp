@@ -26,6 +26,7 @@
 #include "../midi_output_mode_ui.h"
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_midi_song_export.h"
 #include "src/platform/cardputer_usb_host_midi.h"
 #include "src/platform/battery_status.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
@@ -814,6 +815,48 @@ bool ProjectPage::importMidiAtSelection() {
     closeDialog();
   } else {
     UI::showToast(importer.getErrorString(err).c_str());
+  }
+  return true;
+}
+
+bool ProjectPage::exportMidiAtSelection() {
+  if (mini_acid_.isPlaying()) {
+    UI::showToast("STOP TO EXPORT", 1200);
+    return true;
+  }
+
+  GroovePuterMidi::MidiSongExportFileResult result{};
+  if (!exportCurrentSongAsMidi(mini_acid_, result)) {
+    switch (result.error) {
+      case GroovePuterMidi::SongExportFileError::PlaybackActive:
+        UI::showToast("STOP TO EXPORT", 1200);
+        break;
+      case GroovePuterMidi::SongExportFileError::MaterialFailure:
+        UI::showToast("EXPORT: MATERIAL READ FAILED", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::ValidationFailure:
+        UI::showToast("EXPORT: MIDI VALIDATION FAILED", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::SourceChanged:
+        UI::showToast("EXPORT: SONG CHANGED; RETRY", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::None:
+        UI::showToast("EXPORT FAILED", 1400);
+        break;
+      default:
+        UI::showToast("EXPORT: SD WRITE FAILED", 1400);
+        break;
+    }
+    return true;
+  }
+
+  const char* fileName = std::strrchr(result.path, '/');
+  fileName = fileName ? fileName + 1 : result.path;
+  char message[48]{};
+  std::snprintf(message, sizeof(message), "MIDI EXPORTED: %.32s", fileName);
+  UI::showToast(message, 2200);
+  if (result.warnings != 0) {
+    UI::showToast("MIDI NOTES FLATTENED; SEE TRACK MARKERS", 2200);
   }
   return true;
 }
@@ -1792,6 +1835,7 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::SaveAs) return saveOwnName();
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
+        if (main_focus_ == MainFocus::ExportMidi) return exportMidiAtSelection();
         if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
 
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
@@ -2057,6 +2101,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::SaveAs: label = "Save"; break;
       case MainFocus::New: label = "New"; break;
       case MainFocus::ImportMidi: label = "Import MIDI"; break;
+      case MainFocus::ExportMidi: label = "Export MIDI"; break;
       case MainFocus::ClearProject: label = "Clear Project"; break;
       case MainFocus::VisualStyle: label = "Theme"; break;
       case MainFocus::Volume: label = "Main Volume"; break;
@@ -2079,6 +2124,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "A=SAVE AS"); break;
       case MainFocus::New: line[0] = '\0'; break;
       case MainFocus::ImportMidi: line[0] = '\0'; break;
+      case MainFocus::ExportMidi: line[0] = '\0'; break;
       case MainFocus::ClearProject: line[0] = '\0'; break;
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
@@ -2194,6 +2240,11 @@ void ProjectPage::draw(IGfx& gfx) {
   char hint[64] = "[ENTER] SELECT";
   if (section_ == ProjectSection::Scenes && main_focus_ == MainFocus::SaveAs) {
     std::snprintf(hint, sizeof(hint), "ENT SAVE  A SAVE AS  TAB SECT");
+  } else if (section_ == ProjectSection::Scenes &&
+             main_focus_ == MainFocus::ExportMidi) {
+    std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+        ? "STOP BEFORE EXPORT"
+        : "EXPORT /MIDI; TEMP MACROS OMITTED");
   } else if (section_ == ProjectSection::Midi) {
     if (main_focus_ == MainFocus::UsbRole) {
       const auto pending = CardputerUsbRoleRuntime::pendingRole();
