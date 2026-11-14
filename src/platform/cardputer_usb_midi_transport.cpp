@@ -44,6 +44,9 @@
 #include "src/midi/usb_endpoint_health.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -1553,6 +1556,88 @@ void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     g_output.handleMusicalEvent(event);
 }
 
+#ifdef GROOVEPUTER_TILT
+// Tilt offsets (GROOVEPUTER_TILT): laid over the level of CUTOFF (X) and DELAY (Y)
+// without touching the held value, the selection or the sweep. Only a controller the
+// user has already set is touched. A controller that is neither owner nor selected
+// is added as an extra level while an offset is on the wire, and until its base value
+// has been delivered again after the offset returns to zero.
+uint8_t g_tiltTouched[2] = {0, 0};   // per voice, bit per axis
+
+uint8_t applyTiltLevels(int voice, const GroovePuterMidi::CutoffVoice& control,
+                        GroovePuterMidi::CutoffVoice::Level* levels, uint8_t count) {
+    static_assert(GroovePuterMidi::kControllers[0].number == 74 &&
+                  GroovePuterMidi::kControllers[1].number == 91 &&
+                  GroovePuterMidi::kControllers[2].number == 94 &&
+                  GroovePuterMidi::kControllers[3].number == 71,
+                  "tilt choices map to CUTOFF 0, REVERB 1, DELAY 2, RESO 3");
+    // Choice 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO -> index into kControllers (0 is none).
+    static constexpr uint8_t kChoiceIndex[5] = {255, 0, 1, 2, 3};
+    const uint32_t word = GroovePuterTilt::gWord.loadAcquire();
+    // The offsets reach only the synth the target names; the other voice returns to base.
+    const bool active = GroovePuterTilt::wordTargetsVoice(word, static_cast<uint8_t>(voice));
+    const int offsets[3] = {active ? GroovePuterTilt::wordX(word) : 0,
+                            active ? GroovePuterTilt::wordY(word) : 0,
+                            active ? GroovePuterTilt::wordZ(word) : 0};
+    uint8_t& touched = g_tiltTouched[voice];
+    for (uint8_t axis = 0; axis < 3; ++axis) {
+        const uint8_t bit = static_cast<uint8_t>(1u << axis);
+        const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= 4
+                                   ? GroovePuterTilt::gAxisChoice[axis] : 0;
+        if (choice == 0) {   // assigned to none: nothing to send, nothing to return
+            touched = static_cast<uint8_t>(touched & ~bit);
+            continue;
+        }
+        // Axes that name the same controller are summed; the first of them emits.
+        bool first = true;
+        for (uint8_t prev = 0; prev < axis; ++prev) {
+            if (GroovePuterTilt::gAxisChoice[prev] == choice) first = false;
+        }
+        if (!first) continue;
+        int sum = 0;
+        uint8_t group = 0;
+        for (uint8_t other = 0; other < 3; ++other) {
+            if (GroovePuterTilt::gAxisChoice[other] != choice) continue;
+            sum += offsets[other];
+            group = static_cast<uint8_t>(group | (1u << other));
+        }
+        const uint8_t index = kChoiceIndex[choice];
+        if (sum == 0 && (touched & group) == 0u) continue;
+        int found = -1;
+        for (uint8_t i = 0; i < count; ++i) {
+            if (levels[i].index == index) { found = i; break; }
+        }
+        GroovePuterMidi::CutoffVoice::Level level;
+        if (found >= 0) {
+            level = levels[found];
+        } else if (!control.levelFor(index, level)) {
+            // Never set by hand or swept: tilt starts from the centre value. A pending
+            // return to the base still goes out, so the CC cannot stick.
+            level = {index, 64};
+        }
+        const uint8_t base = level.value;
+        int value = static_cast<int>(base) + sum;
+        value = value < 0 ? 0 : (value > 127 ? 127 : value);
+        level.value = GroovePuterMidi::clampForController(index, static_cast<uint8_t>(value));
+        if (found >= 0) {
+            levels[found] = level;
+        } else {
+            levels[count++] = level;
+        }
+        for (uint8_t other = 0; other < 3; ++other) {
+            if ((group & (1u << other)) != 0u && offsets[other] != 0) {
+                touched = static_cast<uint8_t>(touched | (1u << other));
+            }
+        }
+        if (sum == 0 && g_output.cutoffDelivered(static_cast<uint8_t>(voice),
+                                                 GroovePuterMidi::kControllers[index].number, base)) {
+            touched = static_cast<uint8_t>(touched & ~group);
+        }
+    }
+    return count;
+}
+#endif
+
 void serviceCutoffAutomation() {
     for (int voice = 0; voice < 2; ++voice) {
         auto& channel = GroovePuterMidi::gCutoffControl[voice];
@@ -1612,8 +1697,14 @@ void serviceCutoffAutomation() {
         // is not recorded by the output, so it is retried here, at most every 20 ms per
         // controller, and a reconnect resends it. Nothing is sent before the user has
         // set a value.
+#ifdef GROOVEPUTER_TILT
+        GroovePuterMidi::CutoffVoice::Level levels[6];
+        uint8_t levelCount = state.control.levels(levels);
+        levelCount = applyTiltLevels(voice, state.control, levels, levelCount);
+#else
         GroovePuterMidi::CutoffVoice::Level levels[2];
         const uint8_t levelCount = state.control.levels(levels);
+#endif
         const uint32_t nowMs = millis();
         for (uint8_t i = 0; i < levelCount; ++i) {
             const uint8_t index = levels[i].index;

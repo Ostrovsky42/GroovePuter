@@ -32,16 +32,18 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // and receiver mode, owned by the Pattern slide path), CC27..29 (the arpeggiator
 // makes its own notes), CC116..119 (DX only, channel 10) and CC102..115 (assigned
 // effect parameters on the master channels).
-// RESO (CC71) is not offered: it was not audible on the SEQTRAK patch under test.
-inline constexpr uint8_t kControllerCount = 7;
+// Order is the PERFORM controller list: the tilt axes use CUTOFF (0) and RESO (3).
+// RESO (CC71) is back at the user's request; it was not audible on the SEQTRAK patch
+// under test, so check it on the device.
+inline constexpr uint8_t kControllerCount = 8;
 struct CutoffController {
     uint8_t number;
     const char* name;
     uint8_t minValue;  // Yamaha's usable range; PAN is 1..127
 };
 inline constexpr CutoffController kControllers[kControllerCount] = {
-    {74, "CUTOFF", 0},  {73, "ATTACK", 0}, {75, "RELEASE", 0}, {91, "REVERB", 0},
-    {94, "DELAY", 0},   {7, "VOLUME", 0},  {10, "PAN", 1},
+    {74, "CUTOFF", 0},  {91, "REVERB", 0}, {94, "DELAY", 0},   {71, "RESO", 0},
+    {7, "VOLUME", 0},   {73, "ATTACK", 0}, {75, "RELEASE", 0}, {10, "PAN", 1},
 };
 
 // Sweep lengths the user can choose, in bars. Musically they divide a phrase evenly;
@@ -317,6 +319,15 @@ public:
             out[n++] = {selected_, clampForController(selected_, held_[selected_])};
         }
         return n;
+    }
+
+    // The level of any controller the user has set (known), whether or not it is the
+    // owner or the selected one. Read only. Used to lay an offset over a controller
+    // the voice is not currently serving (tilt); false for an unknown controller.
+    bool levelFor(uint8_t index, Level& out) const {
+        if (index >= kControllerCount || !heldKnown(index)) return false;
+        out = {index, clampForController(index, heldValue(index))};
+        return true;
     }
 
 private:

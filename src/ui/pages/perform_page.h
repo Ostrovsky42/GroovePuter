@@ -42,6 +42,13 @@ enum class PerformInputRow : uint8_t {
     FreezeRiff,     // FREEZE RIFF (listener loopHold)
     Variation,      // VARIATION (listener loopEvolve)
     NewRiffIf,      // NEW RIFF IF (listener loopReplace)
+    // --- TILT (experimental: the apostrophe toggles tilt; a quick flick cycles the target) ---
+    TiltTargetRow,  // TILT TARGET: SYNTH A / SYNTH B / ALL
+    TiltSensRow,    // TILT SENS: how much tilt gives full scale (45 / 30 / 20 / 12 deg)
+    TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / RESO)
+    TiltYRow,       // TILT Y: the same choice for the Y axis
+    TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
+    TiltFlickRow,   // TILT FLICK: ON = a quick flick cycles the target; OFF = menu only
     Count,
 };
 
@@ -87,10 +94,13 @@ public:
     static constexpr uint8_t kInputRowCount = performInputRow(PerformInputRow::Count);
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
+    static constexpr uint8_t kTiltRowFirst = performInputRow(PerformInputRow::TiltTargetRow);
+    static constexpr uint8_t kTiltRowLast = performInputRow(PerformInputRow::TiltFlickRow);
     static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
-    static_assert(kPartnerRowLast + 1 == kInputRowCount, "NEW RIFF IF is the last INPUT row");
+    static_assert(kPartnerRowLast + 1 == kTiltRowFirst, "TILT follows the HELPER group");
+    static_assert(kTiltRowLast + 1 == kInputRowCount, "TILT Y is the last INPUT row");
     static_assert(kLoopRowCount == 9, "the LOOP tab has nine rows");
-    static_assert(kLoopRowCount <= 16 && kInputRowCount <= 16,
+    static_assert(kLoopRowCount <= 32 && kInputRowCount <= 32,
                   "a row index fits the continuity byte per tab");
     static_assert(static_cast<uint8_t>(PerformanceToolContext::Count) <= 8,
                   "the context fits the 3-bit continuity field");
@@ -128,6 +138,7 @@ private:
     void toggleSelectedValue();
     void cyclePartnerMode(int direction);
     void cyclePartnerSetting(uint8_t row, int direction);
+    void cycleTiltSetting(uint8_t row, int direction);
     enum class LooperSetting : uint8_t {
         RecordSource, LoopBars, LoopChannel, NoteLength, HoldLayer, Layer, MuteLayer,
     };

@@ -51,7 +51,7 @@ int main() {
     CutoffControlChannel channels[kVoiceCount];
     // Before the send the synth page has CUTOFF selected on A and DELAY on B.
     channels[0].request(CutoffRequest::kSelectController, 0, 0);
-    channels[1].request(CutoffRequest::kSelectController, 0, 4);
+    channels[1].request(CutoffRequest::kSelectController, 0, 2);   // DELAY in kControllers
 
     const uint8_t modes[] = {9, 13, 10, 0, 5, 6};  // House, UKG, Techno, Acid, Dub, Trip-Hop
     for (uint8_t mode : modes) {
@@ -89,17 +89,17 @@ int main() {
             assert(dispatcher.log[i].controller == expected[i].controller);
             assert(dispatcher.log[i].value == expected[i].value);
         }
-        // The restores put the controller back: CUTOFF on A, DELAY on B.
+        // The restores put the controller back: CUTOFF on A, DELAY on B (index 2 in kControllers).
         for (int i = kStepsPerGenre; i < dispatcher.logged; ++i) {
             assert(dispatcher.log[i].op == CutoffRequest::kSelectController);
-            assert(dispatcher.log[i].controller == (dispatcher.log[i].voice == 0 ? 0 : 4));
+            assert(dispatcher.log[i].controller == (dispatcher.log[i].voice == 0 ? 0 : 2));
         }
-        assert(dispatcher.selected[0] == 0 && dispatcher.selected[1] == 4);
+        assert(dispatcher.selected[0] == 0 && dispatcher.selected[1] == 2);
     }
 
     // The selection a page sees after the send is the one it had before.
     assert(channels[0].controller() == 0);
-    assert(channels[1].controller() == 4);
+    assert(channels[1].controller() == 2);
 
     // A genre without a preset starts nothing.
     SoundSender none;
