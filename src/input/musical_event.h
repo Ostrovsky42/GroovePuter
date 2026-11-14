@@ -10,8 +10,8 @@ enum class MusicalEventType : uint8_t {
     AllNotesOff,
     PitchBend,
     // Channel control change. For this type `note` carries the controller number and
-    // `velocity` the 0..127 value. Only the CC74 cutoff on Synth A reaches the wire;
-    // every other combination is ignored by the output that receives it.
+    // `velocity` the 0..127 value. USB MIDI forwards only supported controllers on
+    // Synth A/B performance routes; other combinations are ignored.
     ControlChange,
 };
 

@@ -47,6 +47,14 @@ MusicalEvent performanceEvent(MusicalEventType type,
     return MusicalEvent{type, source, target, channel, note, velocity};
 }
 
+MusicalEvent controllerEvent(MusicalEventTarget target,
+                             uint8_t controller,
+                             uint8_t value) {
+    return MusicalEvent{MusicalEventType::ControlChange,
+                        MusicalEventSource::PerformanceKeyboard,
+                        target, 0, controller, value, 0};
+}
+
 void expect(const Packet& packet,
             PacketType type,
             uint8_t channel,
@@ -166,6 +174,42 @@ void testGeneric() {
     assert(transport.packets.empty());
 }
 
+void testSelectedControllersFollowProfileSynthChannels() {
+    struct ProfileRoute {
+        GroovePuterMidi::MidiDeviceProfile profile;
+        uint8_t synthAChannel;
+        uint8_t synthBChannel;
+    };
+    constexpr ProfileRoute routes[] = {
+        {GroovePuterMidi::MidiDeviceProfile::SeqtrakNative, 7, 8},
+        {GroovePuterMidi::MidiDeviceProfile::GeneralMidi, 0, 1},
+        {GroovePuterMidi::MidiDeviceProfile::GenericMidi, 0, 1},
+    };
+    for (const ProfileRoute& route : routes) {
+        publishProfile(route.profile);
+        FakeUsbMidiTransport transport;
+        UsbMidiOutput output(transport);
+        assert(output.begin());
+        output.pollConnection();
+
+        output.handleMusicalEvent(controllerEvent(
+            MusicalEventTarget::SynthA, 74, 64));
+        output.handleMusicalEvent(controllerEvent(
+            MusicalEventTarget::SynthB, 74, 96));
+        assert(transport.packets.size() == 2);
+        expect(transport.packets[0], PacketType::ControlChange,
+               route.synthAChannel, 74);
+        assert(transport.packets[0].data2 == 64);
+        expect(transport.packets[1], PacketType::ControlChange,
+               route.synthBChannel, 74);
+        assert(transport.packets[1].data2 == 96);
+
+        output.handleMusicalEvent(controllerEvent(
+            MusicalEventTarget::SynthA, 5, 64));
+        assert(transport.packets.size() == 2);
+    }
+}
+
 void testCustomFallsBackWithoutVendorControl() {
     auto settings = GroovePuterMidi::makeDefaultMidiOutputSettings(
         GroovePuterMidi::MidiDeviceProfile::SeqtrakNative);
@@ -195,6 +239,14 @@ void testCustomFallsBackWithoutVendorControl() {
     assert(transport.packets.size() == 1);
     expect(transport.packets[0], PacketType::NoteOn, 4, 62);
     assert(transport.packets[0].type != PacketType::ControlChange);
+
+    output.handleMusicalEvent(controllerEvent(
+        MusicalEventTarget::SynthA, 74, 64));
+    output.handleMusicalEvent(controllerEvent(
+        MusicalEventTarget::SynthB, 74, 96));
+    assert(transport.packets.size() == 3);
+    expect(transport.packets[1], PacketType::ControlChange, 4, 74);
+    expect(transport.packets[2], PacketType::ControlChange, 6, 74);
 }
 
 }  // namespace
@@ -203,6 +255,7 @@ int main() {
     testSeqtrak();
     testGeneralMidi();
     testGeneric();
+    testSelectedControllersFollowProfileSynthChannels();
     testCustomFallsBackWithoutVendorControl();
     return 0;
 }
