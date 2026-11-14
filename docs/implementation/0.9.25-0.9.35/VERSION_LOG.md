@@ -40,7 +40,7 @@
 
 **Base commit:** `a4bd5dc737ad54de40f8477034cdfe498c43d393`
 
-**Result commit:** pending
+**Result commit:** `545a749b41cb002b12f4d806858fce119281c207`
 
 **Goal:** Make external MIDI enablement selectable independently from the external device profile, while keeping internal audio available.
 
