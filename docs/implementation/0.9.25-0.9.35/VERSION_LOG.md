@@ -153,3 +153,33 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO` for the verified existing harmonic-generation path; live chord-aware macro TENSION is `DEFERRED`. The baseline M1-P1 test failure is recorded and is not represented as passed.
+
+## Version 0.9.31 — Intelligent Arrangement
+
+**Version:** 0.9.31
+
+**Base commit:** `885ce13507e7d7f93740ee84eb5fd15ee1e64c81`
+
+**Result commit:** `084b7a78dcabf5cffc6c4767e0748edd740207d5`
+
+**Goal:** Extend the existing FORM workflow with bounded section-role starting curves while keeping Song rows as the editable source of truth.
+
+**Implemented:** Reused `EnergyCurve` and the existing transactional Song mutation/Undo path. Added transient INTRO, MAIN, DEVELOPMENT, BREAK and OUTRO presets on keys 4–8; existing BUILD, DROP and WAVE remain on 1–3. Applied arrangements materialize as ordinary Song rows without schema changes. Added validation of fixed-capacity curve count, bar length and energy before source reads or mutation, plus atomic refusal tests. The chosen preset/genre stays visible after the toast and curve edits display CUSTOM. SDL smoke exposed and verified the label fix.
+
+**Not implemented:** Persisted section-role metadata, independent motif variation, per-role genre variants, or an arrangement engine separate from FORM. The proposed contours only select participation from existing tracks; their musical usefulness awaits owner listening.
+
+**Tests added:** Expanded `tests/test_energy_curve.cpp` for all named contours and malformed-curve atomicity; expanded `tests/test_song_form_genre_source_regressions.py` for keyboard range and persistent labels.
+
+**Tests passed:** Focused EnergyCurve test, including AddressSanitizer and UndefinedBehaviorSanitizer runs; FORM source regression; canonical `bash tests/run_host_tests.sh` exit 0 at the pre-role-extension revision; full SDL application build and focused interactive FORM smoke after the final UI change; default Cardputer ADV firmware build and FS1B candidate firmware build with `--warnings all`; FS1B candidate-only FatFs link-map proof and static DRAM gate; `git diff --check`.
+
+**Tests failed / pending:** The canonical host suite was not rerun after the final role-preset/UI extension; the focused domain and source-regression tests passed after it. Full-suite rerun is pending at the 0.9.35 integration gate. SDL used dummy audio; hardware audio, physical keyboard comfort, USB MIDI and musical listening remain untested by design.
+
+**Memory delta:** 0 B static DRAM versus 0.9.29 records: default profile 187,604 B with 3,884 B headroom; FS1B 187,612 B with 3,876 B headroom against the recorded provisional gate. Stack high-water mark and runtime heap remain unmeasured.
+
+**Firmware size delta:** Program-storage report +392 B versus 0.9.29 in both profiles. Final default report: 1,721,130 B; FS1B report: 1,745,602 B. FS1B app-only BIN is 1,745,760 B (+400 B versus the 0.9.29 FS1B app BIN). Final artifact fingerprints and merged-image sizes are in `RESOURCE_BUDGET.md`.
+
+**Known risks:** Role contours control track participation only and have no listening acceptance. SDL UI smoke is limited to SONG → FORM and does not prove physical keyboard ergonomics. The static DRAM gate remains provisional with under 4 KiB headroom. The full host suite needs a final integrated rerun.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO` for the existing FORM-based arrangement milestone; motif development and owner listening remain open for 0.9.35.
