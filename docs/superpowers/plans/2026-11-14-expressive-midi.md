@@ -41,15 +41,15 @@
 - Produces: `constexpr uint32_t GroovePuterMidi::kCutoffSendIntervalMs = 20` and `bool cutoffSendDeadlineReached(bool hasAttempted, uint32_t nowMs, uint32_t nextAttemptMs)`.
 - The first call is allowed when `hasAttempted == false`; later calls use wrap-safe signed deadline comparison. Existing per-controller deadline storage remains fixed. A two-byte per-synth bit mask tracks which controller deadlines have been attempted.
 
-- [ ] **Step 1: Add failing deadline tests** for immediate first attempt, not-ready immediately before deadline, ready exactly at deadline, immediate first attempt at a large uptime, and timer wrap (`attempt=UINT32_MAX-10`, deadline `9`, blocked at `8`, ready at `9`).
-- [ ] **Step 2: Run the cutoff test and verify it fails** because the helper is not defined.
+- [x] **Step 1: Add failing deadline tests** for immediate first attempt, not-ready immediately before deadline, ready exactly at deadline, immediate first attempt at a large uptime, and timer wrap (`attempt=UINT32_MAX-10`, deadline `9`, blocked at `8`, ready at `9`).
+- [x] **Step 2: Run the cutoff test and verify it fails** because the helper is not defined.
 
 Run: `g++ -std=c++17 -Wall -Wextra -Werror -I. tests/test_cutoff_sweep.cpp -o build/host-tests/test_cutoff_sweep`
 
 Expected: compilation fails on the missing `cutoffSendDeadlineReached` helper.
 
-- [ ] **Step 3: Implement the deadline helper** in `cutoff_sweep.h`, and replace the dispatcher’s raw 20 ms comparison with it. Mark a controller attempted after each send attempt, including a refused attempt, and set its next deadline to `nowMs + kCutoffSendIntervalMs`.
-- [ ] **Step 4: Run cutoff and CC transport tests.**
+- [x] **Step 3: Implement the deadline helper** in `cutoff_sweep.h`, and replace the dispatcher’s raw 20 ms comparison with it. Mark a controller attempted after each send attempt, including a refused attempt, and set its next deadline to `nowMs + kCutoffSendIntervalMs`.
+- [x] **Step 4: Run cutoff and CC transport tests.**
 
 Run: `build/host-tests/test_cutoff_sweep`
 
@@ -59,7 +59,7 @@ Run: `build/host-tests/test_usb_midi_cutoff`
 
 Expected: both exit 0; existing sweep, allowlist, dedupe, refusal and reconnect assertions remain green.
 
-- [ ] **Step 5: Commit** as `fix: make cutoff CC pacing wrap safe`.
+- [x] **Step 5: Commit** as `fix: make cutoff CC pacing wrap safe`.
 
 ---
 
@@ -76,21 +76,21 @@ Expected: both exit 0; existing sweep, allowlist, dedupe, refusal and reconnect 
 - Produces: a route label for the selected synth: `SEQTRAK CH08/09`, `GM CH01/02`, `GENERIC CH01/02`, and `CUSTOM CH08/09` (the existing Cardputer fallback when Custom has no full Performance table).
 - Profile labels remain short enough for the 240×135 layout. Display only; profile remains next-boot state and is not rebound by this page.
 
-- [ ] **Step 1: Add failing UI assertions** that construct `SynthMidiPage`, draw it with `RecordingGfx`, and check each profile's Synth A and Synth B route text plus `bodyFits()`.
-- [ ] **Step 2: Run the focused UI test and verify it fails** on Generic/GM because the page currently prints the SEQTRAK route.
+- [x] **Step 1: Add failing UI assertions** that construct `SynthMidiPage`, draw it with `RecordingGfx`, and check each profile's Synth A and Synth B route text plus `bodyFits()`.
+- [x] **Step 2: Run the focused UI test and verify it fails** on Generic/GM because the page currently prints the SEQTRAK route.
 
 Run: `bash tests/run_midi_perform_ui_polish_tests.sh`
 
 Expected: assertion failure for the Generic/GM channel label.
 
-- [ ] **Step 3: Derive the route label from the applied profile** and `projectMidiPerformanceRoutes()`. For the incomplete Custom profile use the existing fallback channel constants (`kSynthAChannel`, `kSynthBChannel`) and label it `CUSTOM`.
-- [ ] **Step 4: Run the focused UI test** and confirm all labels fit.
+- [x] **Step 3: Derive the route label from the applied profile** and `projectMidiPerformanceRoutes()`. For the incomplete Custom profile use the existing fallback channel constants (`kSynthAChannel`, `kSynthBChannel`) and label it `CUSTOM`.
+- [x] **Step 4: Run the focused UI test** and confirm all labels fit.
 
 Run: `bash tests/run_midi_perform_ui_polish_tests.sh`
 
 Expected: `MIDI/PERFORM UI polish gate: PASS`.
 
-- [ ] **Step 5: Commit** as `fix: show active MIDI profile channels`.
+- [x] **Step 5: Commit** as `fix: show active MIDI profile channels`.
 
 ---
 
@@ -104,15 +104,15 @@ Expected: `MIDI/PERFORM UI polish gate: PASS`.
 - Reuse: existing profile startup route publication and `UsbMidiOutput::handleMusicalEvent()`.
 - Clarify: `MusicalEventType::ControlChange` accepts only the seven user-selected controllers in `cutoff_sweep.h`; unsupported controllers are discarded. The comment must not claim CC74 is the only permitted control.
 
-- [ ] **Step 1: Add fake transport characterization traces** for CC74 on Synth A and Synth B under SEQTRAK, General MIDI, Generic MIDI and Custom fallback, asserting profile channels (7/8 or 0/1) and rejection of unsupported CC5. The Custom fixture also verifies its explicitly supplied fallback channels.
-- [ ] **Step 2: Run the profile route suite** to characterize current route behavior before changing documentation.
+- [x] **Step 1: Add fake transport characterization traces** for CC74 on Synth A and Synth B under SEQTRAK, General MIDI, Generic MIDI and Custom fallback, asserting profile channels (7/8 or 0/1) and rejection of unsupported CC5. The Custom fixture also verifies its explicitly supplied fallback channels.
+- [x] **Step 2: Run the profile route suite** to characterize current route behavior before changing documentation.
 
 Run: `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh`
 
 Expected: the new traces pass on current route code; they close missing coverage for the existing contract.
 
-- [ ] **Step 3: Correct the stale `MusicalEvent` comment** to name the allowlisted user-selected controls instead of claiming CC74 is the only permitted control. Do not add output routing code if current `generatedChannel()` satisfies the characterization traces.
-- [ ] **Step 4: Rerun the profile route and cutoff suites.**
+- [x] **Step 3: Correct the stale `MusicalEvent` comment** to name the allowlisted user-selected controls instead of claiming CC74 is the only permitted control. Do not add output routing code if current `generatedChannel()` satisfies the characterization traces.
+- [x] **Step 4: Rerun the profile route and cutoff suites.**
 
 Run: `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh`
 
@@ -120,7 +120,7 @@ Run: `build/host-tests/test_usb_midi_cutoff`
 
 Expected: both pass; the allowed CC set and profile channel behavior are explicit.
 
-- [ ] **Step 5: Commit** as `test: cover expressive CC profile routing`.
+- [x] **Step 5: Commit** as `test: cover expressive CC profile routing`.
 
 ---
 
@@ -133,21 +133,21 @@ Expected: both pass; the allowed CC set and profile channel behavior are explici
 - Reuse: `RuntimeFixture`, `testPatternMacroTransformsSharedEvent`, `runtimeDeadline()`, and the fixture's recording USB transport.
 - Expected behavior: transformed Note On velocity matches the macro candidate; playback deadline equals onset subtick plus transformed `durationSubticks`; advancing to that deadline emits exactly one matching Note Off.
 
-- [ ] **Step 1: Extend the existing Pattern macro integration test** to assert the transformed runtime deadline and Note Off at the shortened gate boundary.
-- [ ] **Step 2: Run the focused P0 compatibility script** to characterize whether the current shared event path preserves the transformed duration through Note Off.
+- [x] **Step 1: Extend the existing Pattern macro integration test** to assert the transformed runtime deadline and Note Off at the shortened gate boundary.
+- [x] **Step 2: Run the focused P0 compatibility script** to characterize whether the current shared event path preserves the transformed duration through Note Off.
 
 Run: `bash tests/run_pattern_phrase_p2_p0_compatibility.sh`
 
 Expected: the new assertions pass if the existing shared event path is wired as documented; a failure is a P0 defect requiring a narrow production correction before continuing.
 
-- [ ] **Step 3: If a P0 assertion fails, make only the narrow production correction required.** Preserve `RuntimeSynthPlaybackState` as the only owner and keep the source phrase unchanged. If behavior passes, make no production edit.
-- [ ] **Step 4: Rerun the P0 compatibility script** and confirm GCC, Clang, ASan and UBSan gates pass.
+- [x] **Step 3: If a P0 assertion fails, make only the narrow production correction required.** Preserve `RuntimeSynthPlaybackState` as the only owner and keep the source phrase unchanged. If behavior passes, make no production edit.
+- [x] **Step 4: Rerun the P0 compatibility script** and confirm GCC, Clang, ASan and UBSan gates pass.
 
 Run: `bash tests/run_pattern_phrase_p2_p0_compatibility.sh`
 
 Expected: all compatibility and sanitizer variants pass.
 
-- [ ] **Step 5: Commit** as `test: verify macro MIDI gate release` (omit a separate commit if this test change is folded into Task 3 only when files overlap; otherwise commit independently).
+- [x] **Step 5: Commit** as `test: verify macro MIDI gate release` (omit a separate commit if this test change is folded into Task 3 only when files overlap; otherwise commit independently).
 
 ---
 
@@ -166,8 +166,8 @@ Expected: all compatibility and sanitizer variants pass.
 - Record pitch bend, aftertouch and motion/gesture input as deferred unless confirmed route support is found.
 - The implementation/result commit SHA is written to `VERSION_LOG.md` only after the code commit exists.
 
-- [ ] **Step 1: Run targeted final checks** for cutoff pacing, CC routing, UI labels and Pattern macro Note Off, then run `git diff --check`.
-- [ ] **Step 2: Run the complete canonical host suite** with an absolute temporary directory.
+- [x] **Step 1: Run targeted final checks** for cutoff pacing, CC routing, UI labels and Pattern macro Note Off, then run `git diff --check`.
+- [x] **Step 2: Run the complete canonical host suite** with an absolute temporary directory.
 
 Run: `mkdir -p /tmp/grooveputer-0932-host-tmp`
 
@@ -175,7 +175,7 @@ Run: `env TMPDIR=/tmp/grooveputer-0932-host-tmp bash tests/run_host_tests.sh`
 
 Expected: exit 0; capture the exact final exit code and any known pre-existing failures.
 
-- [ ] **Step 3: Build SDL and both firmware profiles** using existing project targets; record exact command/results and binary/DRAM deltas versus the 0.9.31 records. SDL test runners that consume `platform_sdl/Makefile` inherit the same source set.
+- [x] **Step 3: Build SDL and both firmware profiles** using existing project targets; record exact command/results and binary/DRAM deltas versus the 0.9.31 records. SDL test runners that consume `platform_sdl/Makefile` inherit the same source set.
 
 Run: `make -C platform_sdl clean all CXX=g++`
 
@@ -185,8 +185,8 @@ Run: `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all`
 
 Expected: all commands exit 0; the FS1B map contains candidate FatFs and excludes stock FatFs; no new static DRAM gate exception is introduced.
 
-- [ ] **Step 4: Write the 0.9.32 report** with passed, failed and not-run tests separated; record `Hardware status: NOT TESTED` and `Decision: GO / NO-GO / DEFER` based only on evidence.
-- [ ] **Step 5: Commit implementation and evidence** in separate local commits; then add the exact result SHA and commit the version log.
+- [x] **Step 4: Write the 0.9.32 report** with passed, failed and not-run tests separated; record `Hardware status: NOT TESTED` and `Decision: GO / NO-GO / DEFER` based only on evidence.
+- [x] **Step 5: Commit implementation and evidence** in separate local commits; then add the exact result SHA and commit the version log.
 
 ---
 
