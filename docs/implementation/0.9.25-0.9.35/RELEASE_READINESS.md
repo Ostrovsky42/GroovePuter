@@ -1,9 +1,8 @@
 # Release readiness — 0.9.25–0.9.35
 
-Status: `.34` productization in progress. Build identity, release-version
-resolution, clean-source enforcement and rollback bundling are implemented and
-focused-tested. The current unpublished `.33` software build is not a `.35`
-candidate and is not ready for owner hardware acceptance.
+Status: `.34` is `HOST-VALIDATED / HARDWARE-UNVERIFIED`; its canonical host suite
+passed at `fb300ff5`. `.35` integration remains in progress and is not ready for
+owner hardware acceptance.
 Latest published package remains `v0.9.19`.
 
 ## Verified repository pipeline
@@ -85,9 +84,16 @@ it does not prove current M5Burner or Web Burner acceptance.
 - `.33` export implementation: `3f492197d460a5e59664d0fefb3be0519902c0df`.
 - `.33` expanded export tests: `7a1b5c6b`.
 - `.34` package generator: `db29299fb130ad23bd5be6693f29242044e75e01`.
-- `.34` build identity and rollback integration remain uncommitted on the active
-  integration worktree; focused package, identity and version resolver tests
-  pass. `git diff --check` passes.
+- `.34` build identity and rollback integration: commit
+  `d3dd29f859a22b982d4af33c6d5da42e4b611857`; documentation regression test
+  alignment: `fb300ff5c3e221902c3771d7af53973400073e4b`.
+- Clean release-profile FS1B build and DRAM gate passed at `d3dd29f8`; firmware
+  was reproducible byte-for-byte. The clean-source package gate passed with the
+  verified `.16` rollback bundle and all package checksums.
+- Canonical `bash tests/run_host_tests.sh` exited 0 on clean HEAD
+  `fb300ff5c3e221902c3771d7af53973400073e4b`; log:
+  `/tmp/gp-0934-host-suite-fb300ff5.log`. This includes the current Quickstart /
+  Manual / key-map regression contract. The final `.35` SHA still needs all lanes.
 - Two package dry-runs built from the existing `0.9.35-dev` FS1B artifacts were
   byte-identical (ZIP SHA-256
   `b664e80d691d51b6e6cc6ef26928913372b9bb5cb6a0c949023dd4e83e1d9747`) and
@@ -96,11 +102,10 @@ it does not prove current M5Burner or Web Burner acceptance.
   file checksum passed.
 - The `.33` default and FS1B builds passed with `--warnings all`; exact sizes,
   hashes and static-DRAM headroom are in [`RESOURCE_BUDGET.md`](RESOURCE_BUDGET.md).
-- Focused exporter/parser and package-generator checks passed. The complete
-  canonical host suite exited 0 at integration HEAD
+- Focused exporter/parser, identity, version resolver and package-generator
+  checks passed. A prior complete suite also exited 0 at `.33` HEAD
   `db29299fb130ad23bd5be6693f29242044e75e01`; its log is
-  `/tmp/gp-0933-stable-host-suite.log`. The `.35` candidate still requires every
-  lane rerun on its exact clean artifact-producing SHA.
+  `/tmp/gp-0933-stable-host-suite.log`.
 - No physical firmware, keyboard, internal audio, SD, USB MIDI or SEQTRAK test
   has been performed for this development line.
 

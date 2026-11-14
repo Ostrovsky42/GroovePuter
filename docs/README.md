@@ -18,7 +18,7 @@ The distinction matters: a document can be valuable evidence without describing 
 - [`releases/0.9.15-midi-ui-polish-2026-10-02.md`](releases/0.9.15-midi-ui-polish-2026-10-02.md) — external-keyboard / PERFORM routing and UI behavior incorporated into the accepted foundation.
 - [`releases/0.9.15-hardware-acceptance.md`](releases/0.9.15-hardware-acceptance.md) — USB Host hardware acceptance procedure and evidence.
 
-The latest packaged GitHub Release is **v0.9.19**. The internal development line has implemented committed-Song MIDI export in `.33`; the complete host-suite gate is still pending, and `.34` productization / `.35` candidate integration are in progress. Its current user workflow remains `GENERATE → KEEP/EDIT → DEVELOP → FORM/SONG → PERFORM → SAVE/LOAD → EXPORT`. `GEN` remains a local panel inside GENRE: `Tab` opens it, and the next `Tab` continues to FEEL.
+The latest packaged GitHub Release is **v0.9.19**. The internal development line has implemented committed-Song MIDI export in `.33`; `.34` productization passed the canonical host suite at `fb300ff5`, and `.35` candidate integration is in progress. The final candidate still requires all acceptance lanes on its exact clean SHA. Its current user workflow remains `GENERATE → KEEP/EDIT → DEVELOP → FORM/SONG → PERFORM → SAVE/LOAD → EXPORT`. `GEN` remains a local panel inside GENRE: `Tab` opens it, and the next `Tab` continues to FEEL.
 
 **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation. For the exact v0.9.19 binary and acceptance boundary, use the [release notes](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). The `.33–.35` line is unpublished and has not been hardware-accepted.
 

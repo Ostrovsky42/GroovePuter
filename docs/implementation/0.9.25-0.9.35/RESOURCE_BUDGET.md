@@ -231,3 +231,31 @@ two independently generated ZIPs were byte-identical. Dry-run ZIP SHA-256:
 `b664e80d691d51b6e6cc6ef26928913372b9bb5cb6a0c949023dd4e83e1d9747`.
 Its manifest records `working_tree=NOT_CHECKED`; do not treat it as the `.35`
 candidate. No firmware was flashed.
+
+## 0.9.34 clean release build and package
+
+**Build source:** `d3dd29f859a22b982d4af33c6d5da42e4b611857`; build identity
+`0.9.34`, source tree `clean`.
+
+| Profile | Program storage | App-only BIN | Static DRAM | Gate headroom | `.dram0.data` | `.dram0.bss` |
+|---|---:|---:|---:|---:|---:|---:|
+| FS1B, `CDCOnBoot=default` | 1,808,354 B | 1,808,512 B | 188,060 B | 3,428 B | 44,812 B | 143,248 B |
+
+FQBN:
+`m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc`.
+The map proves candidate FS1B is linked and the stock FatFs archive is absent.
+`bash tests/test_release_firmware_reproducibility.sh` built the same app image
+twice; both SHA-256 values were
+`2c2ed42e32f7067d27cbd6c7df3bfe4c86c7e7969a3ac1195584c331870b6f49`.
+
+Artifact SHA-256 values:
+
+- App-only BIN: `2c2ed42e32f7067d27cbd6c7df3bfe4c86c7e7969a3ac1195584c331870b6f49`.
+- Merged BIN: `247ad9967f55c9321b69ed5253b0f4857ba3badf5e972622c63bdcca29baf282`.
+- ELF: `965f24ab5435e9a64c33b014a748db1550ff9d9382a6e8a5c7111a4ef89b7140`.
+- Clean-source package ZIP (includes verified `.16` rollback):
+  `69ef4b383a1ab04be589636f337503088214591de3840825e1f9808ac3cab337`.
+
+The manifest records the matching full source SHA and `working_tree=CLEAN`;
+every bundled file passed `sha256sum -c`. This is `.34` engineering evidence,
+not a `.35` hardware candidate. No image was flashed.

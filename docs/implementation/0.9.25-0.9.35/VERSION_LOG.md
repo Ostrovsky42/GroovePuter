@@ -244,13 +244,15 @@
 
 **Decision:** `GO` for the host-validated `.33` engineering milestone. Hardware remains `NOT TESTED`; do not use this milestone's firmware as an intermediate hardware checkpoint.
 
-## Version 0.9.34 — Productization (in progress)
+## Version 0.9.34 — Productization
 
 **Version:** 0.9.34
 
 **Base commit:** `0d973ffcae96f056bb1605de2000a8bac787d2f7` (0.9.33 package/docs integration).
 
-**Result commit:** pending; current implementation is uncommitted.
+**Result commit:** `fb300ff5c3e221902c3771d7af53973400073e4b` (the final commit
+updates the stale docs regression expectations; productization code is in
+`d3dd29f859a22b982d4af33c6d5da42e4b611857`).
 
 **Goal:** Make the candidate build identifiable and its unpublished handoff package reproducible, traceable and recoverable.
 
@@ -258,16 +260,16 @@
 
 **Tests added:** Version resolver cases; generated build identity; ELF/manifest identity match; clean-tree and source-HEAD validation; rollback outer hash, internal image checksums, FQBN and package cleanup on failure; reproducible package archive fixture.
 
-**Tests passed:** `python3 tests/test_build_identity.py`; `python3 tests/test_release_version_resolution.py`; `python3 tests/test_hardware_candidate_packaging.py` (9 tests); `git diff --check`. A release-profile FS1B firmware build completed with `--warnings all` and the project DRAM gate. The package dry-run verified all bundled checksums and two generated archives compared byte-for-byte.
+**Tests passed:** `python3 tests/test_build_identity.py`; `python3 tests/test_release_version_resolution.py`; `python3 tests/test_hardware_candidate_packaging.py` (9 tests); `python3 tests/test_global_help_source_regressions.py`; `bash tests/test_release_firmware_reproducibility.sh`; canonical `env TMPDIR=/tmp bash tests/run_host_tests.sh` (exit 0 at exact clean HEAD `fb300ff5c3e221902c3771d7af53973400073e4b`, log `/tmp/gp-0934-host-suite-fb300ff5.log`); `git diff --check`. Release-profile FS1B firmware built with `--warnings all` and passed the project DRAM gate. Clean-source package and all bundled checksums passed.
 
-**Tests pending:** Full canonical host suite after `.34` edits; final clean-SHA release build and packaging; complete `.35` SDL, mock-MIDI, persistence/export fixture and resource acceptance lanes.
+**Tests failed:** The first host-suite attempt on `d3dd29f8` stopped at a stale assertion expecting the 0.9.22 Quickstart title after the `.33` docs update. Updated the regression test to current internal-line documentation; the full suite then passed on `fb300ff5`.
 
 **Memory delta:** Identity adds 0 B static DRAM in the like-for-like FS1B `CDCOnBoot=cdc` comparison to `.33`: 187,636 B. Exploratory release profile `CDCOnBoot=default`: 188,060 B, 3,428 B headroom against the provisional 191,488 B gate. The profiles differ, so this is not attributed to identity.
 
 **Firmware size delta:** Like-for-like CDC-on exploratory build: +116 B program storage, +128 B app BIN. Release profile: 1,808,354 B program storage and 1,808,512 B app BIN; it is a different build profile and has no exact `.33` release-profile comparison.
 
-**Known risks:** Firmware builds and package dry-run use source commit `0d973ffc...` with a dirty worktree; manifest records `working_tree=NOT_CHECKED`. They are engineering evidence, not the hardware candidate. M5Launcher and M5Burner compatibility remain unverified. No full host suite has yet been rerun after `.34` changes.
+**Known risks:** Firmware artifact and clean package are tied to code commit `d3dd29f8`; the final result commit `fb300ff5` changes only the docs source-regression expectation. The `.35` artifact must be rebuilt and repackaged from its exact clean SHA. M5Launcher and M5Burner compatibility remain unverified.
 
 **Hardware status:** `NOT TESTED`
 
-**Decision:** pending `.34` closure and exact-SHA `.35` integration.
+**Decision:** `GO` for 0.9.34 productization, `HOST-VALIDATED / HARDWARE-UNVERIFIED`. `.35` still requires a clean integrated candidate and rerun of every acceptance lane.
