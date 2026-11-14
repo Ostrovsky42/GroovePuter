@@ -33,6 +33,13 @@ public:
     // user as connection state.
     virtual bool mounted() const = 0;
 
+    // Changes when a transport's receiver state may have been reset without
+    // changing the aggregate mounted() state (for example, one endpoint of a
+    // USB+DIN tee reconnecting while the other endpoint stays mounted).
+    // Outputs use this only to invalidate delivered controller levels; note
+    // ownership remains with the existing endpoint lifecycle.
+    virtual uint32_t controllerStateEpoch() const { return 0; }
+
     virtual MidiTransportLink linkKind() const {
         return MidiTransportLink::Enumerated;
     }

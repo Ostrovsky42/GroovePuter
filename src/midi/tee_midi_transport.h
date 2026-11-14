@@ -38,11 +38,19 @@ public:
     bool begin() override {
         const bool primaryBegun = primary_.begin();
         const bool secondaryBegun = secondary_.begin();
+        observePrimaryMounted(primary_.mounted());
         return primaryBegun || secondaryBegun;
     }
 
     bool mounted() const override {
-        return primary_.mounted() || (secondaryEnabled_ && secondary_.mounted());
+        const bool primaryMounted = primary_.mounted();
+        observePrimaryMounted(primaryMounted);
+        return primaryMounted || (secondaryEnabled_ && secondary_.mounted());
+    }
+
+    uint32_t controllerStateEpoch() const override {
+        observePrimaryMounted(primary_.mounted());
+        return primaryControllerStateEpoch_;
     }
 
     bool primaryStalled() const {
@@ -104,6 +112,17 @@ public:
     }
 
 private:
+    void observePrimaryMounted(bool mounted) const {
+        if (!primaryMountKnown_) {
+            primaryMountKnown_ = true;
+            lastPrimaryMounted_ = mounted;
+            return;
+        }
+        if (mounted == lastPrimaryMounted_) return;
+        lastPrimaryMounted_ = mounted;
+        ++primaryControllerStateEpoch_;
+    }
+
     static uint16_t channelMask(uint8_t channel) {
         return static_cast<uint16_t>(1u << (channel & 0x0fu));
     }
@@ -199,6 +218,9 @@ private:
     Diagnostics diagnostics_{};
     uint16_t primaryCleanupDebtMask_{0};
     bool secondaryEnabled_{false};
+    mutable uint32_t primaryControllerStateEpoch_{0};
+    mutable bool primaryMountKnown_{false};
+    mutable bool lastPrimaryMounted_{false};
 };
 
 }  // namespace GroovePuterMidi

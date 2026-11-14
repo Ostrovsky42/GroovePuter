@@ -416,12 +416,24 @@ bool UsbMidiOutput::begin() {
     pendingChannelPanics_ = 0;
     clearActiveState();
     begun_ = transport_.begin();
+    transportControllerStateEpoch_ = transport_.controllerStateEpoch();
     mounted_ = false;
     return begun_;
 }
 
 void UsbMidiOutput::pollConnection() {
     const bool nextMounted = begun_ && transport_.mounted();
+    const uint32_t nextControllerEpoch = begun_
+        ? transport_.controllerStateEpoch()
+        : transportControllerStateEpoch_;
+    if (nextControllerEpoch != transportControllerStateEpoch_) {
+        transportControllerStateEpoch_ = nextControllerEpoch;
+        // A tee can lose and recover its primary receiver while a secondary
+        // endpoint keeps the aggregate mounted state true. Invalidate only
+        // controller delivery knowledge here; the tee owns endpoint note
+        // cleanup debt and UsbMidiOutput retains unrelated note ownership.
+        clearCutoffKnowledge();
+    }
     if (nextMounted == mounted_) {
         if (mounted_ && answerLane_.pendingRelease) releaseAnswerLane();
         return;
@@ -1373,9 +1385,12 @@ void UsbMidiOutput::clearActiveState() {
     owners_.clear();
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
-    // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
-    // The receiver's values are unknown after a (re)connect: every controller is
-    // re-sent by the level check once its value is known.
+    clearCutoffKnowledge();
+}
+
+void UsbMidiOutput::clearCutoffKnowledge() {
+    // Receiver controller levels are unknown after endpoint recovery. The
+    // next level check resends each value once it is known.
     for (auto& slotSent : cutoffSent_) {
         for (bool& sent : slotSent) sent = false;
     }

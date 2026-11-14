@@ -220,6 +220,7 @@ private:
     void requestChannelPanic(uint8_t channel);
     bool releasePendingChannelPanics();
     void clearActiveState();
+    void clearCutoffKnowledge();
     // CALL/RESPONSE answer lane (kMusicalEventWireChannel): one note at a time
     // on the wire channel the event names, owned through owners_ like the other
     // lanes, so it shares a channel/note with PERFORM or Pattern safely.
@@ -270,6 +271,7 @@ private:
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;
+    uint32_t transportControllerStateEpoch_{0};
     bool enabled_;
     bool begun_;
     bool mounted_;

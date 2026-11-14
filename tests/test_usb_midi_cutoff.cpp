@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "src/midi/cutoff_sweep.h"
+#include "src/midi/tee_midi_transport.h"
 #include "src/midi/usb_midi_output.h"
 #include "src/output/output_ownership.h"
 
@@ -45,6 +46,14 @@ public:
     bool sendStop() override { return true; }
     bool sendSongPositionPointer(uint16_t) override { return true; }
     void flush() override {}
+
+    int countCc(uint8_t controller, uint8_t value) const {
+        int count = 0;
+        for (const Cc& sent : ccs) {
+            if (sent.controller == controller && sent.value == value) ++count;
+        }
+        return count;
+    }
 
     bool mountedFlag{true};
     bool refuseAll{false};
@@ -155,6 +164,39 @@ void testNothingWhileUnmountedAndResendAfterReconnect() {
     assert(usb.ccs.size() == 2 && usb.ccs[1].value == 100);  // receiver state unknown: resend
 }
 
+void testUsbReconnectInvalidatesCcKnowledgeWhenDinKeepsTeeMounted() {
+    RecordingTransport usb;
+    RecordingTransport din;
+    GroovePuterMidi::TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+    UsbMidiOutput out(tee, route());
+    assert(out.begin());
+    out.pollConnection();
+
+    out.handleMusicalEvent(MusicalEvent{MusicalEventType::NoteOn,
+                                        MusicalEventSource::PatternPlayer,
+                                        MusicalEventTarget::SynthA,
+                                        0, 60, 100, 0});
+    out.handleMusicalEvent(cc(74, 40));
+    assert(usb.countCc(74, 40) == 1 && din.countCc(74, 40) == 1);
+
+    // DIN keeps TeeMidiTransport::mounted() true while USB is absent. A new
+    // level can therefore be delivered to DIN and remembered by the shared
+    // output even though USB did not receive it.
+    usb.mountedFlag = false;
+    out.pollConnection();
+    out.handleMusicalEvent(cc(74, 70));
+    assert(usb.countCc(74, 70) == 0 && din.countCc(74, 70) == 1);
+    assert(out.cutoffDelivered(0, 74, 70));
+
+    usb.mountedFlag = true;
+    out.pollConnection();
+    assert(out.wireOwnerCount(7, 60) == 1);
+    assert(!out.cutoffDelivered(0, 74, 70));
+    out.handleMusicalEvent(cc(74, 70));
+    assert(usb.countCc(74, 70) == 1);
+}
+
 void testSynthBUsesItsOwnChannelAndDedupe() {
     RecordingTransport usb;
     UsbMidiOutput out(usb, route());
@@ -251,5 +293,6 @@ int main() {
     testDoesNotTouchNoteOwnership();
     testRefusedCcIsRetriedByTheNextEvent();
     testNothingWhileUnmountedAndResendAfterReconnect();
+    testUsbReconnectInvalidatesCcKnowledgeWhenDinKeepsTeeMounted();
     return 0;
 }
