@@ -56,11 +56,22 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Bound:** TENSION's next-onset search inspects at most 16 Pattern events or 128 Phrase events and runs only while TENSION is nonzero. The audio path does not call the batch `apply()` function or allocate a Phrase buffer.
 
+### AD-009 — Harmonic Follow reuses the prepared harmony route
+
+**Decision:** keep `SongHarmonicState` / `PreparedGraphHarmony`, harmonic rhythm coordinates, `rolePitchPolicy()` and the existing Graph pattern projector as the harmony authority. Project only unpublished generated candidates, before their transactional commit. Scene material already accepted by the user remains canonical.
+
+**Evidence:** `prepareGraphSongHarmonicState()` materializes each candidate bar against the prepared route before saving route state; `projectPatternToGraphHarmony()` stages into a local `SynthPattern` and publishes only after every event validates. `makeGraphHarmonySnapshot()` verifies exact Song participants, material identity and version before exposing the current event. The HGS and P1R focused tests exercise chord changes, roles, stale sources and transactional failure.
+
+**Fallback:** unsupported, missing, invalid or stale harmonic context fails closed at the Graph boundary. Existing `AUTO` route selection can choose its documented Legacy path before materialization; a stale Graph route is not silently reinterpreted as a different harmony.
+
+**Deferred boundary:** live Performance macro TENSION still receives project key/scale, not the immutable per-event Graph chord. Do not make the sequencer callback read harmony files or assemble a context from mutable Scene fields. A later implementation needs a coherent, bounded control-side publication into the existing playback owner.
+
 ## Decisions still required by implementation
 
 - Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.29 remains transient and does not commit the playback view.
 - How existing Song/FORM data expresses INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO without adding seven storage types.
 - SMF export format (Type 1 is preferred by the roadmap when compatible) and the exact boundary between saved composition and committed performance state.
 - Whether live MIDI profile changes can be safely rebound immediately or must be deferred to a bar/transport boundary.
+- How the live sequencer can receive a coherent per-event Song chord context for transient macro TENSION without storage I/O or mutable cross-thread reads.
 
 These remain open until source and user-flow evidence establish the smallest compatible extension.

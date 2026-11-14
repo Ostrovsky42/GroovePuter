@@ -123,3 +123,33 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO`
+
+## Version 0.9.30 — Harmonic Follow
+
+**Version:** 0.9.30
+
+**Base commit:** `bdc439b14167313a22ee810a9b37b02aabd44a17`
+
+**Result commit:** pending documentation result commit.
+
+**Goal:** Verify that generated and arranged material follows existing harmonic context, keeps chord changes aligned to harmonic rhythm, and fails closed when the route is invalid or stale.
+
+**Implemented:** Audited and verified the existing `SongHarmonicState` / `PreparedGraphHarmony` route rather than adding a second harmony model. `HarmonicRhythmPlan` owns event timing; Graph route and role pitch policies constrain candidate notes; projection is staged before transactional commit. Playback snapshots validate exact Song participants and Pattern versions. Documented the authority, stale-context behavior, accepted-material boundary and real-time limit in `HARMONIC_FOLLOW.md` and AD-009. No production code or storage schema changed.
+
+**Not implemented:** Live chord-aware macro TENSION. The sequencer macro currently receives project key/scale only. Song Graph state lives behind the storage owner, so reading it in the callback would violate the no-I/O real-time contract. A bounded coherent publication into the playback owner is needed before this behavior can be added safely. This is explicitly deferred.
+
+**Tests added:** None; the existing focused suites were sufficient to verify the current behavior.
+
+**Tests passed:** `bash tests/run_hgs_tests.sh` (exit 0; Graph builder, role policy, projection, Song state, persistence, storage placement/version and live snapshot tests); `bash tests/run_performance_macro_engine_tests.sh` (exit 0; unknown harmony leaves pitches unchanged); focused P1R source firewall, semantic seam, Graph materialization, deterministic repeat, ASan and UBSan gates within `bash tests/run_0_9_9_phrase_p1r_tests.sh`.
+
+**Tests failed / pending:** The aggregate P1R runner exited 134 in its separate `run_0_9_9_m1_p1_tests.sh` subtest at `test_0_9_9_m1_p1_multibar_phrase.cpp:80`: it expects `SparseCall` for Electro, while the current Electro profile selects `AngularCell` (enum value 16); the following literal motif expectation is stale too. The same failure reproduces when that runner is executed at the exact baseline commit `28918d9b78e9a527ce2b5ce201a465af5126f76a`. The affected test/source/script are unchanged from that baseline. No fix was made to this unrelated old test contract. The canonical full host suite is not rerun here; its latest complete pass is the 0.9.29 record. No firmware or SDL build was run because this milestone changed documentation only.
+
+**Memory delta:** 0 B source/runtime delta; documentation only. No new firmware measurement was made.
+
+**Firmware size delta:** Not measured for 0.9.30. The last firmware evidence is the 0.9.29 build and does not include any 0.9.30 firmware change because there was none.
+
+**Known risks:** Live macro TENSION does not follow chord changes. Musical quality is not established by pitch-set and routing tests. The older M1-P1 test runner remains red at the exact baseline due stale literal expectations.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO` for the verified existing harmonic-generation path; live chord-aware macro TENSION is `DEFERRED`. The baseline M1-P1 test failure is recorded and is not represented as passed.

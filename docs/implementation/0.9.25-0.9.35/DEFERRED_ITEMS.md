@@ -23,6 +23,10 @@ This list separates known unfinished work from verified baseline behavior. Items
 ## 0.9.29 follow-up
 
 - **Macro listening and physical control feel:** SDL verifies readable values and actions only. Whether the four mappings sound useful and whether the Cardputer keyboard is comfortable remains pending for owner acceptance of 0.9.35.
-- **Chord-aware TENSION:** current TENSION uses a bounded next-onset interval check; chord context and harmonic resolution remain in 0.9.30.
 - **Per-loop mutation and permanent commit:** MUTATION is deterministic per source event, and live macro output does not add events or edit the Phrase. Per-loop variation and explicit materialization are not included.
 - **Phrase integration in the host suite:** the focused P3 gate covers it; the canonical host suite does not currently invoke `run_pattern_phrase_p3_tests.sh`.
+
+## 0.9.30 follow-up
+
+- **Live chord-aware macro TENSION:** Graph and Legacy harmony already constrain generated material before commit, and current Song chord snapshots reject stale participants. The sequencer macro owner still receives only project key/scale. Keep TENSION on its bounded next-onset heuristic until a fixed, coherent control-side chord publication is available; do not read Song harmony storage in the sequencer callback. See `HARMONIC_FOLLOW.md`.
+- **Legacy M1-P1 expectation test:** `run_0_9_9_m1_p1_tests.sh` expects `SparseCall` and `Mirror` for the Electro profile. It fails at the exact 0.9.24 baseline because the current profile selects `AngularCell` and also differs on the next literal expectation. This test contract is not updated in 0.9.30; see the verification record.
