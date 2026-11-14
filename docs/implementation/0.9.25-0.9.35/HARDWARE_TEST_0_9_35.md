@@ -1,20 +1,49 @@
 # GroovePuter 0.9.35 — owner hardware acceptance
 
-Status: **PLANNED — NO HARDWARE TESTS PERFORMED**. This checklist is for the
-single owner acceptance pass after the software candidate is ready. Blank result
-fields are intentional; do not convert them to PASS from host or SDL evidence.
+Status: **READY TO RUN — NO HARDWARE TESTS PERFORMED**. This checklist is for
+the first owner acceptance pass. Blank result fields are intentional; do not
+convert them to PASS from host or SDL evidence.
 
 ## Candidate identity
 
-- Candidate version: `0.9.35`
-- Source commit SHA: `PENDING`
-- Firmware artifact and SHA-256: `PENDING`
-- Install path / flash address: `PENDING_FINAL_PACKAGE`
-- Previous accepted image and rollback instructions: `PENDING_FINAL_PACKAGE`
+- Candidate version: `0.9.35-rc+615ac96`
+- Source commit SHA: `615ac9642f1103ce1f9d4fcddcb083710b171db4`
+- Candidate bundle: the archive containing this checklist; verify its sidecar.
+- Verify the bundle against its adjacent `.zip.sha256` sidecar; do not rely on
+  a copied checksum value.
+- Full-flash artifact: `artifacts/GroovePuter.ino.merged.bin`, 4,194,304 B,
+  SHA-256 `2d3d78a10baf44af9e966b42fd8d72326412d01dcef2cadd40daf360058d5c19`,
+  flash address `0x0`.
+- App-only artifact: `artifacts/GroovePuter.ino.bin`, 1,808,512 B,
+  SHA-256 `6a6c920b3cab4c241464b02209680962743211d4d592af6c6adfd5a315339567`,
+  flash address `0x10000`; use only with the matching bootloader and partition table.
+- Previous accepted rollback: `.16` merged image,
+  SHA-256 `53f49d6ad92a386a6a0034f754db22d43e15107fe7f8d0e05e2960a2c62ec39f`;
+  full restore steps are in `rollback/ROLLBACK.md` in the bundle.
 - Test date / operator: `PENDING`
 - Cardputer ADV hardware revision: `PENDING`
 - SD card make/capacity: `PENDING`
 - External MIDI device / firmware: `PENDING`
+
+## Install and recovery instructions
+
+1. Back up project files from the SD card.
+2. Extract the bundle and verify `sha256sum -c SHA256SUMS.txt`; also verify the
+   bundle SHA against the `.zip.sha256` sidecar before extracting.
+3. Enter Cardputer ADV download mode: power off, hold G0 while applying power,
+   then release G0.
+4. Flash the **merged** image at offset `0x0`:
+
+   ```sh
+   python -m esptool --chip esp32s3 --port <PORT> write_flash 0x0 artifacts/GroovePuter.ino.merged.bin
+   ```
+
+   Command syntax was checked with esptool v4.7.0; it has not been run against
+   a connected device.
+
+5. Keep the accepted `.16` rollback bundle available. Its merged image is also
+   written at `0x0`; see `rollback/ROLLBACK.md` for recovery details and the
+   acceptance-record limitation.
 
 Record the candidate SHA from both the handoff manifest and firmware diagnostic
 identity before testing. If they disagree, stop and resolve provenance first.

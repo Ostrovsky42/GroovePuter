@@ -158,6 +158,28 @@ class CandidatePackagingTests(unittest.TestCase):
             self.assertEqual(first.name, "candidate-0.9.35-first.zip")
             self.assertEqual(first.read_bytes(), second.read_bytes())
 
+    def test_package_includes_hardware_checklist_and_checksums_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            build = self.make_build(root)
+            output, archive = self.package(root, build, "candidate-handoff")
+            relative_docs = ("HARDWARE_TEST_0_9_35.md",)
+            handoff = output / "handoff"
+            for name in relative_docs:
+                with self.subTest(document=name):
+                    bundled = handoff / name
+                    source = ROOT / "docs/implementation/0.9.25-0.9.35" / name
+                    self.assertEqual(bundled.read_bytes(), source.read_bytes())
+
+            sums = (output / "SHA256SUMS.txt").read_text()
+            for name in relative_docs:
+                self.assertIn(f"handoff/{name}", sums)
+            with zipfile.ZipFile(archive) as zipped:
+                for name in relative_docs:
+                    self.assertIn(f"handoff/{name}", zipped.namelist())
+                readme = zipped.read("README.md").decode("utf-8")
+                self.assertIn("handoff/HARDWARE_TEST_0_9_35.md", readme)
+
     def test_rejects_partition_table_that_disagrees_with_flash_recipe(self):
         with tempfile.TemporaryDirectory() as directory:
             root = pathlib.Path(directory)

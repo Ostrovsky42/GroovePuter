@@ -32,6 +32,11 @@ ROLLBACK_OFFSETS = {
     "GroovePuter.ino.bootloader.bin": "0x1000",
     "GroovePuter.ino.partitions.bin": "0x8000",
 }
+HANDOFF_DOCS = ("HARDWARE_TEST_0_9_35.md",)
+HANDOFF_SOURCE_DIR = (
+    Path(__file__).resolve().parents[1]
+    / "docs/implementation/0.9.25-0.9.35"
+)
 
 
 def sha256(path: Path) -> str:
@@ -352,6 +357,10 @@ def prepare_candidate_package(
         raise ValueError("clean-source candidate package requires a verified rollback archive")
     if (rollback_archive is None) != (rollback_sha256 is None):
         raise ValueError("rollback archive and expected SHA-256 must be supplied together")
+    handoff_sources = [(name, HANDOFF_SOURCE_DIR / name) for name in HANDOFF_DOCS]
+    for name, path in handoff_sources:
+        if not path.is_file():
+            raise ValueError(f"missing hardware handoff document {name}: {path}")
     source_state = "NOT_CHECKED"
     if require_clean_source:
         validate_clean_source(
@@ -403,7 +412,8 @@ def prepare_candidate_package(
     launcher_dir = output_dir / "m5launcher"
     burner_root = output_dir / "m5burner-dry-run"
     burner_firmware = burner_root / "firmware"
-    for directory in (artifacts_dir, launcher_dir, burner_firmware):
+    handoff_dir = output_dir / "handoff"
+    for directory in (artifacts_dir, launcher_dir, burner_firmware, handoff_dir):
         directory.mkdir(parents=True, exist_ok=True)
 
     rollback_manifest = None
@@ -427,6 +437,8 @@ def prepare_candidate_package(
     ]
     for source, filename in component_sources:
         shutil.copyfile(source, burner_firmware / filename)
+    for name, source in handoff_sources:
+        shutil.copyfile(source, handoff_dir / name)
 
     burner_metadata = {
         "name": "GroovePuter",
@@ -527,6 +539,9 @@ def prepare_candidate_package(
         f"Source commit: `{source_sha.lower()}`. This is an unpublished, "
         "software-validated package. Hardware, physical SD behavior, M5Launcher "
         "installation and external MIDI remain unverified.\n\n"
+        "Verify this ZIP against its adjacent `.sha256` sidecar and verify the "
+        "extracted files with `sha256sum -c SHA256SUMS.txt`. The owner checklist "
+        "and full-flash command are in `handoff/HARDWARE_TEST_0_9_35.md`.\n\n"
         "- `artifacts/GroovePuter.ino.bin`: app-only image for app offset "
         f"`{layout['app_partition']['offset']}`; bootloader and partition table "
         "must already match this build.\n"
@@ -535,6 +550,8 @@ def prepare_candidate_package(
         "- `m5launcher/`: app-only payload. Compatibility is not hardware-accepted.\n"
         "- `m5burner-dry-run/`: legacy manifest/firmware structure only; not submitted "
         "or tested in M5Burner.\n\n"
+        "- `handoff/HARDWARE_TEST_0_9_35.md`: owner checklist, candidate flash identity "
+        "and verified rollback reference.\n\n"
         "- `rollback/`: checksum-verified 0.9.16 product images and owner acceptance "
         "record for recovery; this image has not been flashed during packaging.\n\n"
         "See `manifest.json`, `resource-report.json` and `SHA256SUMS.txt` for "
