@@ -21,7 +21,7 @@ class FakeMaterials final : public GroovePuterMidi::ISongExportMaterialSource {
  public:
   bool loadPage(uint8_t page, const Scene*& out) override {
     ++pageReads;
-    if (page != 0) return false;
+    if (!pageAvailable || page != 0) return false;
     out = &scene;
     return true;
   }
@@ -43,6 +43,7 @@ class FakeMaterials final : public GroovePuterMidi::ISongExportMaterialSource {
   int pageReads{0};
   int melodyReads{0};
   bool melodyAvailable{false};
+  bool pageAvailable{true};
 };
 
 GroovePuterMidi::SmfDocument writeAndParse(
@@ -63,6 +64,16 @@ GroovePuterMidi::SmfDocument writeAndParse(
       file.bytes.data(), file.bytes.size());
   assert(parsed.ok());
   return parsed.document;
+}
+
+GroovePuterMidi::MidiSongExportSnapshot onePatternSnapshot() {
+  GroovePuterMidi::MidiSongExportSnapshot snapshot{};
+  snapshot.song.length = 1;
+  snapshot.song.positions[0].patterns[0] = 0;
+  snapshot.patternBars = 1;
+  snapshot.synthSettings[0].synthIndex = 0;
+  snapshot.synthSettings[1].synthIndex = 1;
+  return snapshot;
 }
 
 std::vector<GroovePuterMidi::SmfEvent> noteEvents(
@@ -176,6 +187,13 @@ int main() {
   assert(eightBars.endTick == 8u * 384u * 16u);
   assert(noteEvents(eightBars).size() == 16);
 
+  snapshot.patternBars = 4;
+  SongExportSummary fourBarSummary{};
+  const auto fourBars = writeAndParse(snapshot, materials,
+      SongExportLane::SynthA, fourBarSummary);
+  assert(fourBars.endTick == 4u * 384u * 16u);
+  assert(noteEvents(fourBars).size() == 8);
+
   snapshot.song = Song{};
   snapshot.song.length = 1;
   snapshot.song.positions[0].patterns[2] = 0;
@@ -221,5 +239,33 @@ int main() {
         event.data2 == 2) hasSignature = true;
   }
   assert(hasTempo && hasSignature);
+
+  MidiSongExportSnapshot missingPageSnapshot = onePatternSnapshot();
+  FakeMaterials missingPage;
+  missingPage.pageAvailable = false;
+  VectorSink missingPageBytes;
+  SmfExportTrackWriter missingPageWriter;
+  SongExportSummary missingPageSummary{};
+  SongExportError missingPageError = SongExportError::None;
+  assert(!writeSongExportTrack(missingPageSnapshot, missingPage,
+      SongExportLane::SynthA, missingPageBytes, missingPageWriter,
+      missingPageSummary, &missingPageError));
+  assert(missingPageError == SongExportError::PageUnavailable);
+
+  MidiSongExportSnapshot missingMelodySnapshot = onePatternSnapshot();
+  FakeMaterials missingMelody;
+  missingMelody.scene.materialSlots[0][0].kind =
+      GroovePuterMaterial::MaterialKind::Melody;
+  VectorSink missingMelodyBytes;
+  SmfExportTrackWriter missingMelodyWriter;
+  SongExportSummary missingMelodySummary{};
+  SongExportError missingMelodyError = SongExportError::None;
+  assert(!writeSongExportTrack(missingMelodySnapshot, missingMelody,
+      SongExportLane::SynthA, missingMelodyBytes, missingMelodyWriter,
+      missingMelodySummary, &missingMelodyError));
+  assert(missingMelodyError == SongExportError::MelodyUnavailable);
+
+  MidiSongExportSnapshot emptySnapshot{};
+  assert(!validSongExportSnapshot(emptySnapshot));
   return 0;
 }

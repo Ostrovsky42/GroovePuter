@@ -12,18 +12,26 @@ namespace {
 
 enum class Failure {
   None,
+  EnsureDirectory,
+  BeginWrite,
   ShortWrite,
   CloseWrite,
+  OpenRead,
+  CloseRead,
   TrackRead,
   ValidationRead,
   Rename,
+  MaterialPage,
+  MissingMelody,
 };
 
 class FakeStorage final : public GroovePuterMidi::ISongExportStorage {
  public:
   explicit FakeStorage(Failure failure = Failure::None) : failure_(failure) {}
 
-  bool ensureDirectory(const char*) override { return true; }
+  bool ensureDirectory(const char*) override {
+    return failure_ != Failure::EnsureDirectory;
+  }
   bool exists(const char* path) const override { return files.count(path) != 0; }
   bool remove(const char* path) override { files.erase(path); return true; }
   bool rename(const char* from, const char* to) override {
@@ -35,6 +43,10 @@ class FakeStorage final : public GroovePuterMidi::ISongExportStorage {
     return true;
   }
   bool beginWrite(const char* path) override {
+    if (failure_ == Failure::BeginWrite && !failureUsed_) {
+      failureUsed_ = true;
+      return false;
+    }
     if (!writePath_.empty()) return false;
     writePath_ = path;
     files[writePath_].clear();
@@ -60,6 +72,10 @@ class FakeStorage final : public GroovePuterMidi::ISongExportStorage {
     return true;
   }
   bool openRead(const char* path) override {
+    if (failure_ == Failure::OpenRead && !failureUsed_) {
+      failureUsed_ = true;
+      return false;
+    }
     if (!readPath_.empty() || files.count(path) == 0) return false;
     readPath_ = path;
     return true;
@@ -85,6 +101,10 @@ class FakeStorage final : public GroovePuterMidi::ISongExportStorage {
   bool closeRead() override {
     if (readPath_.empty()) return false;
     readPath_.clear();
+    if (failure_ == Failure::CloseRead && !failureUsed_) {
+      failureUsed_ = true;
+      return false;
+    }
     return true;
   }
   uint32_t size(const char* path) const override {
@@ -128,15 +148,17 @@ class FakeStorage final : public GroovePuterMidi::ISongExportStorage {
 class FakeMaterials final : public GroovePuterMidi::ISongExportMaterialSource {
  public:
   bool loadPage(uint8_t page, const Scene*& out) override {
-    if (page != 0) return false;
+    if (!pageAvailable || page != 0) return false;
     out = &scene;
     return true;
   }
   bool loadMelody(uint8_t, uint8_t,
                   PhraseRuntime::RuntimeSynthEventBuffer&) override {
-    return false;
+    return melodyAvailable;
   }
   Scene scene{};
+  bool pageAvailable{true};
+  bool melodyAvailable{false};
 };
 
 GroovePuterMidi::MidiSongExportSnapshot makeSnapshot() {
@@ -155,6 +177,11 @@ GroovePuterMidi::MidiSongExportSnapshot makeSnapshot() {
 bool exportOnce(Failure failure, const char* fixturePath) {
   FakeStorage storage(failure);
   FakeMaterials materials;
+  if (failure == Failure::MaterialPage) materials.pageAvailable = false;
+  if (failure == Failure::MissingMelody) {
+    materials.scene.materialSlots[0][0].kind =
+        GroovePuterMaterial::MaterialKind::Melody;
+  }
   materials.scene.synthABanks[0].patterns[0].steps[0].note = 60;
   GroovePuterMidi::MidiSongExportFileResult result{};
   const bool exported = GroovePuterMidi::exportSongAsSmf(
@@ -193,11 +220,29 @@ bool exportOnce(Failure failure, const char* fixturePath) {
 
 int main(int argc, char** argv) {
   assert(argc == 2);
+  {
+    FakeStorage storage;
+    FakeMaterials materials;
+    auto empty = makeSnapshot();
+    empty.song.length = 0;
+    GroovePuterMidi::MidiSongExportFileResult result{};
+    assert(!GroovePuterMidi::exportSongAsSmf(
+        empty, materials, storage, "Empty", result));
+    assert(result.error == GroovePuterMidi::SongExportFileError::InvalidSnapshot);
+    assert(storage.visibleMidiCount() == 0);
+    assert(!storage.hasTemporaryFiles());
+  }
+  assert(!exportOnce(Failure::EnsureDirectory, argv[1]));
+  assert(!exportOnce(Failure::BeginWrite, argv[1]));
   assert(exportOnce(Failure::None, argv[1]));
   assert(!exportOnce(Failure::ShortWrite, argv[1]));
   assert(!exportOnce(Failure::CloseWrite, argv[1]));
+  assert(!exportOnce(Failure::OpenRead, argv[1]));
+  assert(!exportOnce(Failure::CloseRead, argv[1]));
   assert(!exportOnce(Failure::TrackRead, argv[1]));
   assert(!exportOnce(Failure::ValidationRead, argv[1]));
   assert(!exportOnce(Failure::Rename, argv[1]));
+  assert(!exportOnce(Failure::MaterialPage, argv[1]));
+  assert(!exportOnce(Failure::MissingMelody, argv[1]));
   return 0;
 }
