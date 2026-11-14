@@ -13,5 +13,6 @@ mapfile -t SRCS < <(
 "${CXX:-g++}" -std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h \
   $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
   "${SRCS[@]}" ../tests/test_rhythm_browser_engine.cpp \
+  ../src/midi/midi_companion_settings.cpp \
   $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "$BUILD/test"
 "$BUILD/test"
