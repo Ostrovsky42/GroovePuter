@@ -2495,15 +2495,16 @@ void MiniAcid::applySongPositionSelection() {
   publishedHarmonyGeneration_.fetch_add(1, std::memory_order_release);
 }
 
-bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
+HarmonyCapture MiniAcid::tryCaptureHarmonyPlaybackPosition(
     GroovePuterPerformance::HarmonyPlaybackPosition& out) const {
   out = GroovePuterPerformance::HarmonyPlaybackPosition{};
   if (!publishedHarmonySongMode_.load(std::memory_order_acquire) ||
-      isPageLoading()) return false;
+      isPageLoading()) return HarmonyCapture::Invalid;
 
   for (uint8_t attempt = 0; attempt < 3; ++attempt) {
     const uint32_t before = publishedHarmonyGeneration_.load(std::memory_order_acquire);
-    if (before == 0u || (before & 1u) != 0u) return false;
+    if (before == 0u) return HarmonyCapture::Invalid;  // never published
+    if ((before & 1u) != 0u) return HarmonyCapture::Unavailable;  // writer inside
     const int16_t row = publishedHarmonySongRow_.load(std::memory_order_relaxed);
     const int16_t slot = publishedHarmonySongSlot_.load(std::memory_order_relaxed);
     const int16_t globalPattern =
@@ -2511,29 +2512,29 @@ bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
     const int16_t page = static_cast<int16_t>(currentPageIndex());
     if (row < 0 || slot < 0 || slot > 1 || globalPattern < 0 ||
         globalPattern >= kMaxGlobalPatterns ||
-        songPatternPage(globalPattern) != page) return false;
+        songPatternPage(globalPattern) != page) return HarmonyCapture::Invalid;
 
     const GroovePuterMaterial::MaterialAddress address{
         0, static_cast<uint8_t>(globalPattern)};
-    if (!GroovePuterMaterial::materialAddressIsResident(address, page)) return false;
+    if (!GroovePuterMaterial::materialAddressIsResident(address, page)) return HarmonyCapture::Invalid;
     const int residentSlot = GroovePuterMaterial::residentSlotFor(address);
     const Scene& scene = sceneManager_.currentScene();
     const GroovePuterMaterial::MaterialId id =
         GroovePuterMaterial::residentId(scene, 0, residentSlot);
-    if (!id.valid()) return false;
+    if (!id.valid()) return HarmonyCapture::Invalid;
     const int bank = songPatternBank(globalPattern);
     const int index = songPatternIndexInBank(globalPattern);
     if (bank < 0 || bank >= kBankCount || index < 0 ||
-        index >= Bank<SynthPattern>::kPatterns) return false;
+        index >= Bank<SynthPattern>::kPatterns) return HarmonyCapture::Invalid;
     const auto version = GroovePuterMaterial::versionForPattern(
         scene.synthABanks[bank].patterns[index]);
 
     GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
     if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport))
-      return false;
+      return HarmonyCapture::Unavailable;  // a miss is not "no transport"
     const bool haveTransport = transport.valid && transport.playing;
     const double transportSteps = haveTransport ? transport.absoluteSteps() : 0.0;
-    if (!std::isfinite(transportSteps) || transportSteps < 0.0) return false;
+    if (!std::isfinite(transportSteps) || transportSteps < 0.0) return HarmonyCapture::Invalid;
     const uint64_t absoluteStep = haveTransport
         ? static_cast<uint64_t>(transportSteps)
         : static_cast<uint64_t>(row) * 16u;
@@ -2551,9 +2552,9 @@ bool MiniAcid::tryCaptureHarmonyPlaybackPosition(
     out.publicationGeneration = before;
     out.transportEpoch = haveTransport ? transport.transportEpoch : before;
     out.absoluteStep = absoluteStep;
-    return true;
+    return HarmonyCapture::Valid;
   }
-  return false;
+  return HarmonyCapture::Unavailable;  // publication kept changing under us
 }
 
 void MiniAcid::publishGeneratedPatternHarmony(
@@ -2580,7 +2581,7 @@ void MiniAcid::publishGeneratedPatternHarmony(
   if (candidate.valid()) generatedPatternHarmonyOrigin_ = candidate;
 }
 
-bool MiniAcid::tryCapturePatternHarmonyPlaybackPosition(
+HarmonyCapture MiniAcid::tryCapturePatternHarmonyPlaybackPosition(
     GroovePuterPerformance::PatternHarmonyPlaybackPosition& out) const {
   out = GroovePuterPerformance::PatternHarmonyPlaybackPosition{};
   if (songMode_ || isPageLoading() ||
@@ -2588,24 +2589,24 @@ bool MiniAcid::tryCapturePatternHarmonyPlaybackPosition(
       GroovePuterRhythm::QuantizedGenerationDetail::pendingAudibleSynthPattern(
           *this, 0) != nullptr ||
       activeMaterial_[0].kind != GroovePuterMaterial::MaterialKind::Pattern)
-    return false;
+    return HarmonyCapture::Invalid;
   const int global = current303GlobalSlot_(0);
   if (global < 0 || global >= kMaxGlobalPatterns ||
-      songPatternPage(global) != currentPageIndex()) return false;
+      songPatternPage(global) != currentPageIndex()) return HarmonyCapture::Invalid;
   const auto& origin = generatedPatternHarmonyOrigin_;
-  if (origin.address.globalSlot != global) return false;
+  if (origin.address.globalSlot != global) return HarmonyCapture::Invalid;
   const Scene& scene = sceneManager_.currentScene();
   const int bank = songPatternBank(global);
   const int slot = songPatternIndexInBank(global);
   const auto version = GroovePuterMaterial::versionForPattern(
       scene.synthABanks[bank].patterns[slot]);
-  if (version != origin.version) return false;
+  if (version != origin.version) return HarmonyCapture::Invalid;
   GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
   if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport))
-    return false;
+    return HarmonyCapture::Unavailable;  // a miss is not "no transport"
   const bool playing = transport.valid && transport.playing;
   const double steps = playing ? transport.absoluteSteps() : 0.0;
-  if (!std::isfinite(steps) || steps < 0.0) return false;
+  if (!std::isfinite(steps) || steps < 0.0) return HarmonyCapture::Invalid;
   out.activePage = currentPageIndex();
   out.activePatternGlobal = global;
   out.activeVersion = version;
@@ -2613,7 +2614,7 @@ bool MiniAcid::tryCapturePatternHarmonyPlaybackPosition(
   out.transportEpoch = playing ? transport.transportEpoch
                                : origin.publicationGeneration;
   out.absoluteStep = playing ? static_cast<uint64_t>(steps) : 0;
-  return true;
+  return HarmonyCapture::Valid;
 }
 
 bool MiniAcid::tryCaptureSongHarmonicParticipants(

@@ -42,7 +42,7 @@ assert "snapshot(" not in output_cpp[handle_start:]
 # Pattern drums own only eight bytes of post-begin physical note identity.
 assert "uint8_t patternDrumNotes_[kPatternDrumVoiceCount]" in output_h
 assert "MidiOutputRouteProjection" not in output_h
-assert "wireNoteFor(*lane, event.note)" in output_cpp
+assert "wireNoteFor(*lane, drumEvent.note)" in output_cpp  # drumEvent is event, rewritten only for external drum input
 
 # R5 is Pattern-only. Performance routing and SEQTRAK CC26 remain on the
 # established config path for the later explicit Performance checkpoint.

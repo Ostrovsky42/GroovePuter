@@ -8,6 +8,7 @@
 
 #include "../components/music_visuals.h"
 #include "../ui_input.h"
+#include "../perform_key_header.h"
 #include "src/midi/smf_player_service.h"
 #include "src/output/output_mode_runtime.h"
 #include "src/output/output_ownership.h"
@@ -24,29 +25,27 @@
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT",
+    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",
 };
 constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]",
+    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]", "[LOOP]",
 };
-constexpr PerformanceChordMode kChordPopupModes[] = {
-    PerformanceChordMode::Off,
-    PerformanceChordMode::Major,
-    PerformanceChordMode::Minor,
-    PerformanceChordMode::Fifth,
-    PerformanceChordMode::Minor7,
-    PerformanceChordMode::Memory,
-    PerformanceChordMode::Sus2,
-    PerformanceChordMode::Sus4,
-    PerformanceChordMode::Dominant7,
-    PerformanceChordMode::Major7,
-    PerformanceChordMode::ScaleTriad,
-    PerformanceChordMode::ScaleSeventh,
-};
+// Same order as the keyboard's chord cycle; labels follow it one to one.
+constexpr const PerformanceChordMode* kChordPopupModes = PerformanceKeyboard::kChordDisplayOrder;
+constexpr std::size_t kChordPopupCount = PerformanceKeyboard::kChordDisplayCount;
 constexpr const char* kChordPopupLabels[] = {
-    "OFF", "MAJ", "MIN", "5TH", "MIN7", "MEM",
-    "SUS2", "SUS4", "7", "MAJ7", "SCALE3", "SCALE7",
+    "OFF", "SCALE3", "SCALE7", "5TH", "MIN", "MAJ",
+    "MIN7", "MEM", "SUS2", "SUS4", "7", "MAJ7",
 };
+static_assert(sizeof(kChordPopupLabels) / sizeof(kChordPopupLabels[0]) == kChordPopupCount,
+              "chord popup labels follow the display order");
+
+// PLAY AS and LEAD STYLE shape notes only when SEND TO = PERFORM (the PERFORM keyboard
+// interprets them); a direct SYN A/SYN B/DRUMS target plays the pitches as received.
+bool inputRolesApply() {
+    return GroovePuterPlatform::cardputerMidiInputRoutingConfig().target ==
+           GroovePuterMidi::MidiInputTarget::Perform;
+}
 
 const char* roleName(GroovePuterPerformance::PerformanceRole role) {
     switch (role) {
@@ -97,6 +96,15 @@ bool strumIsAudible(const PerformanceKeyboard& keyboard) {
            keyboard.chordMode() != PerformanceChordMode::Off;
 }
 
+// The live scale binding (bare LEFT/RIGHT, and , .) already changes the scale;
+// the toast names the scale just selected. Keys are not changed here.
+void cycleScaleWithToast(PerformanceKeyboard& keyboard, int direction) {
+    keyboard.cycleScale(direction);
+    char toast[32];
+    std::snprintf(toast, sizeof(toast), "SCALE: %s", keyboard.scaleName());
+    UI::showToast(toast, 800);
+}
+
 bool rotationIsAudible(const PerformanceKeyboard& keyboard) {
     const uint8_t pulses = keyboard.euclideanPulses();
     const uint8_t length = keyboard.euclideanLength();
@@ -120,12 +128,15 @@ using GroovePuterLooper::Looper;
 using InRow = PerformInputRow;
 constexpr uint8_t ir(InRow row) { return performInputRow(row); }
 
+using LoopRow = PerformLoopRow;
+constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
+
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kLooperRowFirst ? 1u : 0u) +
-                                (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
+constexpr uint8_t kLoopLineCount = PerformPage::kLoopRowCount;  // no headings on the LOOP tab
 
 using PartnerMode = GroovePuterCallResponse::CallResponseListener::Mode;
 using PartnerReplace = GroovePuterCallResponse::CallResponseListener::LoopReplace;
@@ -182,14 +193,16 @@ const char* strumDirectionLabel(PerformanceStrumDirection direction) {
 }  // namespace
 
 void PerformPage::openChordModePopup() {
-    const uint8_t selected = static_cast<uint8_t>(keyboard_.chordMode());
-    chordModePopup_.open("CHORD MODE", static_cast<uint8_t>(
-        sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])), selected);
+    uint8_t selected = 0;
+    for (std::size_t i = 0; i < kChordPopupCount; ++i) {
+        if (kChordPopupModes[i] == keyboard_.chordMode()) { selected = static_cast<uint8_t>(i); break; }
+    }
+    chordModePopup_.open("CHORD MODE", static_cast<uint8_t>(kChordPopupCount), selected);
 }
 
 void PerformPage::applyChordModePopup() {
     const uint8_t selected = chordModePopup_.selectedIndex();
-    if (selected >= sizeof(kChordPopupModes) / sizeof(kChordPopupModes[0])) return;
+    if (selected >= kChordPopupCount) return;
     keyboard_.setChordMode(kChordPopupModes[selected]);
     char toast[32];
     std::snprintf(toast, sizeof(toast), "CHORD: %s", kChordPopupLabels[selected]);
@@ -225,6 +238,8 @@ uint8_t PerformPage::rowCountForContext() const {
         // one ResponsePlayer and never play together. The group headings are
         // drawn only and are not rows.
         case PerformanceToolContext::Input: return kInputRowCount;
+        // The looper: nine rows, six visible, scrolling (TO MELODY is the last).
+        case PerformanceToolContext::Loop: return kLoopRowCount;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -411,12 +426,35 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
-                case ir(InRow::ToMelody):
+                default:
+                    break;
+            }
+            return;
+        case PerformanceToolContext::Loop:
+            switch (row) {
+                case lr(LoopRow::ToMelody):
                     exportTarget_ = static_cast<int8_t>(exportVoiceNow() == 1 ? 0 : 1);  // A <-> B
                     break;
-                case ir(InRow::LoopBars): case ir(InRow::LoopChannel): case ir(InRow::NoteLength):
-                case ir(InRow::HoldLayer): case ir(InRow::Layer): case ir(InRow::MuteLayer):
-                    cycleLooperSetting(row, direction);
+                case lr(LoopRow::RecordSource):
+                    cycleLooperSetting(LooperSetting::RecordSource, direction);
+                    break;
+                case lr(LoopRow::LoopBars):
+                    cycleLooperSetting(LooperSetting::LoopBars, direction);
+                    break;
+                case lr(LoopRow::LoopChannel):
+                    cycleLooperSetting(LooperSetting::LoopChannel, direction);
+                    break;
+                case lr(LoopRow::NoteLength):
+                    cycleLooperSetting(LooperSetting::NoteLength, direction);
+                    break;
+                case lr(LoopRow::HoldLayer):
+                    cycleLooperSetting(LooperSetting::HoldLayer, direction);
+                    break;
+                case lr(LoopRow::Layer):
+                    cycleLooperSetting(LooperSetting::Layer, direction);
+                    break;
+                case lr(LoopRow::MuteLayer):
+                    cycleLooperSetting(LooperSetting::MuteLayer, direction);
                     break;
                 default:
                     break;
@@ -508,14 +546,17 @@ void PerformPage::toggleSelectedValue() {
                 cyclePartnerMode(1);
             } else if (row > kPartnerRowFirst && row <= kPartnerRowLast) {
                 cyclePartnerSetting(row, 1);
-            } else if (row == kLooperRowFirst) {
-                looperKey('z');  // ENTER on LOOPER = Z
-            } else if (row == kLooperExportRow) {
-                exportLooperToMelody();
-            } else if (row > kLooperRowFirst && row < kLooperExportRow) {  // LOOP BARS .. MUTE LAYER
-                cycleLooperSetting(row, 1);
             } else {
                 adjustInput(1);
+            }
+            return;
+        case PerformanceToolContext::Loop:
+            if (row == lr(LoopRow::Looper)) {
+                looperKey('z');  // ENTER on LOOPER = Z
+            } else if (row == lr(LoopRow::ToMelody)) {
+                exportLooperToMelody();
+            } else {  // REC, LOOP BARS, LOOP CH, NOTE LENGTH, HOLD LAYER, LAYER, MUTE LAYER
+                adjustSelectedValue(1);
             }
             return;
         case PerformanceToolContext::Count:
@@ -564,10 +605,14 @@ void PerformPage::cyclePartnerMode(int direction) {
 
 // LOOPER settings rows (session only, not saved). </> and ENTER both cycle;
 // HOLD is B, LAYER is M. BARS keeps the notes (longer repeats, shorter cuts, V).
-void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
+void PerformPage::cycleLooperSetting(LooperSetting setting, int direction) {
     auto& loop = GroovePuterLooper::looper();
-    switch (row) {
-        case ir(InRow::LoopBars): {
+    switch (setting) {
+        case LooperSetting::RecordSource:
+            if (!loop.setRecordSound(!loop.recordSound()))
+                UI::showToast("LOOP: STOP REC TO CHANGE", 1600);
+            break;
+        case LooperSetting::LoopBars: {
             const bool notes = !loop.empty();
             const Looper::Result result = loop.cycleBars(direction);
             char toast[32];
@@ -576,11 +621,11 @@ void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
             if (notes || result != Looper::Result::Done) showLooperToast(result, toast);
             break;
         }
-        case ir(InRow::LoopChannel): loop.cycleChannel(direction); break;
-        case ir(InRow::NoteLength): loop.cycleLength(direction); break;
-        case ir(InRow::HoldLayer): looperKey('b'); break;
-        case ir(InRow::Layer): looperKey('m'); break;
-        case ir(InRow::MuteLayer): {
+        case LooperSetting::LoopChannel: loop.cycleChannel(direction); break;
+        case LooperSetting::NoteLength: loop.cycleLength(direction); break;
+        case LooperSetting::HoldLayer: looperKey('b'); break;
+        case LooperSetting::Layer: looperKey('m'); break;
+        case LooperSetting::MuteLayer: {
             const Looper::Result result = loop.toggleMute();
             char toast[32];
             std::snprintf(toast, sizeof(toast), "LOOP: LAYER %u %s",
@@ -589,7 +634,6 @@ void PerformPage::cycleLooperSetting(uint8_t row, int direction) {
             showLooperToast(result, toast);
             break;
         }
-        default: break;
     }
 }
 
@@ -829,13 +873,19 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::MidiIn): return "MIDI KEYBOARD IN  USB: PROJECT>MIDI";
                 case ir(InRow::ListenChannel): return "HEAR ONE MIDI CHANNEL OR ALL (OMNI)";
                 case ir(InRow::SendTo): return "WHERE MIDI NOTES GO; PERFORM=KEY TAB";
-                case ir(InRow::PlayAs): return "SHAPES NEW LIVE NOTES ONLY";
+                case ir(InRow::PlayAs):
+                    if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
+                    if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass &&
+                        !keyboard_.performanceHarmonyAvailable())
+                        return "NO HARMONY: USING KEY SCALE";
+                    return "SHAPES NEW LIVE NOTES ONLY";
                 case ir(InRow::LeadStyle):
+                    if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
                     if (keyboard_.performanceRole() != GroovePuterPerformance::PerformanceRole::Lead)
                         return "N/A: SET PLAY AS TO LEAD";
                     if (keyboard_.leadMode() != GroovePuterPerformance::LeadMode::Raw &&
                         !keyboard_.performanceHarmonyAvailable())
-                        return "NO HARMONY: SCALE FALLBACK";
+                        return "NO HARMONY: USING KEY SCALE";
                     return "HOW LEAD NOTES FIT THE HARMONY";
                 case ir(InRow::Helper): return "MIDI REPLIES TO WHAT YOU PLAY";
                 case ir(InRow::ReplyBars): return "LENGTH OF CALL AND REPLY";
@@ -846,18 +896,24 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
-                case ir(InRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
-                case ir(InRow::LoopBars): return GroovePuterLooper::looper().empty()
-                    ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
-                case ir(InRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
-                case ir(InRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
-                case ir(InRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
-                case ir(InRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
-                case ir(InRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
-                case ir(InRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
                 default: return "";
             }
         }
+
+        case PerformanceToolContext::Loop:
+            switch (row) {
+                case lr(LoopRow::Looper): return "Z REC/DUB  C PLAY/STOP  V UNDO";
+                case lr(LoopRow::RecordSource): return "KEYS: INPUT NOTES  SOUND: PLAYED NOTES";
+                case lr(LoopRow::LoopBars): return GroovePuterLooper::looper().empty()
+                    ? "LOOP LENGTH IN BARS" : "LONGER REPEATS THE NOTES  V UNDO";
+                case lr(LoopRow::LoopChannel): return "DX ROUTE: SAME CH AS PERFORM DX";
+                case lr(LoopRow::NoteLength): return "SHORTER LOOP NOTES ON PLAYBACK";
+                case lr(LoopRow::HoldLayer): return "B: HOLD LAYER, NO REC/UNDO/CLEAR";
+                case lr(LoopRow::Layer): return "M: LAYER FOR REC/DUB, HOLD, CLEAR";
+                case lr(LoopRow::MuteLayer): return "SILENCE THIS LAYER AT ONCE";
+                case lr(LoopRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
+                default: return "";
+            }
 
         case PerformanceToolContext::Count:
             break;
@@ -913,7 +969,8 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 }
 
 void PerformPage::drawToolTabs(IGfx& gfx, int y) {
-    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [IN]". The bracket cell to the
+    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [INPUT] [LOOP]" (len + 2 cells each: six
+    // tabs of len + 3 would be 264 px wide, the screen is 240). The bracket cell to the
     // left of each label is always reserved, so labels never shift when the
     // active context changes.
     const UI::ThemePalette palette = UI::themePalette();
@@ -933,7 +990,7 @@ void PerformPage::drawToolTabs(IGfx& gfx, int y) {
             gfx.setTextColor(palette.secondary);
             gfx.drawText(x + charW, y, name);
         }
-        x += (len + 3) * charW;
+        x += (len + 2) * charW;
     }
 
 }
@@ -953,10 +1010,13 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     const int valueW = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X - valueX;
     const uint8_t selected = currentRow();
     constexpr uint8_t kVisibleRows = 6;
-    // INPUT draws a group heading line above MIDI IN, HELPER and LOOPER; the
-    // window scrolls by screen lines so the selected row is always visible.
+    // INPUT draws a group heading line above MIDI IN and HELPER; LOOP has nine
+    // rows and no headings. The window scrolls by screen lines so the selected
+    // row is always visible.
     const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
+    const bool loopContext = selectedContext_ == PerformanceToolContext::Loop;
     auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
+    const uint8_t totalLines = inputContext ? kInputLineCount : (loopContext ? kLoopLineCount : kVisibleRows);
     const uint8_t selectedLine = lineOf(selected);
     const uint8_t firstVisibleRow = selectedLine >= kVisibleRows
         ? static_cast<uint8_t>(selectedLine - kVisibleRows + 1u) : 0u;
@@ -1105,6 +1165,27 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                               static_cast<unsigned>(keyboard_.euclideanLength()));
             }
             drawRow(3, "EUCLID", value, true);
+            if (keyboard_.euclideanPulses() > 0 && lineOf(3) >= firstVisibleRow) {
+                // 16-step strip right of the digits: a filled square is a hit, a
+                // small dot a rest, the running step is boxed (the current pulse of
+                // the shared step clock modulo the length).
+                const uint8_t length = std::min<uint8_t>(keyboard_.euclideanLength(),
+                                                         PerformanceKeyboard::kEuclideanSteps);
+                const uint8_t cursor = length ? static_cast<uint8_t>(keyboard_.musicalPulseOrdinal() % length) : 0;
+                const int stripX = valueX + 36;
+                const int stripY = LayoutManager::lineY(1 + static_cast<int>(lineOf(3) - firstVisibleRow)) + 1;
+                const bool onSelected = selected == 3;
+                for (uint8_t step = 0; step < length; ++step) {
+                    const int cellX = stripX + step * 5;
+                    const bool hit = PerformKeyHeader::euclidStepHit(
+                        step, keyboard_.euclideanPulses(), keyboard_.euclideanLength(),
+                        keyboard_.euclideanRotation());
+                    const IGfxColor ink = onSelected ? palette.invert : palette.text;
+                    if (hit) gfx.fillRect(cellX, stripY, 4, 5, ink);
+                    else gfx.fillRect(cellX + 1, stripY + 2, 2, 1, onSelected ? palette.invert : palette.dim);
+                    if (step == cursor) gfx.drawRect(cellX - 1, stripY - 2, 6, 9, MusicVisuals::accentForStyle());
+                }
+            }
             if (rotationIsAudible(keyboard_)) {
                 std::snprintf(value, sizeof(value), "%u",
                               static_cast<unsigned>(keyboard_.euclideanRotation()));
@@ -1132,8 +1213,11 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             InputUi::formatChannel(input, value, sizeof(value));
             drawRow(ir(InRow::ListenChannel), "LISTEN CH", value, true);
             drawRow(ir(InRow::SendTo), "SEND TO", InputUi::targetName(input.target), true);
-            drawRow(ir(InRow::PlayAs), "PLAY AS", roleName(keyboard_.performanceRole()), true);
-            const bool lead = keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
+            const bool rolesApply = inputRolesApply();
+            drawRow(ir(InRow::PlayAs), "PLAY AS",
+                    rolesApply ? roleName(keyboard_.performanceRole()) : "N/A", rolesApply);
+            const bool lead = rolesApply &&
+                keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
             drawRow(ir(InRow::LeadStyle), "LEAD STYLE", lead ? leadModeName(keyboard_.leadMode()) : "N/A", lead);
 
             // PARTNER: HELPER is the listener mode (RIFF = Mode::Loop).
@@ -1161,33 +1245,38 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
 
-            // LOOPER (Z/C/V/B/Del/M on the live surface).
+            break;
+        }
+
+        case PerformanceToolContext::Loop: {
+            const auto& partner = GroovePuterCallResponse::callResponseListener();
+            const bool partnerOn = partner.enabled();
             const auto& loop = GroovePuterLooper::looper();
-            drawHeading(inputLine(kLooperRowFirst) - 1u, "--- LOOPER ---");
             formatLooperState(value, sizeof(value));
-            drawRow(ir(InRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            drawRow(lr(LoopRow::Looper), "LOOPER", partnerOn ? "HELPER ON" : value, !partnerOn);
+            drawRow(lr(LoopRow::RecordSource), "REC", loop.recordSound() ? "SOUND" : "KEYS", true);
             std::snprintf(value, sizeof(value), "%u BAR%s",
                           static_cast<unsigned>(loop.bars()), loop.bars() == 1 ? "" : "S");
-            drawRow(ir(InRow::LoopBars), "LOOP BARS", value,
+            drawRow(lr(LoopRow::LoopBars), "LOOP BARS", value,
                     loop.holdMask() == 0 && loop.state() != Looper::State::Record);
             if (loop.channel() == 0) {
                 std::snprintf(value, sizeof(value), "DX ROUTE");
             } else {
                 std::snprintf(value, sizeof(value), "CH%u", static_cast<unsigned>(loop.channel()));
             }
-            drawRow(ir(InRow::LoopChannel), "LOOP CH", value, true);
+            drawRow(lr(LoopRow::LoopChannel), "LOOP CH", value, true);
             std::snprintf(value, sizeof(value), "%u%%", static_cast<unsigned>(loop.lengthPercent()));
-            drawRow(ir(InRow::NoteLength), "NOTE LENGTH", value, true);
+            drawRow(lr(LoopRow::NoteLength), "NOTE LENGTH", value, true);
             const bool layerEmpty = loop.layerNoteCount(loop.activeLayer()) == 0;
-            drawRow(ir(InRow::HoldLayer), "HOLD LAYER",
+            drawRow(lr(LoopRow::HoldLayer), "HOLD LAYER",
                     layerEmpty && !loop.hold() ? "N/A" : (loop.hold() ? "ON" : "OFF"), !layerEmpty);
             std::snprintf(value, sizeof(value), "%u  (%u NOTES)", static_cast<unsigned>(loop.activeLayer() + 1u),
                           static_cast<unsigned>(loop.layerNoteCount(loop.activeLayer())));
-            drawRow(ir(InRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
-            drawRow(ir(InRow::MuteLayer), "MUTE LAYER", loop.layerMuted(loop.activeLayer()) ? "ON" : "OFF", true);
+            drawRow(lr(LoopRow::Layer), "LAYER", value, loop.state() != Looper::State::Record);
+            drawRow(lr(LoopRow::MuteLayer), "MUTE LAYER", loop.layerMuted(loop.activeLayer()) ? "ON" : "OFF", true);
             std::snprintf(value, sizeof(value), "SYN %c",
                           static_cast<char>('A' + exportVoiceNow()));
-            drawRow(ir(InRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
+            drawRow(lr(LoopRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
             break;
         }
 
@@ -1195,14 +1284,14 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             break;
     }
 
-    // INPUT is longer than the window: a 2 px scroll bar on the right edge
-    // (outside the row highlight and the clipped value text).
-    if (inputContext && kInputLineCount > kVisibleRows) {
+    // INPUT and LOOP are longer than the window: a 2 px scroll bar on the right
+    // edge (outside the row highlight and the clipped value text).
+    if (totalLines > kVisibleRows) {
         const int trackY = LayoutManager::lineY(1) - 1;
         const int trackH = kVisibleRows * Layout::LINE_HEIGHT - 2;
         const int barX = rowX + rowW;
-        const int thumbH = std::max(4, trackH * kVisibleRows / kInputLineCount);
-        const int span = kInputLineCount - kVisibleRows;
+        const int thumbH = std::max(4, trackH * kVisibleRows / totalLines);
+        const int span = totalLines - kVisibleRows;
         const int thumbY = trackY + (trackH - thumbH) * firstVisibleRow / span;
         gfx.fillRect(barX, trackY, 2, trackH, palette.dim);
         gfx.fillRect(barX, thumbY, 2, thumbH, palette.secondary);
@@ -1279,10 +1368,10 @@ bool PerformPage::handleEvent(UIEvent& event) {
     if (!event.ctrl && !event.alt && !event.meta) {
         switch (UIInput::navCode(event)) {
             case GROOVEPUTER_LEFT:
-                keyboard_.cycleScale(-1);
+                cycleScaleWithToast(keyboard_, -1);
                 return true;
             case GROOVEPUTER_RIGHT:
-                keyboard_.cycleScale(1);
+                cycleScaleWithToast(keyboard_, 1);
                 return true;
             default:
                 break;
@@ -1320,11 +1409,11 @@ bool PerformPage::handleEvent(UIEvent& event) {
         }
         case ',':
         case '<':
-            keyboard_.cycleScale(-1);
+            cycleScaleWithToast(keyboard_, -1);
             return true;
         case '.':
         case '>':
-            keyboard_.cycleScale(1);
+            cycleScaleWithToast(keyboard_, 1);
             return true;
         case '-':
             keyboard_.shiftOctave(-1);
@@ -1436,21 +1525,25 @@ void PerformPage::drawContent(IGfx& gfx) {
                       static_cast<unsigned>(keyboard_.heldCount()),
                       static_cast<unsigned>(keyboard_.velocity()));
     } else {
-        std::snprintf(line, sizeof(line), "%s O%+d C:%s A:%s R%u E%u S%u V%u",
-                      keyboard_.scaleName(),
-                      static_cast<int>(keyboard_.octaveShift()),
-                      keyboard_.chordModeName(),
-                      keyboard_.arpeggiatorEnabled()
-                          ? keyboard_.arpDirectionName() : "OFF",
-                      static_cast<unsigned>(keyboard_.ratchetCount()),
-                      static_cast<unsigned>(keyboard_.euclideanPulses()),
-                      static_cast<unsigned>(keyboard_.strumMs()),
-                      static_cast<unsigned>(keyboard_.velocity()));
+        PerformKeyHeader::KeyHeaderInput keyLine;
+        keyLine.root = keyboard_.rootName();
+        keyLine.scale = keyboard_.scaleName();
+        keyLine.octaveShift = static_cast<int>(keyboard_.octaveShift());
+        keyLine.chord = keyboard_.chordModeName();
+        keyLine.arp = keyboard_.arpeggiatorEnabled() ? keyboard_.arpDirectionName() : nullptr;
+        keyLine.ratchet = keyboard_.ratchetCount();
+        keyLine.euclidPulses = keyboard_.euclideanPulses();
+        keyLine.euclidLength = keyboard_.euclideanLength();
+        keyLine.strumMs = static_cast<uint8_t>(keyboard_.strumMs() > 255 ? 255 : keyboard_.strumMs());
+        PerformKeyHeader::formatKeyHeader(line, sizeof(line), keyLine,
+                                          static_cast<std::size_t>((Layout::CONTENT.w - 8) / 6));
     }
     Widgets::drawClippedText(gfx, Layout::COL_1, LayoutManager::lineY(1),
                              Layout::CONTENT.w - 8, line);
 
-    if (GroovePuterLooper::looper().takeFullNotice())
+    if (GroovePuterLooper::looper().takeTooManyNotice())
+        UI::showToast("LOOP: TOO MANY NOTES", 1000);
+    else if (GroovePuterLooper::looper().takeFullNotice())
         UI::showToast("LOOP: FULL, NOTES DROPPED", 1000);
     drawLooperStrip(gfx, LayoutManager::lineY(2));
 
@@ -1652,7 +1745,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         counterColor = COLOR_DANGER;
     } else {
         if (loop.state() == Looper::State::Idle && loop.empty()) {
-            // Nothing recorded yet: the first hint instead of 0/64.
+            // Nothing recorded yet: show the first recording hint.
             std::snprintf(counter, sizeof(counter), "Z REC");
         } else {
             std::snprintf(counter, sizeof(counter), "%u/%u",
@@ -1664,7 +1757,7 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
         if (loop.layer().slotCount() + 4u >= GroovePuterLooper::kLoopCapacity) counterColor = COLOR_WARN;
     }
     const int right = Layout::CONTENT.x + Layout::CONTENT.w - Layout::CONTENT_PAD_X;
-    const int counterW = 6 * 6;
+    const int counterW = static_cast<int>(std::strlen(counter)) * 6;
     gfx.setTextColor(counterColor);
     gfx.drawText(right - counterW, y + 1, counter);
 
@@ -1705,7 +1798,9 @@ void PerformPage::drawLooperStrip(IGfx& gfx, int y) {
             tick = lane != activeLayer ? COLOR_LABEL
                                        : (note.isNew() ? palette.text : palette.secondary);
         }
-        gfx.fillRect(stepX(note.onset()), y + 2 + lane * 3, 1, 2, tick);
+        // The onset is in ticks (6 to a step): a triplet line is placed as played.
+        gfx.fillRect(stepX(static_cast<double>(note.onsetTicks()) / GroovePuterLooper::kTicksPerStep),
+                     y + 2 + lane * 3, 1, 2, tick);
     }
     if (position >= 0.0) gfx.fillRect(stepX(position), y + 1, 1, barH - 2, color);
 }

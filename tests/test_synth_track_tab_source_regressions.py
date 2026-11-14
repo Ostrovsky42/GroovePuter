@@ -36,20 +36,20 @@ def test_synth_track_owns_notes_knobs_more_cycle() -> None:
             "KNOBS/MORE must reuse the existing synth params page")
     require("GlobalSynthFeelPage" not in source,
             "duplicate technical synth settings page must be removed")
-    require("(static_cast<int>(synth_tab_) + 1) % 3" in source,
-            "plain Tab must cycle exactly three local synth states")
-    require('"[N]KM"' in source,
+    require("(static_cast<int>(synth_tab_) + 1) % 4" in source,
+            "plain Tab must cycle exactly four local synth states (NOTES, KNOBS, MORE, MIDI)")
+    require('"[N]KMI"' in source,
             "compact NOTES indicator must be visible")
-    require('"N[K]M"' in source,
+    require('"N[K]MI"' in source,
             "compact KNOBS indicator must be visible")
-    require('"NK[M]"' in source,
+    require('"NK[M]I"' in source,
             "compact MORE indicator must be visible")
     require("constexpr int kNotesTabStripX = 190;" in source,
             "NOTES tab must appear after the pattern-number row")
     require("constexpr int kParamsTabStripX = 172;" in source,
             "params tab must sit near the right edge before its mode label")
-    require("constexpr int kTabStripW = 32;" in source,
-            "compact synth tabs must stop before the pattern-number row")
+    require("constexpr int kTabStripW = 38;" in source,
+            "compact synth tabs (six letters) must fit the strip and stop before the pattern-number row")
     require("kNotesTabStripX > kPatternNumbersEndX" in source and
             "kNotesTabStripX + kTabStripW <= Layout::SCREEN_W" in source,
             "NOTES tab must prove it is after pattern numbers and on screen")

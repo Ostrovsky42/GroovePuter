@@ -3,6 +3,8 @@
 #include <atomic>
 
 #include "midi_pattern_startup_routes.h"
+#include "../input/external_drum_lane.h"
+#include "../output/output_ownership.h"
 
 UsbMidiOutput::UsbMidiOutput(IUsbMidiTransport& transport,
                              UsbMidiRouteConfig config)
@@ -786,7 +788,16 @@ bool UsbMidiOutput::acquireGeneratedNote(MusicalEventTarget target,
         // Generated tools may intentionally retrigger the same tone (ratchet).
         // Direct physical keys normally have unique pitches; the shared bounded
         // domain preserves existing no-allocation ownership behavior.
-        if (!transport_.sendNoteOn(channel, note, velocity)) return false;
+        if (!transport_.sendNoteOff(channel, note, 0)) {
+            setGeneratedNotePendingRelease(targetIndex, note, true);
+            return false;
+        }
+        if (!transport_.sendNoteOn(channel, note, velocity)) {
+            // The previous note was released; retain a retryable release so
+            // bookkeeping is cleared before the next onset.
+            setGeneratedNotePendingRelease(targetIndex, note, true);
+            return false;
+        }
         transport_.flush();
         setGeneratedNotePendingRelease(targetIndex, note, false);
         return true;
@@ -875,7 +886,10 @@ void UsbMidiOutput::releaseTargetAllNotes(MusicalEventSource source,
         isSynthPerformanceSource(source)) {
         // A Dx panic (also the control-queue overflow fallback for a dropped
         // answer NoteOff) closes the CALL/RESPONSE answer lane too.
-        if (target == MusicalEventTarget::Dx) releaseAnswerLane();
+        if (target == MusicalEventTarget::Dx) {
+            releaseAnswerLane();
+            releaseLoopNotes();
+        }
         requestChannelPanic(generatedChannel(target));
         releaseGeneratedTarget(target);
         releasePendingChannelPanics();
@@ -918,11 +932,87 @@ void UsbMidiOutput::releaseAllActiveNotes() {
     releaseGeneratedTarget(MusicalEventTarget::SynthB);
     releaseGeneratedTarget(MusicalEventTarget::Dx);
     releaseAnswerLane();
+    releaseLoopNotes();
     releasePendingChannelPanics();
 }
 
 bool UsbMidiOutput::releaseAnswerLane() {
     return releaseActiveNote(answerLane_);
+}
+
+bool UsbMidiOutput::releaseLoopNote(uint8_t channel, uint8_t note, uint8_t velocity) {
+    for (auto& entry : loopNotes_) {
+        if (!entry.count || entry.channel != channel || entry.note != note) continue;
+        auto* cell = owners_.peek(channel, note);
+        if (cell && cell->wire == 1u) {
+            if (!mounted_ || !transport_.sendNoteOff(channel, note, velocity)) {
+                entry.pending = true;
+                return false;
+            }
+            transport_.flush();
+        }
+        if (cell && cell->wire) --cell->wire;
+        owners_.prune();
+        entry.count = 0;
+        entry.pending = false;
+        return true;
+    }
+    return true;
+}
+
+bool UsbMidiOutput::releaseLoopNotes(bool pendingOnly) {
+    bool released = true;
+    for (auto& entry : loopNotes_) {
+        if (entry.count && (!pendingOnly || entry.pending)) {
+            if (!releaseLoopNote(entry.channel, entry.note)) released = false;
+        }
+    }
+    return released;
+}
+
+void UsbMidiOutput::handleLoopLaneEvent(const MusicalEvent& event) {
+    if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
+    const bool pendingReleased = releaseLoopNotes(true);
+    const uint8_t channel = (event.flags & kMusicalEventAnswerFollowDx)
+        ? generatedChannel(MusicalEventTarget::Dx) : clampChannel(event.channel);
+    const uint8_t note = clampDataByte(event.note);
+    LoopNote* found = nullptr;
+    LoopNote* vacant = nullptr;
+    for (auto& entry : loopNotes_) {
+        if (entry.count && entry.channel == channel && entry.note == note) found = &entry;
+        if (!entry.count && !vacant) vacant = &entry;
+    }
+    if (event.type == MusicalEventType::NoteOff) {
+        if (found && found->count > 1u) --found->count;
+        else releaseLoopNote(channel, note, clampDataByte(event.velocity));
+        return;
+    }
+    if (event.type != MusicalEventType::NoteOn || !pendingReleased) return;
+    const uint8_t velocity = event.velocity ? clampDataByte(event.velocity) : 1;
+    if (found) {
+        if (found->count == 255u) return;
+        if (!transport_.sendNoteOff(channel, note, 0)) {
+            found->pending = true;
+            return;
+        }
+        if (!transport_.sendNoteOn(channel, note, velocity)) {
+            found->pending = true;
+            return;
+        }
+        transport_.flush();
+        ++found->count;
+        return;
+    }
+    if (!vacant) return;
+    auto* cell = owners_.open(channel, note);
+    if (!cell || cell->wire == 255u) return;
+    if (cell->wire == 0 && !transport_.sendNoteOn(channel, note, velocity)) {
+        owners_.prune();
+        return;
+    }
+    if (cell->wire == 0) transport_.flush();
+    ++cell->wire;
+    *vacant = LoopNote{channel, note, 1, false};
 }
 
 void UsbMidiOutput::handleAnswerLaneEvent(const MusicalEvent& event) {
@@ -948,6 +1038,8 @@ void UsbMidiOutput::handleAnswerLaneEvent(const MusicalEvent& event) {
             break;
         case MusicalEventType::AllNotesOff:
         case MusicalEventType::PitchBend:
+            break;
+        case MusicalEventType::ControlChange:
             break;
     }
 }
@@ -1014,7 +1106,11 @@ bool UsbMidiOutput::acquirePatternChordNote(MidiVoiceLane& lane, int index,
     if (velocity < 1) velocity = 1;
 
     if (patternChordNoteActive(index, note)) {
-        // Same pitch restarted by the Melody: already owned, re-attack only.
+        // Balance a repeated onset so the receiver cannot retain a voice.
+        if (!transport_.sendNoteOff(lane.channel, note, 0)) {
+            setPatternChordNote(patternChordPending_, index, note, true);
+            return false;
+        }
         if (!transport_.sendNoteOn(lane.channel, note, velocity)) return false;
         transport_.flush();
         setPatternChordNote(patternChordPending_, index, note, false);
@@ -1097,6 +1193,23 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
     auto* cell = owners_.open(channel, note);
     if (cell == nullptr) return false;
 
+    if (cell->wire > 0) {
+        if (cell->wire > cell->smf) {
+            // Another owner (PERFORM/Pattern) already sounds this note. Never
+            // cut it and never stack a second NoteOn: join without a write.
+            if (cell->smf < 255) ++cell->smf;
+            if (cell->wire < 255) ++cell->wire;
+            return true;
+        }
+        // Only SMF owners sound it: retrigger with NoteOff first so the
+        // receiver never sees ON ON. A refused NoteOff changes nothing.
+        if (!transport_.sendNoteOff(channel, note, 0)) return false;
+        transport_.flush();
+        // The wire is silent now; keep the books honest before the NoteOn so
+        // a refused NoteOn leaves the owners matching the receiver.
+        cell->wire = 0;
+    }
+
     if (!transport_.sendNoteOn(channel, note, velocity)) {
         owners_.prune();
         return false;
@@ -1104,7 +1217,9 @@ bool UsbMidiOutput::handleSmfNoteOn(uint8_t zeroBasedChannel,
     transport_.flush();
 
     if (cell->smf < 255) ++cell->smf;
-    if (cell->wire < 255) ++cell->wire;
+    // After a retrigger every owner is SMF again: wire follows smf.
+    cell->wire = cell->wire == 0 ? cell->smf
+                                 : static_cast<uint8_t>(cell->wire < 255 ? cell->wire + 1 : 255);
     return true;
 }
 
@@ -1243,6 +1358,7 @@ void UsbMidiOutput::clearActiveState() {
     answerLane_.activeNote = -1;
     answerLane_.activeCount = 0;
     answerLane_.pendingRelease = false;
+    for (auto& entry : loopNotes_) { entry.count = 0; entry.pending = false; }
     for (std::size_t target = 0; target < kGeneratedTargetCount; ++target) {
         performanceReceiverMode_[target] = PerformanceReceiverMode::Unknown;
         for (std::size_t byte = 0; byte < kGeneratedBitsetBytes; ++byte) {
@@ -1253,6 +1369,12 @@ void UsbMidiOutput::clearActiveState() {
     owners_.clear();
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
+    // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
+    // The receiver's values are unknown after a (re)connect: every controller is
+    // re-sent by the level check once its value is known.
+    for (auto& slotSent : cutoffSent_) {
+        for (bool& sent : slotSent) sent = false;
+    }
 }
 
 void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
@@ -1261,7 +1383,19 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     releasePendingChannelPanics();
 
     if (event.type == MusicalEventType::AllNotesOff) {
-        releaseTargetAllNotes(event.source, event.target);
+        // MIDI-input drums sound on the PERFORM drum lanes, so a panic releases those.
+        const MusicalEventSource panicSource =
+            (event.source == MusicalEventSource::MidiInput &&
+             event.target == MusicalEventTarget::Drums)
+                ? MusicalEventSource::PerformanceKeyboard
+                : event.source;
+        releaseTargetAllNotes(panicSource, event.target);
+        return;
+    }
+
+    if (event.type == MusicalEventType::ControlChange) {
+        handleCutoffControlChange(event);
+        releasePendingChannelPanics();
         return;
     }
 
@@ -1289,7 +1423,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
 
     if ((event.flags & (kMusicalEventWireChannel | kMusicalEventAnswerFollowDx)) != 0 &&
         event.target != MusicalEventTarget::Drums) {
-        handleAnswerLaneEvent(event);
+        if ((event.flags & kMusicalEventLoopLane) != 0) handleLoopLaneEvent(event);
+        else handleAnswerLaneEvent(event);
         releasePendingChannelPanics();
         return;
     }
@@ -1312,12 +1447,31 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
                 break;
             case MusicalEventType::PitchBend:
                 break;
+            case MusicalEventType::ControlChange:
+                break;
         }
         releasePendingChannelPanics();
         return;
     }
 
-    MidiVoiceLane* lane = laneFor(event.source, event.target, event.channel);
+    MusicalEvent drumEvent = event;
+    if (event.source == MusicalEventSource::MidiInput &&
+        event.target == MusicalEventTarget::Drums) {
+        // External keyboard drums (Host MIDI IN + thru): the note class picks the
+        // SEQTRAK lane and the lane's own route note is used, exactly like PERFORM.
+        // The PERFORM drum lane owns the NoteOff; there is no second owner.
+        // NoteOff always passes: turning thru off must not strand a held drum note.
+        if (event.type == MusicalEventType::NoteOn &&
+            !g_midiInputThru.load(std::memory_order_relaxed)) {
+            return;
+        }
+        uint8_t drumLane = 0;
+        if (!GroovePuterInput::externalDrumLaneForNote(event.note, drumLane)) return;
+        drumEvent.source = MusicalEventSource::PerformanceKeyboard;
+        drumEvent.channel = drumLane;
+        drumEvent.note = kSeqtrakDrumNote;
+    }
+    MidiVoiceLane* lane = laneFor(drumEvent.source, drumEvent.target, drumEvent.channel);
     if (!accepts(lane)) return;
     if (lane->pendingRelease) {
         const bool released = event.target == MusicalEventTarget::Drums
@@ -1328,7 +1482,7 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
     }
 
     if (event.target == MusicalEventTarget::Drums) {
-        const uint8_t wireNote = wireNoteFor(*lane, event.note);
+        const uint8_t wireNote = wireNoteFor(*lane, drumEvent.note);
         switch (event.type) {
             case MusicalEventType::NoteOn:
                 acquirePercussiveNote(*lane, wireNote, event.velocity);
@@ -1341,6 +1495,8 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::AllNotesOff:
                 break;
             case MusicalEventType::PitchBend:
+                break;
+            case MusicalEventType::ControlChange:
                 break;
         }
         releasePendingChannelPanics();
@@ -1391,8 +1547,108 @@ void UsbMidiOutput::handleMusicalEvent(const MusicalEvent& event) {
             break;
         case MusicalEventType::PitchBend:
             break;
+        case MusicalEventType::ControlChange:
+            break;
     }
     releasePendingChannelPanics();
+}
+
+bool UsbMidiOutput::retryPendingReleasesOnce() {
+    if (!releaseLoopNotes(true)) return false;
+    for (std::size_t i = 0; i < kLaneCount; ++i) {
+        if (!lanes_[i].pendingRelease) continue;
+        const bool released = lanes_[i].target == MusicalEventTarget::Drums
+            ? releasePercussiveLane(lanes_[i])
+            : releaseActiveNote(lanes_[i]);
+        if (!released) return false;
+    }
+    if (answerLane_.pendingRelease && !releaseAnswerLane()) return false;
+
+    const MusicalEventTarget generated[kGeneratedTargetCount] = {
+        MusicalEventTarget::SynthA,
+        MusicalEventTarget::SynthB,
+        MusicalEventTarget::Dx,
+    };
+    for (const MusicalEventTarget target : generated) {
+        if (!retryGeneratedPendingReleases(target)) return false;
+    }
+
+    // Melody chord NoteOffs are released on the chord's own Pattern lane. A
+    // pending bit with no lane to release it on cannot be retried, so it is
+    // skipped rather than blocking every other release.
+    for (int index = 0; index < 2; ++index) {
+        for (std::size_t note = 0; note < kMidiNoteCount; ++note) {
+            const uint8_t midiNote = static_cast<uint8_t>(note);
+            if ((patternChordPending_[index][midiNote >> 3u] &
+                 static_cast<uint8_t>(1u << (midiNote & 7u))) == 0u) {
+                continue;
+            }
+            MidiVoiceLane* owner = nullptr;
+            for (std::size_t i = 0; i < kLaneCount && owner == nullptr; ++i) {
+                if (lanes_[i].source == MusicalEventSource::PatternPlayer &&
+                    patternChordIndex(lanes_[i].target) == index) {
+                    owner = &lanes_[i];
+                }
+            }
+            if (owner != nullptr &&
+                !releasePatternChordNote(*owner, index, midiNote)) {
+                return false;
+            }
+        }
+    }
+
+    return releasePendingChannelPanics();
+}
+
+bool UsbMidiOutput::servicePendingReleases(uint32_t nowUs) {
+    if (!begun_ || !mounted_) {
+        // Keep the cadence anchored to now. Otherwise a long unmounted spell
+        // leaves the next attempt far in the future, and after a remount the
+        // signed comparison below would hold retries back for the whole gap.
+        nextPendingReleaseUs_ = nowUs;
+        return true;
+    }
+    // Signed difference keeps the cadence correct across micros() wrap.
+    if (static_cast<int32_t>(nowUs - nextPendingReleaseUs_) < 0) return true;
+
+    if (retryPendingReleasesOnce()) {
+        pendingReleaseIntervalUs_ = kPendingReleaseMinIntervalUs;
+        nextPendingReleaseUs_ = nowUs + pendingReleaseIntervalUs_;
+        return true;
+    }
+    // The wire refused. Stop at once (the rest would be refused too) and back
+    // off so a full FIFO is not paced against every five milliseconds.
+    pendingReleaseIntervalUs_ = pendingReleaseIntervalUs_ * 2u;
+    if (pendingReleaseIntervalUs_ > kPendingReleaseMaxIntervalUs) {
+        pendingReleaseIntervalUs_ = kPendingReleaseMaxIntervalUs;
+    }
+    nextPendingReleaseUs_ = nowUs + pendingReleaseIntervalUs_;
+    return false;
+}
+
+void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
+    // Scope: the documented synth controllers of kControllers, on the two synth
+    // targets. Anything else never reaches the wire through this path.
+    const int index = GroovePuterMidi::controllerIndex(event.note);
+    if (index < 0) return;
+    int slot = -1;
+    if (event.target == MusicalEventTarget::SynthA) slot = 0;
+    if (event.target == MusicalEventTarget::SynthB) slot = 1;
+    if (slot < 0) return;
+    if (!enabled_ || !begun_ || !mounted_ || !config_.performanceKeyboardEnabled) return;
+    // The track's output mode decides whether the external synth may hear it.
+    // INTERNAL or LAYER mute this path just as they mute the notes of the track.
+    if (!GroovePuterOutput::allowsMidi(event.target, GroovePuterOutput::SourceClass::Performance)) return;
+
+    const uint8_t value = GroovePuterMidi::clampForController(index, event.velocity);
+    if (cutoffSent_[slot][index] && cutoffLast_[slot][index] == value) return;
+    if (!transport_.sendControlChange(generatedChannel(event.target),
+                                      GroovePuterMidi::kControllers[index].number, value)) {
+        return;  // not recorded: the next level check retries the same value
+    }
+    transport_.flush();
+    cutoffSent_[slot][index] = true;
+    cutoffLast_[slot][index] = value;
 }
 
 void UsbMidiOutput::servicePitchBendRetries() {

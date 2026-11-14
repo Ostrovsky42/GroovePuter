@@ -1,4 +1,4 @@
-# GroovePuter 0.9.21 (unreleased) — First Five Minutes
+# GroovePuter 0.9.22 (unreleased) — First Five Minutes
 
 This page describes the 0.9.21 (unreleased) release candidate; it is not a published or hardware-accepted release. Use it for a first session on a M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to

@@ -366,8 +366,13 @@ static void mainLoopTick(void* userdata) {
   GroovePuterPerformance::HarmonyPlaybackPosition position{};
   const auto* origin = s->audio.synth.generatedSynthAOrigin();
   const auto* recipe = s->audio.synth.generatedPhraseRecipe();
-  if (origin && recipe &&
-      s->audio.synth.tryCaptureHarmonyPlaybackPosition(position)) {
+  HarmonyCapture songCapture = HarmonyCapture::Invalid;
+  bool keepHarmony = false;  // seqlock miss: keep the previous harmony context
+  if (origin && recipe) {
+    songCapture = s->audio.synth.tryCaptureHarmonyPlaybackPosition(position);
+    keepHarmony = songCapture == HarmonyCapture::Unavailable;
+  }
+  if (songCapture == HarmonyCapture::Valid) {
     if (origin->common.harmonicAuthority ==
         GroovePuterHarmony::HarmonicAuthority::Graph) {
       using GroovePuterHarmony::SongHarmonicParticipant;
@@ -414,15 +419,19 @@ static void mainLoopTick(void* userdata) {
       (void)GroovePuterPerformance::makeLegacyHarmonySnapshot(
           *origin, *recipe, position, snapshot);
     }
-  } else if (!s->audio.synth.songModeEnabled()) {
+  } else if (!keepHarmony && !s->audio.synth.songModeEnabled()) {
     const auto* patternOrigin = s->audio.synth.generatedPatternHarmonyOrigin();
     GroovePuterPerformance::PatternHarmonyPlaybackPosition patternPosition{};
-    if (patternOrigin &&
-        s->audio.synth.tryCapturePatternHarmonyPlaybackPosition(patternPosition))
-      (void)GroovePuterPerformance::makePatternHarmonySnapshot(
-          *patternOrigin, patternPosition, snapshot);
+    if (patternOrigin) {
+      const HarmonyCapture patternCapture =
+          s->audio.synth.tryCapturePatternHarmonyPlaybackPosition(patternPosition);
+      keepHarmony = patternCapture == HarmonyCapture::Unavailable;
+      if (patternCapture == HarmonyCapture::Valid)
+        (void)GroovePuterPerformance::makePatternHarmonySnapshot(
+            *patternOrigin, patternPosition, snapshot);
+    }
   }
-  s->harmonyBridge.update(s->keyboard, snapshot);
+  if (!keepHarmony) s->harmonyBridge.update(s->keyboard, snapshot);
   s->keyboard.service(SDL_GetTicks() * 1000u);
   updateUI(*s);
   if (!s->running) {

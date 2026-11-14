@@ -44,6 +44,23 @@ jobs:
       - name: Run current core contracts
         run: bash scripts/ci/run_core.sh
 
+  smart-play:
+    # Smart Play / looper contracts and looper-to-Melody. Not part of
+    # run_host_tests.sh; a separate job keeps the PR gate wall time unchanged.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install host dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
+      - name: Run Smart Play and looper contracts
+        run: bash tests/run_smart_play_tests.sh
+      - name: Run looper to Melody export contracts
+        run: bash tests/run_looper_melody_export_tests.sh
+
   sdl:
     runs-on: ubuntu-latest
     steps:

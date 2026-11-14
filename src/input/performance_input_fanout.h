@@ -23,6 +23,11 @@ public:
         if (second_) second_->onPerformanceInputNote(on, tag, note, velocity);
     }
 
+    void onPerformanceOutput(const MusicalEvent& event) override {
+        if (first_) first_->onPerformanceOutput(event);
+        if (second_) second_->onPerformanceOutput(event);
+    }
+
 private:
     PerformanceInputObserver* first_{nullptr};
     PerformanceInputObserver* second_{nullptr};

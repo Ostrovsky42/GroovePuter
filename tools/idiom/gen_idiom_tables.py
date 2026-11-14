@@ -183,6 +183,34 @@ HAND = {
         "P3": level(("1|5|9|13", "C2|C2|C2|C2", "1|1|1|1", "98|90|96|90", ""), NONE4,
                     ("1|3|5|7|9|11|13|15", "C5|Eb5|G5|C6|G5|Eb5|C5|G4", "1|1|1|1|1|1|1|1",
                      "84|72|76|82|76|72|80|70"))},
+    # ---- House, two hand-written variants (T05; drafts for the owner to listen to).
+    # Not selected by variantFor yet: the selection walk for House is not on this
+    # branch, so the House recipe keeps k_house_deep_offbeat.
+    # PIANO BASS: a bass that sits on the kick (steps 1 and 9) and a syncopated
+    # answer (6, 14); piano stabs on the off-beats; i-III-V-VI shape by progression.
+    "house_piano_bass": {"progression": (0, 3, 5, 6),
+        "P1": level(("1|6|7|9|14|15", "C2|C2|C3|C2|Eb2|C2", "2|1|1|2|1|1",
+                     "104|86|98|100|84|90", "1:accent=1|9:accent=1"),
+                    ("4|10|12", "Cm9|Fm7|Cm9", "1|2|1", "74|70|72"),
+                    ("16", "G4", "1", "66")),
+        "P2": level(("1|4|6|7|9|11|14|15", "C2|C2|C2|C3|C2|Eb2|C2|G1",
+                     "2|1|1|1|2|1|1|1", "104|80|86|98|100|84|88|78", "1:accent=1|9:accent=1"),
+                    ("4|8|10|12|16", "Cm9|Cm9|Fm9|Cm9|Fm9", "1|1|2|1|1", "74|66|72|70|68"),
+                    ("7|15", "Eb4|G4", "2|1", "66|72")),
+        "P3": level(("1|9", "C2|C2", "4|4", "100|92", ""),
+                    ("4|10", "Cm9|Fm9", "3|3", "72|70"), NONE4)},  # was 4|12: the answer bar lead gesture starts at step 11, so a stab on 12 was overwritten (test_cr_phase8 caught it)
+    # ORGAN STAB: sustained organ chords on the e-and-a offsets (2, 6, 10, 14),
+    # a sparse root bass that leaves the kick alone; progression i-i-v-v.
+    "house_organ_stab": {"progression": (0, 0, 3, 3),
+        "P1": level(("1|9|13", "C2|C2|Ab1", "4|4|3", "100|94|82", ""),
+                    ("2|6|10|14", "Cm|Cm|Ab|Ab", "2|2|2|2", "70|66|72|68"),
+                    ("5|13", "G4|Eb4", "2|2", "60|64")),
+        "P2": level(("1|5|9|13|15", "C2|C2|C2|Ab1|G1", "2|2|2|2|1",
+                     "100|88|94|86|80", ""),
+                    ("2|6|10|14|16", "Cm|Cm|Ab|Eb|Bb", "2|2|2|2|1", "70|66|72|68|62"),
+                    ("7|15", "Eb4|G4", "1|2", "60|64")),
+        "P3": level(("1|13", "C2|Ab1", "8|4", "96|84", ""),
+                    ("6", "Cm", "6", "66"), NONE4)},
 }
 
 def pitch_semi(name, base_octave):

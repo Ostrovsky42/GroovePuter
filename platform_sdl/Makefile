@@ -110,6 +110,7 @@ SOURCES := \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \
+	../src/ui/pages/synth_midi_page.cpp \
 	../src/ui/pages/waveform_page.cpp \
 	../src/ui/pages/voice_page.cpp \
 	../src/ui/pages/color_test_page.cpp \

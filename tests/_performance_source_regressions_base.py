@@ -429,8 +429,8 @@ def test_smf_player_is_additive_and_keeps_single_usb_owner() -> None:
         usb_dispatch.index("drainControlEvents(2);")]
     require("pendingSmf.type == ScheduledSmfMidiEventType::NoteOn" in
                 final_smf_dispatch and
-            "!projectSmfNoteOnStillCurrent(pendingSmf)" in final_smf_dispatch and
-            final_smf_dispatch.index("!projectSmfNoteOnStillCurrent(pendingSmf)") <
+            "!projectSmfNoteOnStillCurrent(" in final_smf_dispatch and
+            final_smf_dispatch.index("!projectSmfNoteOnStillCurrent(") <
                 final_smf_dispatch.index("dispatchSmfEvent(pendingSmf)"),
             "PROJECT NoteOn must recheck playing/epoch after the final busy-wait")
     project_note_gate = usb_dispatch[usb_dispatch.index(

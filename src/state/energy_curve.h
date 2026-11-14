@@ -24,11 +24,30 @@
 //   3  drums + bass + lead (Synth B) with space: the lead rests on the third
 //      bar of every four (A A' _ B, the call/response shape)
 //   4  everything (lead every bar, plus the Voice lane)
+//   5  A+B: bass and lead, no drums (H3)
+//   6  DR+B: drums and lead, no bass (H3)
+// The FORM view orders the seven levels by rank (energyRank): SILENCE, DR, DR+A,
+// DR+B, A+B, +B SPACE, FULL. Codes 0..4 keep their meaning.
 namespace EnergyCurve {
 
 constexpr uint8_t kMaxSections = 8;
-constexpr uint8_t kMaxEnergy = 4;
+constexpr uint8_t kMaxEnergy = 6;
+constexpr uint8_t kEnergyLevels = 7;
 constexpr uint8_t kMaxSourceRows = 8;
+
+// Rank of an energy code in the Up/Down order (0 = silence, 6 = full).
+inline uint8_t energyRank(uint8_t energy) {
+  static constexpr uint8_t kOrder[kEnergyLevels] = {0, 1, 2, 6, 5, 3, 4};
+  for (uint8_t i = 0; i < kEnergyLevels; ++i) {
+    if (kOrder[i] == energy) return i;
+  }
+  return 0;
+}
+
+inline uint8_t energyAtRank(uint8_t rank) {
+  static constexpr uint8_t kOrder[kEnergyLevels] = {0, 1, 2, 6, 5, 3, 4};
+  return rank < kEnergyLevels ? kOrder[rank] : 0;
+}
 
 struct Section {
   uint8_t bars = 4;    // 4 or 8
@@ -70,6 +89,41 @@ inline Curve presetCurve(Preset preset) {
   return curve;
 }
 
+// H5: the form of each genre, as (energy, bars) segments. Six forms of 32 bars.
+// Other genres keep the WAVE preset (16 bars).
+struct Segment {
+  uint8_t energy;
+  uint8_t bars;
+};
+
+inline Curve curveFromSegments(const Segment* segments, uint8_t count) {
+  Curve curve{};
+  for (uint8_t i = 0; i < count && i < kMaxSections; ++i) {
+    curve.sections[i] = Section{segments[i].bars, segments[i].energy};
+  }
+  curve.count = count < kMaxSections ? count : kMaxSections;
+  return curve;
+}
+
+// Generative modes: Acid 0, Reggae (Dub) 5, TripHop 6, House 9, Techno 10, UK garage 13.
+inline Curve genreCurve(uint8_t mode) {
+  static constexpr Segment kHouse[] = {{1, 4}, {2, 4}, {3, 4}, {4, 8}, {5, 4}, {4, 8}};
+  static constexpr Segment kUkg[] = {{6, 4}, {3, 4}, {4, 8}, {5, 4}, {2, 4}, {4, 8}};
+  static constexpr Segment kTechno[] = {{1, 4}, {6, 4}, {2, 4}, {4, 8}, {6, 4}, {4, 8}};
+  static constexpr Segment kAcid[] = {{1, 4}, {2, 8}, {4, 8}, {5, 4}, {4, 8}};
+  static constexpr Segment kDub[] = {{2, 8}, {6, 4}, {4, 8}, {1, 4}, {4, 8}};
+  static constexpr Segment kTripHop[] = {{5, 4}, {2, 4}, {3, 8}, {4, 8}, {5, 4}, {3, 4}};
+  switch (mode) {
+    case 0: return curveFromSegments(kAcid, sizeof(kAcid) / sizeof(kAcid[0]));
+    case 5: return curveFromSegments(kDub, sizeof(kDub) / sizeof(kDub[0]));
+    case 6: return curveFromSegments(kTripHop, sizeof(kTripHop) / sizeof(kTripHop[0]));
+    case 9: return curveFromSegments(kHouse, sizeof(kHouse) / sizeof(kHouse[0]));
+    case 10: return curveFromSegments(kTechno, sizeof(kTechno) / sizeof(kTechno[0]));
+    case 13: return curveFromSegments(kUkg, sizeof(kUkg) / sizeof(kUkg[0]));
+    default: return presetCurve(Preset::Wave);
+  }
+}
+
 inline uint16_t totalBars(const Curve& curve) {
   uint16_t bars = 0;
   for (uint8_t i = 0; i < curve.count && i < kMaxSections; ++i) bars += curve.sections[i].bars;
@@ -85,12 +139,14 @@ struct Voices {
 
 inline Voices voicesFor(uint8_t energy, uint16_t barInSection) {
   Voices v{};
-  if (energy >= 1) v.drums = true;
-  if (energy >= 2) v.bass = true;
-  if (energy == 3) v.lead = (barInSection % 4u) != 2u;
-  if (energy >= 4) {
-    v.lead = true;
-    v.voice = true;
+  switch (energy) {
+    case 1: v.drums = true; break;
+    case 2: v.drums = v.bass = true; break;
+    case 3: v.drums = v.bass = true; v.lead = (barInSection % 4u) != 2u; break;  // A A' _ B
+    case 4: v.drums = v.bass = v.lead = v.voice = true; break;
+    case 5: v.bass = v.lead = true; break;  // A+B: no drums
+    case 6: v.drums = v.lead = true; break;  // DR+B: no bass
+    default: break;
   }
   return v;
 }
@@ -141,22 +197,30 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
   if (length + bars > Song::kMaxPositions) return Status::NoRoom;
 
   int row = insertAt;
+  uint16_t inserted = 0;  // bars written so far, across all sections (H4)
   for (uint8_t s = 0; s < curve.count; ++s) {
     const Section& section = curve.sections[s];
-    for (uint16_t bar = 0; bar < section.bars; ++bar, ++row) {
+    for (uint16_t bar = 0; bar < section.bars; ++bar, ++row, ++inserted) {
       insertRow(song, row);
-      const SongPosition& from = source[bar % sourceCount];
+      // H4: a source longer than the section walks on through the whole source
+      // (an 8-row TAKE over two 4-bar sections: rows 0..3, then 4..7). A source no
+      // longer than the section repeats from its first row, as before.
+      const uint16_t sourceBar = sourceCount > section.bars ? inserted : bar;
+      const SongPosition& from = source[sourceBar % sourceCount];
       Voices v = voicesFor(section.energy, bar);
       const bool lastBar = bar + 1 == section.bars;
       if (lastBar && s + 1 < curve.count) {
         const uint8_t nextEnergy = curve.sections[s + 1].energy;
-        if (nextEnergy > section.energy && nextEnergy >= 3 &&
-            !v.lead &&
+        const uint8_t rank = energyRank(section.energy);
+        const uint8_t nextRank = energyRank(nextEnergy);
+        const bool nextHasLead = nextEnergy == 3 || nextEnergy == 4 || nextEnergy == 5 || nextEnergy == 6;
+        if (nextRank > rank && nextHasLead && !v.lead &&
             from.patterns[GroovePuterUndo::SongEdit::trackIndex(
                 SongTrack::SynthB)] >= 0) {
           v.lead = true;
         }
-        if (nextEnergy < section.energy && section.energy >= 2) {
+        // H3: the bass comes off on the last bar before a drop, only in a section that has drums.
+        if (nextRank < rank && v.drums && v.bass) {
           v.bass = false;
         }
       }

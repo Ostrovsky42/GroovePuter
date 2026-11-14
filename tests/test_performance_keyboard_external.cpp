@@ -299,6 +299,45 @@ int main() {
         assert(sink.count(MusicalEventType::AllNotesOff) >= 1 || sink.count(MusicalEventType::NoteOff) >= 1);
         assert(plain.externalHeldCount() == 0);
     }
+    // No published harmony: LEAD SCALE / BASS pull the note to the KEY scale (C major here).
+    {
+        PerformanceKeyboard kb(router);
+        kb.setRootPitchClass(0);
+        kb.setScale(PerformanceScale::Major);
+        assert(!kb.performanceHarmonyAvailable());
+        kb.setPerformanceRole(GroovePuterPerformance::PerformanceRole::Lead);
+        kb.setLeadMode(GroovePuterPerformance::LeadMode::Scale);
+        sink.clear();
+        assert(kb.externalNoteOn(61, 100));  // C# is outside C major: 60 or 62
+        assert(sink.has(MusicalEventType::NoteOn, 60) || sink.has(MusicalEventType::NoteOn, 62));
+        assert(!sink.has(MusicalEventType::NoteOn, 61));
+        assert(kb.externalNoteOff(61));
+        sink.clear();
+        assert(kb.externalNoteOn(64, 100));  // E is in the scale: unchanged
+        assert(sink.has(MusicalEventType::NoteOn, 64));
+        assert(kb.externalNoteOff(64));
+
+        // KEY follows ROOT: D major has C#, so 61 stays.
+        kb.setRootPitchClass(2);
+        sink.clear();
+        assert(kb.externalNoteOn(61, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 61));
+        assert(kb.externalNoteOff(61));
+
+        // A published harmony keeps priority over KEY (C major KEY, harmony scale = C# major).
+        kb.setRootPitchClass(0);
+        GroovePuterPerformance::PerformanceContext context{};
+        context.hasHarmony = true;
+        context.scalePitchClasses = static_cast<uint16_t>(0x0fffu & ~(1u << 0));  // not C
+        context.harmonyPitchClasses = (1u << 1) | (1u << 5) | (1u << 8);
+        context.harmonyTriadPitchClasses = context.harmonyPitchClasses;
+        context.allowChromatic = true;
+        kb.setPerformanceContext(context);
+        sink.clear();
+        assert(kb.externalNoteOn(61, 100));
+        assert(sink.has(MusicalEventType::NoteOn, 61));
+        assert(kb.externalNoteOff(61));
+    }
     std::puts("PERFORM keyboard external notes: PASS");
     return 0;
 }

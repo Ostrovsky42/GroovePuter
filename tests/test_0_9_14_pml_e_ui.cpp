@@ -341,7 +341,7 @@ void testDistinctGrowMessages() {
     CHECK(press(page, key('d')));
     // NotAdmitted: another TAKE in House is refused the same way, so the
     // message names the genre and points to where it can be changed.
-    CHECK(toastText(page, gfx) == "HOUSE CAN'T GROW: ALT+V GENRE");
+    CHECK(toastText(page, gfx) == "HOUSE CAN'T GROW: SONG F FORM");
   }
   {
     Fixture f("pmle-msg-edit", GenerativeMode::Techno, 404);

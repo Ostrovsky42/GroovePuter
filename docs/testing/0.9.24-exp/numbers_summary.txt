@@ -1,0 +1,20 @@
+0.9.24-exp: House numbers (4 takes per candidate; glue = 8 bars A+B)
+Features (genrefeatures 8, House G rows; base = v0.9.23 code, probe with the new columns)
+tag                  bass.diag synthB.diag B.n/bar B.adj16 chords/bar A.att412
+base (v0.9.23)           0.00       0.00     5.70    0.186      2.00     0.03
+cand-house               4.00       3.40     6.50    0.349      3.50     1.03
+cand-organ-nomel         4.00       4.60     5.60    0.166      3.50     1.03
+cand-organ-p1            4.00       6.30     6.10    0.311      2.62     0.53
+cand-organ-nostab15      4.00       3.40     5.80    0.262      2.62     1.03
+Per take (TSV, 8 bars = take twice; B = Synth B lane; tmpl = template velocity mean of B notes)
+tag                  take  B.n/bar B.adj16 tmpl_vel_B
+cand-house            t0..t1 piano 2.75 chords; t2..t3 organ 4.25 chords (features takes)
+cand-organ-nomel      t0 6.75  t1 5.00  t2 4.75  t3 4.75   B.adj16 0.296 0.300 0.000 0.000   tmpl 69.7 69.7 67.9 67.9
+cand-organ-p1         t0 6.75  t1 5.00  t2 5.75  t3 5.75   B.adj16 0.296 0.300 0.304 0.304   tmpl 69.7 69.7 67.9 67.9
+cand-organ-nostab15   t0 6.75  t1 5.00  t2 5.00  t3 5.00   B.adj16 0.296 0.300 0.200 0.200   tmpl 69.7 69.7 66.5 66.5
+cand-house-ab (glue)  t0 6.25 (A bars 1-4 piano, B bars 5-8 organ-p1)  B.adj16 0.300  tmpl_vel_B 68.9
+Chord count per bar (features, organ takes): cand-house 4.25, nomel 4.25, p1 2.50, nostab15 2.50.
+Features diff vs base (standard 128 values): all four candidates change 3 values (House only).
+Features diff vs cand-house: nomel 1 value; p1 2 values (attA412 1.03->0.53, synthB.diag 3.40->6.30); nostab15 none.
+Chosen for the A+B glue: cand-organ-p1 (rule: largest synthB.diag with B.n/bar inside the base range 5.70..6.50).
+Velocity: template (the idiom table's velocity at the same step and level, plus the engine's accent boost). Not the wire value.

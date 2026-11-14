@@ -3,6 +3,7 @@
 #define GROOVEPUTER_PERFORMANCE_INPUT_OBSERVER_H
 
 #include <cstdint>
+#include "musical_event.h"
 
 // Read-only tap on the notes a person plays into PERFORM (built-in keys and
 // external MIDI IN both pass through PerformanceKeyboard). It sees the input
@@ -16,6 +17,10 @@ public:
     // MIDI note uses performanceExternalInputTag().
     virtual void onPerformanceInputNote(bool on, uint16_t tag,
                                         uint8_t note, uint8_t velocity) = 0;
+
+    // The actual live output after Smart Play, chord and arp processing.
+    // Called only for events produced by PerformanceKeyboard itself.
+    virtual void onPerformanceOutput(const MusicalEvent&) {}
 
 protected:
     ~PerformanceInputObserver() = default;

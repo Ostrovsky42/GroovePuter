@@ -1,0 +1,10 @@
+base                 bass.diag=0.00 synthB.diag=0.00 B.n/bar=5.70 B.adj16=0.186 chords/bar=2.00 A.att412=0.03
+                     takes chords=[2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0] takes B.adj16=[0.174, 0.176, 0.174, 0.174, 0.174, 0.174, 0.174, 0.269]
+cand-house           bass.diag=4.00 synthB.diag=3.40 B.n/bar=6.50 B.adj16=0.349 chords/bar=3.50 A.att412=1.03
+                     takes chords=[2.75, 2.75, 4.25, 4.25, 2.75, 2.75, 4.25, 4.25] takes B.adj16=[0.296, 0.3, 0.385, 0.385, 0.296, 0.296, 0.385, 0.448]
+cand-organ-nomel     bass.diag=4.00 synthB.diag=4.60 B.n/bar=5.60 B.adj16=0.166 chords/bar=3.50 A.att412=1.03
+                     takes chords=[2.75, 2.75, 4.25, 4.25, 2.75, 2.75, 4.25, 4.25] takes B.adj16=[0.296, 0.3, 0.0, 0.0, 0.296, 0.296, 0.0, 0.136]
+cand-organ-p1        bass.diag=4.00 synthB.diag=6.30 B.n/bar=6.10 B.adj16=0.311 chords/bar=2.62 A.att412=0.53
+                     takes chords=[2.75, 2.75, 2.5, 2.5, 2.75, 2.75, 2.5, 2.5] takes B.adj16=[0.296, 0.3, 0.304, 0.304, 0.296, 0.296, 0.304, 0.385]
+cand-organ-nostab15  bass.diag=4.00 synthB.diag=3.40 B.n/bar=5.80 B.adj16=0.262 chords/bar=2.62 A.att412=1.03
+                     takes chords=[2.75, 2.75, 2.5, 2.5, 2.75, 2.75, 2.5, 2.5] takes B.adj16=[0.296, 0.3, 0.2, 0.2, 0.296, 0.296, 0.2, 0.304]

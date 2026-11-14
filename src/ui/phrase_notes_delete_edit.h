@@ -71,6 +71,42 @@ inline Result prepare(const Buffer& live,
   return prepareSelected(live, selection.eventIndex, out);
 }
 
+// Delete every note starting in `bar` as one atomic edit (Ctrl+A + Backspace).
+inline Result prepareBar(const Buffer& live, uint8_t bar, Prepared& out) {
+  out.before = live;
+  out.after = live;
+  if (!RuntimePhraseEdit::validate(live)) return Result::Rejected;
+
+  const uint32_t barStart =
+      static_cast<uint32_t>(bar) * PhraseRuntime::kTicksPerBar;
+  const uint32_t barEnd = barStart + PhraseRuntime::kTicksPerBar;
+  uint16_t deleted = 0;
+  const RuntimePhraseEdit::PrepareResult prepareResult =
+      RuntimePhraseEdit::prepare(live, out.after, [&](Buffer& candidate) {
+        for (int i = static_cast<int>(candidate.count) - 1; i >= 0; --i) {
+          const uint16_t start =
+              candidate.events[static_cast<uint16_t>(i)].startTick;
+          if (start >= barStart && start < barEnd) {
+            if (RuntimePhraseEdit::deleteEvent(
+                    candidate, static_cast<uint16_t>(i)) ==
+                RuntimePhraseEdit::EventEditResult::Changed) {
+              ++deleted;
+            }
+          }
+        }
+      });
+
+  if (deleted == 0) {
+    out.after = live;
+    return Result::NoTarget;
+  }
+  if (prepareResult != RuntimePhraseEdit::PrepareResult::Ready) {
+    out.after = live;
+    return Result::Rejected;
+  }
+  return Result::Ready;
+}
+
 inline bool commitIfUnchanged(Buffer& live, const Prepared& prepared) {
   if (!RuntimePhraseEdit::same(live, prepared.before)) return false;
   return RuntimePhraseEdit::commit(live, prepared.after);

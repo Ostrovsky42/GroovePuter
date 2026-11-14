@@ -97,6 +97,22 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
       (ui_event.key == 'f' || ui_event.key == 'F')) {
     // The selection stays: it is the FORM source block.
     form_view_ = !form_view_;
+    if (form_view_) {
+      // H6: opening FORM loads the form of the genre when the genre changed since
+      // the last visit (or no form is loaded yet). Edits made in the same genre stay.
+      const int mode = static_cast<int>(mini_acid_.genreManager().generativeMode());
+      if (form_genre_ != mode) {
+        form_curve_ = EnergyCurve::genreCurve(static_cast<uint8_t>(mode));
+        form_section_ = 0;
+        form_genre_ = mode;
+        char name[48];
+        const char* label = GenreManager::generativeModeName(static_cast<GenerativeMode>(mode));
+        std::snprintf(name, sizeof(name), "FORM: %s", label ? label : "");
+        for (char* c = name; *c; ++c) *c = static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
+        UI::showToast(name, 900);
+        return true;
+      }
+    }
     UI::showToast(form_view_ ? "SONG: FORM" : "SONG: GRID", 600);
     return true;
   }

@@ -1,6 +1,6 @@
-# GroovePuter 0.9.21 (unreleased) Manual
+# GroovePuter 0.9.22 (unreleased) Manual
 
-This manual describes the current user-facing GroovePuter workflow on the **0.9.21 (unreleased)** development source. The last tagged and packaged release is **v0.9.20**. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the release notes of the tagged release for its exact binary and acceptance boundary.
+This manual describes the current user-facing GroovePuter workflow on the **0.9.22 (unreleased)** development source. The last tagged and packaged release is **v0.9.20**. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the release notes of the tagged release for its exact binary and acceptance boundary.
 
 If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
 
@@ -109,8 +109,8 @@ Main controls:
 - `Left/Right`: change the selected Genre/Variant/Rhythm/Apply field;
 - `G`: full Stage 15 generation;
 - `P`: `P1 -> P2 -> P3` (see "P1 / P2 / P3" below);
-- `M`: cycle `PROFILE`, `MATERIALIZE`, `MATERIALIZE+BPM`;
-- `Enter`: apply the selected policy.
+- `M`: cycle the apply mode: `STYLE ONLY`, `NEW TAKE`, `NEW TAKE + TEMPO`;
+- `Enter`: apply the selected policy. On `APPLY` with the SEQTRAK profile it also sends the genre's sound (see "Sound presets" below).
 
 While stopped, accepted generation commits immediately. During PLAY the full Synth A + Synth B + Drums result publishes at the next real `BAR_START` instead of replacing the sounding bar mid-cycle.
 
@@ -122,6 +122,13 @@ On supported GENRE/scale combinations, the `HARMONY` row can select `GRAPH` for 
 
 The development host package includes deterministic event traces for all 17 harmonic profiles. Eight profiles are host-only today; nine map to existing device genre settings. These traces are evidence for inspection, not rendered audio or a substitute for listening on the Cardputer.
 
+### Sound presets (SEQTRAK)
+
+On the SEQTRAK profile, `Enter` on `APPLY` also sends the genre's sound to both synths: a
+few filter, attack, release, reverb and delay values per synth. The steps go out one at a
+time, and the synth page keeps the controller it had before. On other profiles you only get
+a hint. The keys and the values are listed in `keys.md`.
+
 ### GEN 2/3
 
 GEN is the optional local generation-target panel inside GENRE. `Tab` from GENRE opens GEN; `Tab` again requests FEEL; `Esc` returns to GENRE.
@@ -131,7 +138,7 @@ Its musician-facing choices are:
 - `TARGET`: `STEPS`, `MELODY A` or `MELODY B`;
 - `DRUMS`: `NEW` or `KEEP`;
 - `LENGTH`: `1/2/4/8` bars for generated Melody/TAKE material;
-- `LIVELY`: calm/normal/lively activity intent;
+- `LIVELY`: `CALM` reads the sparse template level, `LIVELY` the variation level, `NORMAL` follows the style `P`;
 - `NOTES`: short/mixed/long note-length intent.
 
 The First Five Minutes path does not require visiting GEN: its defaults are enough for an initial full generation. Use GEN when you want to decide what kind of material the next generation should write, rather than changing the Genre itself.
@@ -296,15 +303,15 @@ A working Melody can keep sounding while being edited. ACCEPT/DISCARD belongs to
 FORM builds ordinary Song rows from existing material using an energy curve. Press `F` on SONG to open it.
 
 - `Left/Right`: choose section;
-- `Up/Down`: energy `0..4`;
+- `Up/Down`: energy, in the order `SILENCE`, `DR`, `DR+A`, `DR+B`, `A+B`, `+B SPACE`, `FULL`;
 - `Enter`: section length `4/8` bars;
 - `N`: add a section;
 - `Backspace`: delete a section;
-- `1/2/3`: BUILD / DROP / WAVE curve;
+- `1/2/3`: BUILD / DROP / WAVE curve. Opening FORM loads the form of the current genre (`FORM: <GENRE>`) when the genre changed since the last visit; your edits in the same genre are kept;
 - `G`: insert generated form rows after the source block (selection, otherwise the TAKE at the cursor);
 - `F` / `Esc`: back to the normal Song grid.
 
-Energy is structural rather than a timbre macro: `0` is silence, `1` drums, `2` drums+bass, `3` adds the lead with a recurring rest, and `4` uses the full available arrangement including Voice. The inserted rows remain normal editable Song rows; one `Ctrl+Z` undoes the FORM insertion.
+Energy is structural rather than a timbre macro: `SILENCE` is silence, `DR` drums, `DR+A` drums+bass, `DR+B` drums+lead without bass, `A+B` bass+lead without drums, `+B SPACE` adds the lead with a recurring rest, and `FULL` uses the full available arrangement including Voice. The inserted rows remain normal editable Song rows; one `Ctrl+Z` undoes the FORM insertion.
 
 ## 7. MATERIAL — the first-session composition page
 
@@ -375,19 +382,21 @@ Fresh multi-row Phrase generation is STOP-only. Here `D` means derive, not the M
 
 ## 9. PERFORM and external keyboard
 
-PERFORM is a standalone live instrument: Cardputer keys work without a connected MIDI keyboard. `Tab` opens its tools; `Tab` and `Backspace` move between KEY / CHORD / ARP / RHYTHM / INPUT. The selected row is edited with arrows and activated with `Enter` where the row offers an action.
+PERFORM is a standalone live instrument: Cardputer keys work without a connected MIDI keyboard. `Tab` opens its tools; `Tab` and `Backspace` move between KEY / CHORD / ARP / RHYTHM / INPUT / LOOP. The selected row is edited with arrows and activated with `Enter` where the row offers an action.
 
 KEY sets the live note range, scale, velocity and target. CHORD configures voicing and chord memory. ARP configures its pitch source (held notes, chord memory, current harmony or role), order, octave range, latch and behavior when harmony changes. RHYTHM configures the shared clock, gate, ratchet, Euclidean rhythm and chord strum. A row marked `N/A` is not active in the current configuration; the hint line explains the requirement.
 
-INPUT is one scrollable list (a scroll bar appears on the right when it is longer than the screen) with three groups, from top to bottom; the headings are not selectable:
+LOOP holds the whole looper, nine rows (six visible, a scroll bar on the right): `LOOPER`, `REC`, `LOOP BARS`, `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER`, `LAYER`, `MUTE LAYER`, `TO MELODY` (the last row). INPUT is one scrollable list (a scroll bar appears on the right when it is longer than the screen) with two groups, from top to bottom; the headings are not selectable:
 
-- `--- MIDI IN ---`: `MIDI IN`, `LISTEN CH`, `SEND TO`, `PLAY AS`, `LEAD STYLE`. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. These choices transform newly played live notes; they do not rewrite a Pattern or an already-playing Song.
-- `--- LOOPER ---`: `LOOPER`, `LOOP BARS`, `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER`, `LAYER`, `MUTE LAYER`, `TO MELODY`.
+- `--- MIDI IN ---`: `MIDI IN`, `LISTEN CH`, `SEND TO`, `PLAY AS`, `LEAD STYLE`. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. These choices transform newly played live notes; they do not rewrite a Pattern or an already-playing Song. `PLAY AS` and `LEAD STYLE` act only while `SEND TO` is PERFORM: with SYN A, SYN B or DRUMS they read `N/A` and the hint says `N/A: SET SEND TO TO PERFORM`. Without a published harmony, BASS and LEAD (SCALE, CHORD, VOICE) pull notes to the KEY scale (ROOT and SCALE set in KEY) and the hint reads `NO HARMONY: USING KEY SCALE`; a published harmony always takes priority.
 - `--- HELPER ---`: `HELPER`, `REPLY BARS`, `REPLY CH`, `FREEZE RIFF`, `VARIATION`, `NEW RIFF IF`.
 
 ### LOOPER
 
-A MIDI looper on the live surface: `Z` records and dubs, `C` plays and stops, `V` undoes the last pass, `B` holds the active layer, `M` switches between layer 1 and 2, `Del` clears the active layer, `X` is panic (the loop stops, its notes are kept). `Ctrl+Z` goes to the looper while it has something to undo. `LOOP CH` is `DX ROUTE` by default (the loop plays on the channel and target of PERFORM DX; hint `DX ROUTE: SAME CH AS PERFORM DX`) or `CH1..CH16`; `REPLY CH` has the same `DX ROUTE` value. The counter `N/64` is brighter when `V` has something to undo, and an empty loop in IDLE shows `Z REC`. Looper toasts start with `LOOP:`: `LOOP: EMPTY, Z TO REC`, `LOOP: NO ROOM TO REPEAT`, `LOOP: FULL, NOTES DROPPED`, `LOOP: STOPPED, HELPER ON`, `LOOP: HELPER OFF FIRST`. The loop sounds only over MIDI, there is no internal sound; the first `Z` on the internal output shows a one-time toast `LOOP: DX ROUTE, NO INTERNAL SOUND`. When the keyboard target is DRUMS, `Z` refuses with `LOOP: N/A FOR DRUMS`.
+`REC` chooses KEYS (pressed notes before Smart Play) or SOUND (live generated notes, including chords and arp). Select it before arming: it is locked during ARM, REC and DUB. Both modes store note starts and ends on a grid of 1/6 of a sixteenth (a 1/96 note, about 20 ms at 120 BPM); a recorded note lasts at least one such tick. SOUND therefore keeps arp rates 1/16T, 1/32 and 1/8T and the arp gate as played, and KEYS keeps the timing of the hands instead of pulling it to 1/16. Swing or strum offsets finer than one tick are not preserved, and two attacks of one pitch inside one tick are one note. `TO MELODY` still rounds every note to the 1/16 grid of the Melody (length at least one step), so a triplet or 1/32 line loses its rhythm there. The 192-event pool is shared by both layers and undo; an eight-bar 1/16 arp leaves room for 64 further events, after which new notes are dropped with a FULL notice. An eight-bar 1/16T arp is exactly 192 notes and fills the pool; a 1/32 arp fills it in six bars.
+Playback can schedule up to 32 simultaneous notes per plan; denser same-step chords may lose notes. TO MELODY refuses exports with more than 128 events.
+
+A MIDI looper on the live surface: `Z` records and dubs, `C` plays and stops, `V` undoes the last pass, `B` holds the active layer, `M` switches between layer 1 and 2, `Del` clears the active layer, `X` is panic (the loop stops, its notes are kept). `Ctrl+Z` goes to the looper while it has something to undo. `LOOP CH` is `DX ROUTE` by default (the loop plays on the channel and target of PERFORM DX; hint `DX ROUTE: SAME CH AS PERFORM DX`) or `CH1..CH16`; `REPLY CH` has the same `DX ROUTE` value. The counter `N/192` is brighter when `V` has something to undo, and an empty loop in IDLE shows `Z REC`. Looper toasts start with `LOOP:`: `LOOP: EMPTY, Z TO REC`, `LOOP: NO ROOM TO REPEAT`, `LOOP: FULL, NOTES DROPPED`, `LOOP: STOPPED, HELPER ON`, `LOOP: HELPER OFF FIRST`. The loop sounds only over MIDI, there is no internal sound; the first `Z` on the internal output shows a one-time toast `LOOP: DX ROUTE, NO INTERNAL SOUND`. When the keyboard target is DRUMS, `Z` refuses with `LOOP: N/A FOR DRUMS`.
 
 `HOLD` (`B` or the `HOLD LAYER` row) keeps the active layer as it is: REC, UNDO and CLEAR are refused with `LOOP: HOLD, B TO RELEASE`. The chip `HOLD` is shown, the toast reads `LOOP: L1 HOLD ON/OFF` and the footer `[B]HOLD OFF`. It is not the same as ARP HOLD or CHORD HOLD.
 

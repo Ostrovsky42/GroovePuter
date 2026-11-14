@@ -10,6 +10,7 @@
 
 class PatternEditPage;
 class TB303ParamsPage;
+class SynthMidiPage;
 
 class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
  public:
@@ -72,6 +73,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
     Notes = 0,
     Knobs,
     More,
+    Midi,
   };
 
   void captureViewContinuity(UI::UiViewContinuityState& state) const override {
@@ -84,7 +86,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
     if (voice_index_ < 0 || voice_index_ >= 2) return;
     uint8_t value = state.synthTab[voice_index_];
-    if (value > static_cast<uint8_t>(SynthTab::More)) value = 0;
+    if (value > static_cast<uint8_t>(SynthTab::Midi)) value = 0;
     setSynthTab(static_cast<SynthTab>(value));
     phrase_cursor_.cell = state.phraseCursorCell[voice_index_];
     uint8_t grid = state.phraseGrid[voice_index_];
@@ -139,6 +141,16 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   bool shiftPitch(int direction, PitchStep stepKind);
   int editTargetNote() const;
   bool toggleAccent();
+  bool toggleSlide();
+  bool melodyBarSelected() const;
+  int countEventsInFocusBar() const;
+  int firstEventInFocusBar() const;
+  void openNoteSettings();
+  bool handleNoteSettingsKey(const UIEvent& ui_event);
+  void adjustNoteSetting(int field, int direction);
+  void resetNoteSetting(int field);
+  void drawNoteSettings(IGfx& gfx) const;
+  bool noteSettingsOpen() const { return note_settings_open_; }
   bool generateMelodyPhrase();
   bool cycleMelodyGrid();
   // Successive Alt+G presses give different phrases (deterministic per count).
@@ -150,6 +162,9 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   std::unique_ptr<PhraseRuntime::RuntimeSynthEventBuffer> vary_original_;
   int vary_bar_ = -1;
   uint8_t vary_stage_ = 0;
+  bool melody_bar_selected_ = false;
+  bool note_settings_open_ = false;
+  uint8_t note_settings_field_ = 0;
   bool newEmptyMelody();
   bool newMelodyInSlot(int bank, int pattern);
   bool toggleSource();
@@ -186,6 +201,7 @@ class SynthSequencerPage : public MultiPage, public IMultiHelpFramesProvider {
   int phrase_pitch_followed_ = -1;
   std::shared_ptr<PatternEditPage> pattern_page_;
   std::shared_ptr<TB303ParamsPage> params_page_;
+  std::shared_ptr<SynthMidiPage> midi_page_;
   std::string fallback_title_;
   std::string phrase_title_;
 };

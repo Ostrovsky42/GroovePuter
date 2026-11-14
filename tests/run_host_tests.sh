@@ -14,6 +14,8 @@ python3 "${ROOT_DIR}/tests/test_song_generation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_axis_hardware_feedback_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_smf_player_registry_forwarding_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_global_help_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_song_form_genre_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_genre_cant_grow_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_synth_a_bass_profile_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_cardputer_input_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
@@ -21,6 +23,7 @@ python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_perform_t13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_theme_selection_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_usb_midi_source_regressions.py"
@@ -46,6 +49,30 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
   -o "${BUILD_DIR}/test_genre_defaults"
 
 "${BUILD_DIR}/test_genre_defaults"
+
+# H2: Acid, Techno and UK garage variants alternate with the G press.
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -Wno-unused-parameter \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/src/generation/generation_context.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  "${ROOT_DIR}/src/generation/composition/tonal_profile.cpp" \
+  "${ROOT_DIR}/src/generation/roles/melodic_pitch_intent.cpp" \
+  "${ROOT_DIR}/src/generation/roles/bass_rhythm.cpp" \
+  "${ROOT_DIR}/src/generation/roles/bass_pitch_behavior.cpp" \
+  "${ROOT_DIR}/src/generation/roles/chord_progression.cpp" \
+  "${ROOT_DIR}/src/generation/tonal/tonal_projector.cpp" \
+  "${ROOT_DIR}/src/generation/tonal/tonal_materializer.cpp" \
+  "${ROOT_DIR}/src/generation/migration/tonal_pattern_adapter.cpp" \
+  "${ROOT_DIR}/tests/test_genre_press_alternation.cpp" \
+  -o "${BUILD_DIR}/test_genre_press_alternation"
+
+"${BUILD_DIR}/test_genre_press_alternation"
 
 
 "${CXX}" \
@@ -97,6 +124,54 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -o "${BUILD_DIR}/test_performance_keyboard_external"
 
 "${BUILD_DIR}/test_performance_keyboard_external"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_keyboard_config_migration.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard_config.cpp" \
+  -o "${BUILD_DIR}/test_performance_keyboard_config_migration"
+
+"${BUILD_DIR}/test_performance_keyboard_config_migration"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_voice_leading_drift.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_voice_leading_drift"
+
+"${BUILD_DIR}/test_performance_voice_leading_drift"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_project_key_sync.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_project_key_sync"
+
+"${BUILD_DIR}/test_performance_project_key_sync"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_chord_cycle_order.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_chord_cycle_order"
+
+"${BUILD_DIR}/test_performance_chord_cycle_order"
 
 "${CXX}" \
   -std=c++17 \
@@ -372,6 +447,29 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -Wextra \
   -Werror \
   -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_project_gate_policy.cpp" \
+  -o "${BUILD_DIR}/test_smf_project_gate_policy"
+
+"${BUILD_DIR}/test_smf_project_gate_policy"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_snapshot_miss_contract.cpp" \
+  -o "${BUILD_DIR}/test_snapshot_miss_contract"
+
+# T3 reads GroovePuter.ino relative to the repo root.
+(cd "${ROOT_DIR}" && "${BUILD_DIR}/test_snapshot_miss_contract")
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_smf_routing.cpp" \
   -o "${BUILD_DIR}/test_smf_routing"
 
@@ -396,6 +494,21 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   "${ROOT_DIR}/tests/test_energy_curve.cpp" \
   -o "${BUILD_DIR}/test_energy_curve"
 "${BUILD_DIR}/test_energy_curve"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_genre_sound_preset.cpp" \
+  -o "${BUILD_DIR}/test_genre_sound_preset"
+"${BUILD_DIR}/test_genre_sound_preset"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_genre_sound_send.cpp" \
+  -o "${BUILD_DIR}/test_genre_sound_send"
+"${BUILD_DIR}/test_genre_sound_send"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_genre_sound_hint.cpp" \
+  -o "${BUILD_DIR}/test_genre_sound_hint"
+"${BUILD_DIR}/test_genre_sound_hint"
 
 "${CXX}"   -std=c++17   -Wall   -Wextra   -Werror   -I"${ROOT_DIR}"   "${ROOT_DIR}/tests/test_smf_track_route_profile.cpp"   "${ROOT_DIR}/src/midi/smf_track_route_profile.cpp"   -o "${BUILD_DIR}/test_smf_track_route_profile"
 
@@ -451,6 +564,52 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -o "${BUILD_DIR}/test_usb_midi_output"
 
 "${BUILD_DIR}/test_usb_midi_output"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_pending_release.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_pending_release"
+
+"${BUILD_DIR}/test_usb_midi_pending_release"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_din_enable_request.cpp" \
+  -o "${BUILD_DIR}/test_din_enable_request"
+
+"${BUILD_DIR}/test_din_enable_request"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_cutoff_sweep.cpp" \
+  -o "${BUILD_DIR}/test_cutoff_sweep"
+
+"${BUILD_DIR}/test_cutoff_sweep"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_cutoff.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_cutoff"
+
+"${BUILD_DIR}/test_usb_midi_cutoff"
 
 "${CXX}" \
   -std=c++17 \
@@ -686,6 +845,18 @@ echo "Tee MIDI transport: OK"
   -Wall \
   -Wextra \
   -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_euclid_pulse.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_euclid_pulse"
+
+"${BUILD_DIR}/test_performance_euclid_pulse"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
   -Wno-unused-parameter \
   -Wno-misleading-indentation \
   -I"${ROOT_DIR}" \
@@ -764,3 +935,27 @@ bash "${ROOT_DIR}/tests/run_s1_synth_engine_switch_tests.sh"
 
 # 0.9.19 S1: Synth page restores the MORE tab before its components exist.
 bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
+
+# 0.9.23 T13: pure key-header / EUCLID step helpers (no SDL).
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_perform_key_header.cpp" \
+  -o "${BUILD_DIR}/test_perform_key_header"
+
+"${BUILD_DIR}/test_perform_key_header"
+
+# 0.9.23 T14: UiViewContinuityState stays 16 bytes with the [LOOP] tab (pure).
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_ui_view_continuity_loop_tab.cpp" \
+  -o "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
+
+"${BUILD_DIR}/test_ui_view_continuity_loop_tab"

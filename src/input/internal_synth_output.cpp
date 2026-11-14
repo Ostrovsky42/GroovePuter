@@ -172,6 +172,8 @@ void InternalSynthOutput::handleMusicalEvent(const MusicalEvent& event) {
             case MusicalEventType::PitchBend:
                 // Internal engines have no channel pitch-bend surface.
                 break;
+            case MusicalEventType::ControlChange:
+                break;
         }
         return;
     }

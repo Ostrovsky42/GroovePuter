@@ -263,8 +263,7 @@ void MiniAcidDisplay::syncProjectKey_() {
         GroovePuterState::markSceneMutated();
     } else if (!key_synced_ || keyboardRoot != sceneRoot ||
                keyboardScale != sceneScale) {
-        performance_keyboard_.setRootPitchClass(sceneRoot);
-        performance_keyboard_.setScale(sceneScale);
+        performance_keyboard_.syncProjectKey(sceneRoot, sceneScale);
     }
     key_synced_ = true;
     synced_key_root_ = performance_keyboard_.rootPitchClass();

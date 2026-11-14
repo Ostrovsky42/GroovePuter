@@ -93,6 +93,33 @@ void testNoteStateMachineAndNoOps() {
   assert(pattern.steps[2].note == kMaxPatternNote);
 }
 
+void testSelectionEditChangesNotesOnly() {
+  SynthPattern pattern{};
+  pattern.steps[0].note = -1;           // rest
+  pattern.steps[1].note = -2;           // tie
+  pattern.steps[2].note = 40;
+  pattern.steps[3].note = kMin303Note + 3;
+  const auto up = [](SynthPattern& p, int step) { adjustOctave(p, step, 1); };
+  const auto down = [](SynthPattern& p, int step) { adjustOctave(p, step, -1); };
+  const auto semitoneDown = [](SynthPattern& p, int step) { adjustNote(p, step, -1); };
+
+  for (int step = 0; step < 4; ++step) editSelectedNote(pattern, step, up);
+  assert(pattern.steps[0].note == -1 && pattern.steps[1].note == -2);
+  assert(pattern.steps[2].note == 52 && pattern.steps[3].note == kMin303Note + 15);
+
+  // Down twice: the second octave would push step 3 below the range. It stays a
+  // note at its pitch instead of turning into a rest, and comes back up with the rest.
+  for (int pass = 0; pass < 2; ++pass) {
+    for (int step = 0; step < 4; ++step) editSelectedNote(pattern, step, down);
+  }
+  assert(pattern.steps[0].note == -1 && pattern.steps[1].note == -2);
+  assert(pattern.steps[2].note == 28 && pattern.steps[3].note == kMin303Note + 3);
+
+  pattern.steps[3].note = kMin303Note;
+  editSelectedNote(pattern, 3, semitoneDown);
+  assert(pattern.steps[3].note == kMin303Note);
+}
+
 void testArticulationAndFx() {
   SynthPattern pattern{};
   toggleAccent(pattern, 2);
@@ -174,6 +201,7 @@ int main() {
   testFullEquality();
   testClearMatchesExistingMiniAcidSemantics();
   testNoteStateMachineAndNoOps();
+  testSelectionEditChangesNotesOnly();
   testArticulationAndFx();
   testRotation();
   std::puts("0.9.8 R3 prepared Pattern mutation semantics: PASS");

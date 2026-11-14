@@ -142,13 +142,18 @@ inline void connectSlides(SynthPattern& pattern, const uint8_t (&slideOut)[16]) 
 }  // namespace detail
 
 // The template for a genre/recipe, or nullptr where the genre keeps the
-// regular generator.
+// regular generator. press = Request::press (the G attempt count): House takes its
+// variant from the parity of press, so consecutive G presses alternate; a press
+// undone with Ctrl+Z and retried takes the same attempt number, and so the same variant.
 inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
-                                      uint32_t salt) {
+                                      uint32_t salt, uint32_t press = 0) {
+  // Every genre now picks its variant by press (H2 and the House choice); the salt is kept
+  // in the signature for the callers.
+  (void)salt;
   switch (generativeMode) {
     case 0:  // Acid
       if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_acid_rolling : &k_acid_chicago_jack;
+      return (press & 1u) ? &k_acid_rolling : &k_acid_chicago_jack;  // H2: alternates per G press
     case 1:  // Outrun
       return recipe == 0 ? &k_outrun_drive : nullptr;
     case 2:  // Darksynth
@@ -161,7 +166,7 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
       return recipe == 0 ? &k_chip_arp : nullptr;
     case 10:  // Techno: dub-techno stab and repetition
       if (recipe != 0) return nullptr;
-      return (salt & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;
+      return (press & 1u) ? &k_dub_minimal_space : &k_dub_deep_chord;  // H2: alternates per G press
     case 12:  // FunkSoul
       return recipe == 0 ? &k_funk_pocket : nullptr;
     case 14:  // DnB: four poles on one two-step core; BASE plays the dance pole.
@@ -173,8 +178,9 @@ inline const IdiomVariant* variantFor(uint8_t generativeMode, uint8_t recipe,
         case 21: return &k_dnb_neuro;
         default: return nullptr;
       }
-    case 9:  // House
-      return recipe == 0 ? &k_house_deep_offbeat : nullptr;
+    case 9:  // House: the two hand-written variants, alternating per press
+      if (recipe != 0) return nullptr;
+      return (press & 1u) ? &k_house_organ_stab : &k_house_piano_bass;
     case 11:  // HipHop
       if (recipe == 0 || recipe == 16) return &k_boombap_golden_era;
       if (recipe == 17) return &k_boombap_dusty_jazz;
@@ -563,7 +569,7 @@ inline int barDegreeShift(const IdiomVariant& variant, uint8_t barOrdinal, uint8
 inline bool apply(const Request& request, SynthPattern& bass, SynthPattern& lead,
                   IdeaPlan* planOut = nullptr, DrumPatternSet* drums = nullptr) {
   const IdiomVariant* variant =
-      variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
+      variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7, request.press);
   if (variant == nullptr) return false;
   const IdiomLevel& level = variant->levels[request.level > 2 ? 2 : request.level];
   if (level.bass == nullptr) return false;
@@ -891,6 +897,7 @@ inline constexpr const IdiomVariant* kIdiomVariants[] = {
     &k_house_deep_offbeat, &k_outrun_drive, &k_darksynth_drive, &k_funk_pocket,
     &k_electro_machine, &k_broken_bruk, &k_dnb_dance, &k_dnb_neuro,
     &k_dnb_funk, &k_dnb_atmos, &k_chip_arp,
+    &k_house_piano_bass, &k_house_organ_stab,
 };
 constexpr uint8_t kIdiomVariantCount =
     static_cast<uint8_t>(sizeof(kIdiomVariants) / sizeof(kIdiomVariants[0]));
@@ -922,7 +929,7 @@ static_assert(kIdiomVariantCount <= 31, "idiom template index must fit 5 bits");
 
 // The template apply() uses for this request (the same selection).
 inline const IdiomVariant* variantForRequest(const Request& request) {
-  return variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7);
+  return variantFor(request.generativeMode, request.recipe, mix(request.salt) >> 7, request.press);
 }
 
 namespace detail {

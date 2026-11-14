@@ -1,4 +1,5 @@
-// MELODY D varies the focused bar in place: ANSWER, PUSH, MIRROR, ORIGINAL;
+// MELODY D varies the focused bar in place:
+//   1 ANSWER, 2 SEQUENCE, 3 SYNCOPATE, 4 CONTOUR, 5 OCTAVE, 6 ORIGINAL;
 // only that bar changes and each press is one Ctrl+Z step.
 #include <cassert>
 #include <cstdio>
@@ -53,19 +54,12 @@ class NullGfx : public IGfx {
   int height() const override { return 135; }
 };
 
-UIEvent scanEvent(KeyScanCode value) {
-  UIEvent e{};
-  e.event_type = GROOVEPUTER_KEY_DOWN;
-  e.scancode = value;
-  return e;
-}
-
 using Buffer = PhraseRuntime::RuntimeSynthEventBuffer;
 
-void addNote(Buffer& m, uint16_t tick, uint8_t note) {
+void addNote(Buffer& m, uint16_t tick, uint8_t note, uint16_t durTicks = 4u) {
   auto& e = m.events[m.count++];
   e.startTick = tick;
-  e.durationSubticks = 4u * PhraseRuntime::kSubticksPerTick;
+  e.durationSubticks = durTicks * PhraseRuntime::kSubticksPerTick;
   e.note = note;
   e.velocity = 90;
   e.probability = 100;
@@ -114,6 +108,8 @@ int main() {
   MiniAcid engine{44100.0f, &storage};
   engine.init();
   engine.setSongMode(false);
+  engine.sceneManager().currentScene().generatorParams.scaleRoot = 0;
+  engine.sceneManager().currentScene().generatorParams.scale = MAJOR;
 
   NullGfx gfx;
   MusicalEventRouter router;
@@ -153,27 +149,85 @@ int main() {
   assert(PhraseNotesCursor::focusBar(page->phrase_cursor_) == 1);
   page->phrase_selection_ = PhraseSelectionState::at(engine.currentPhraseBuffer(0), 0);
 
-  Buffer states[5];
+  constexpr int kTotalPresses = MelodyBarVary::kVariants;
+  static_assert(kTotalPresses == 6, "5 variations + 1 return to Original");
+
+  Buffer states[kTotalPresses + 1];
   states[0] = engine.currentPhraseBuffer(0);
-  for (int press = 1; press <= 4; ++press) {
+  for (int press = 1; press <= kTotalPresses; ++press) {
     assert(display.handleEvent(keyD()));
     states[press] = engine.currentPhraseBuffer(0);
+    assert(RuntimePhraseEdit::validate(states[press]));
     assert(outsideSame(original, states[press], 1));
-    if (press < 4) {
+    if (press < kTotalPresses) {
       assert(!RuntimePhraseEdit::same(states[press], states[press - 1]));
+      assert(!RuntimePhraseEdit::same(states[press], original));
     }
   }
-  assert(RuntimePhraseEdit::same(states[4], original));
-  // Bar 1 only: ANSWER moved the last note two degrees, MIRROR kept the first.
+  assert(RuntimePhraseEdit::same(states[kTotalPresses], original));
+
+  // 1. ANSWER: opening stays intact, last note moves two scale degrees.
+  assert(states[1].events[4].note == original.events[4].note);
   assert(states[1].events[7].note != original.events[7].note);
-  assert(states[3].events[4].note == original.events[4].note);
-  // PUSH: one 16th later; the note on beat 1 stays.
-  assert(states[2].events[4].startTick == original.events[4].startTick);
-  assert(states[2].events[5].startTick == original.events[5].startTick + 24);
+
+  // 2. SEQUENCE: first half of bar (events 4, 5) stays intact; second half
+  //    (events 6, 7) shifts along the key.
+  assert(states[2].events[4].note == original.events[4].note);
+  assert(states[2].events[5].note == original.events[5].note);
+  assert(states[2].events[6].note != original.events[6].note);
+  assert(states[2].events[7].note != original.events[7].note);
+
+  // 3. SYNCOPATE: beat 1 (event 4) and beat 3 (event 6) stay anchored;
+  //    weak beats 2 and 4 (events 5, 7) anticipate by one 16th (-24 ticks)
+  //    without wrapping around the bar boundary.
+  assert(states[3].events[4].startTick == original.events[4].startTick);
+  assert(states[3].events[5].startTick == original.events[5].startTick - 24);
+  assert(states[3].events[6].startTick == original.events[6].startTick);
+  assert(states[3].events[7].startTick == original.events[7].startTick - 24);
+
+  // 4. CONTOUR: first note stays anchored; inverted notes stay within a
+  //    bounded musical corridor around the pivot.
+  assert(states[4].events[4].note == original.events[4].note);
+  for (int i = 5; i <= 7; ++i) {
+    const int diff = static_cast<int>(states[4].events[i].note) -
+                     static_cast<int>(original.events[4].note);
+    assert(diff >= -9 && diff <= 9);
+  }
+
+  // 5. OCTAVE: alternating onsets (events 5, 7) jump an octave with accent;
+  //    approach onsets (events 4, 6) get slide.
+  assert(states[5].events[4].note == original.events[4].note);
+  assert((states[5].events[4].flags & PhraseRuntime::kEventSlide) != 0);
+  assert(states[5].events[5].note == original.events[5].note + 12);
+  assert((states[5].events[5].flags & PhraseRuntime::kEventAccent) != 0);
+  assert(states[5].events[7].note == original.events[7].note + 12);
+  assert((states[5].events[7].flags & PhraseRuntime::kEventAccent) != 0);
+
+  // Repeated-note pedal bar: CONTOUR weaves upper and lower scale neighbours
+  // instead of leaving a flat line, and SYNCOPATE trims overlapping durations.
+  {
+    Buffer pedal{};
+    pedal.lengthTicks = PhraseRuntime::kTicksPerBar;
+    for (int i = 0; i < 4; ++i) addNote(pedal, static_cast<uint16_t>(i * 96), 60, 96);
+    const Buffer c = MelodyBarVary::varyBar(
+        pedal, 0, MelodyBarVary::Contour, 0,
+        static_cast<ProjectKey::ScaleTypeValue>(MAJOR));
+    assert(c.events[0].note == 60);
+    assert(c.events[1].note == 62);  // +1 degree (D4)
+    assert(c.events[2].note == 59);  // -1 degree (B3)
+    assert(c.events[3].note == 62);  // +1 degree (D4)
+
+    const Buffer s = MelodyBarVary::varyBar(
+        pedal, 0, MelodyBarVary::Syncopate, 0,
+        static_cast<ProjectKey::ScaleTypeValue>(MAJOR));
+    assert(RuntimePhraseEdit::validate(s));
+    assert(!RuntimePhraseEdit::hasOverlappingNotes(s));
+  }
+
   std::puts("MELODY vary bar: cycle PASS");
 
   // One Ctrl+Z after any press returns one step.
-  for (int press = 1; press <= 4; ++press) {
+  for (int press = 1; press <= kTotalPresses; ++press) {
     // Start each round from the original with a fresh cycle.
     assert(SynthSequencerPage::replaceMelodyFor(engine, AudioGuard{}, 0, original));
     page->vary_original_.reset();

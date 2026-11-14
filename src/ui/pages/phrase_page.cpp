@@ -9,6 +9,7 @@
 #include "../../debug_log.h"
 #include "../layout_manager.h"
 #include "../ui_colors.h"
+#include "../genre_tempo_text.h"
 #include "../ui_common.h"
 #include "../ui_theme.h"
 #include "../ui_input.h"
@@ -785,6 +786,15 @@ void PhrasePage::drawProductView(IGfx& gfx) {
     }
   }
 
+  // MATERIAL generates in the scene's active genre and never sets the tempo,
+  // yet showed neither: a TAKE made after browsing GENRE without applying, or
+  // at a tempo the genre does not expect, looked like any other.
+  char genreLine[56];
+  GenreTempoText::formatStatus(
+      scene.genre, GenreTempoText::infoFor(scene.genre, mini_acid_.bpm()),
+      nullptr, genreLine, sizeof(genreLine));
+  UI::publishShellInfo(genreLine, nullptr);
+
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
                          "G:TAKE D:GROW P:STYLE R:ROOM");
@@ -828,7 +838,7 @@ bool PhrasePage::growKeptPhrase() {
     case S::NothingToAdd: message = "NOTHING TO ADD: PRESS G"; break;
     case S::NotAdmitted:
       // Another TAKE in the same genre is refused the same way; say what helps.
-      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: ALT+V GENRE",
+      std::snprintf(genreMessage, sizeof(genreMessage), "%s CAN'T GROW: SONG F FORM",
                     GenreManager::generativeModeName(
                         mini_acid_.genreManager().generativeMode()));
       for (char* c = genreMessage; *c; ++c) *c = static_cast<char>(std::toupper(*c));

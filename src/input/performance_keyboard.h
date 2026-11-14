@@ -108,6 +108,10 @@ public:
     void cycleScale(int direction);
     const char* scaleName() const;
     void setRootPitchClass(uint8_t pitchClass);
+    // Project key push (the scene owns the key, not the keyboard record): sets root
+    // and scale and patches only those two fields of the persisted baseline, so a
+    // scene change does not mark keyboard_v2 dirty. Other pending edits stay dirty.
+    void syncProjectKey(uint8_t pitchClass, PerformanceScale scale);
     void cycleRoot(int direction);
     uint8_t rootPitchClass() const { return rootPitchClass_; }
     const char* rootName() const;
@@ -116,6 +120,26 @@ public:
 
     void setChordMode(PerformanceChordMode mode);
     PerformanceChordMode chordMode() const { return chordMode_; }
+    // Display/cycle order of the chord modes (flash only; enum values and the NVS
+    // record keep their numbering). Diatonic chords come right after OFF.
+    static constexpr PerformanceChordMode kChordDisplayOrder[] = {
+        PerformanceChordMode::Off,
+        PerformanceChordMode::ScaleTriad,
+        PerformanceChordMode::ScaleSeventh,
+        PerformanceChordMode::Fifth,
+        PerformanceChordMode::Minor,
+        PerformanceChordMode::Major,
+        PerformanceChordMode::Minor7,
+        PerformanceChordMode::Memory,
+        PerformanceChordMode::Sus2,
+        PerformanceChordMode::Sus4,
+        PerformanceChordMode::Dominant7,
+        PerformanceChordMode::Major7,
+    };
+    static constexpr int kChordDisplayCount =
+        static_cast<int>(sizeof(kChordDisplayOrder) / sizeof(kChordDisplayOrder[0]));
+    static_assert(kChordDisplayCount == static_cast<int>(PerformanceChordMode::Count),
+                  "chord display order must list every chord mode");
     void cycleChordMode(int direction = 1);
     const char* chordModeName() const;
     void setChordInversion(uint8_t inversion);
@@ -222,6 +246,7 @@ public:
     std::size_t scheduledHighWater() const { return scheduledHighWater_; }
     uint32_t scheduledOverflowCount() const { return scheduledOverflowCount_; }
     uint32_t staleGeneratedNoteOnDrops() const { return staleGeneratedNoteOnDrops_; }
+    uint32_t staleTransportPulseDrops() const { return staleTransportPulseDrops_; }
     void resetPerformanceDiagnostics();
     uint64_t musicalPulseOrdinal() const { return musicalPulseOrdinal_; }
     uint64_t rateEpochOrdinal() const { return rateEpochOrdinal_; }
@@ -294,6 +319,7 @@ private:
     bool latchedArpContinues() const;
     void releaseHeldKeepingLatch();
     static bool drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel);
+    void routePerformanceOutput(const MusicalEvent& event);
     void emitNoteOn(const HeldNote& held);
     void emitNoteOff(uint8_t note, uint8_t channel = 0);
     void emitPolyNoteOn(const HeldNote& held);
@@ -473,6 +499,7 @@ private:
     std::size_t scheduledHighWater_{0};
     uint32_t scheduledOverflowCount_{0};
     uint32_t staleGeneratedNoteOnDrops_{0};
+    uint32_t staleTransportPulseDrops_{0};
 
     bool standalonePulseRunning_{false};
     uint32_t nextStandalonePulseMicros_{0};

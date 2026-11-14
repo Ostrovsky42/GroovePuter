@@ -10,6 +10,8 @@ const char* formEnergyMeaning(uint8_t energy) {
     case 2: return "E2 DRUMS+BASS";
     case 3: return "E3 +LEAD WITH SPACE";
     case 4: return "E4 FULL";
+    case 5: return "E5 A+B";
+    case 6: return "E6 DR+B";
     default: return "";
   }
 }
@@ -127,11 +129,13 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
     return true;
   }
   if (UIInput::isUp(ui_event)) {
-    if (section.energy < EnergyCurve::kMaxEnergy) ++section.energy;
+    const uint8_t rank = EnergyCurve::energyRank(section.energy);
+    if (rank + 1 < EnergyCurve::kEnergyLevels) section.energy = EnergyCurve::energyAtRank(rank + 1);
     return true;
   }
   if (UIInput::isDown(ui_event)) {
-    if (section.energy > 0) --section.energy;
+    const uint8_t rank = EnergyCurve::energyRank(section.energy);
+    if (rank > 0) section.energy = EnergyCurve::energyAtRank(rank - 1);
     return true;
   }
   const char key = static_cast<char>(
@@ -213,7 +217,8 @@ void SongPage::drawForm(IGfx& gfx) {
     const EnergyCurve::Section& s = curve.sections[i];
     const int w = std::max(6, (width * s.bars) / unitBars);
     const bool selected = i == form_section_;
-    const int barH = s.energy == 0 ? 2 : (height * s.energy) / EnergyCurve::kMaxEnergy;
+    const int barH = s.energy == 0 ? 2
+        : (height * EnergyCurve::energyRank(s.energy)) / (EnergyCurve::kEnergyLevels - 1);
     gfx.drawRect(x, top, w - 2, height, selected ? palette.focus : palette.dim);
     gfx.fillRect(x + 1, top + height - barH, w - 4, barH,
                  selected ? palette.accent : palette.secondary);

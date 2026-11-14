@@ -106,6 +106,84 @@ int main() {
     assert(song.length == before.length);
   }
 
+  // H3: seven levels in the Up/Down order, codes 5 (A+B) and 6 (DR+B).
+  {
+    const uint8_t order[] = {0, 1, 2, 6, 5, 3, 4};  // SILENCE DR DR+A DR+B A+B +B SPACE FULL
+    for (uint8_t r = 0; r < EnergyCurve::kEnergyLevels; ++r) {
+      assert(EnergyCurve::energyRank(order[r]) == r && EnergyCurve::energyAtRank(r) == order[r]);
+    }
+    assert(EnergyCurve::kEnergyLevels == 7 && EnergyCurve::kMaxEnergy == 6);
+    const Voices a = voicesFor(5, 0), dB = voicesFor(6, 0);
+    assert(!a.drums && a.bass && a.lead && !a.voice);  // A+B: no drums
+    assert(dB.drums && !dB.bass && dB.lead && !dB.voice);  // DR+B: no bass
+    // Codes 0..4 keep their voices (the bar-3 lead rest of code 3 included).
+    assert(voicesFor(4, 0).voice && voicesFor(4, 0).lead && voicesFor(4, 0).bass && voicesFor(4, 0).drums);
+    assert(voicesFor(3, 2).lead == false && voicesFor(3, 3).lead == true);
+  }
+
+  // H5: the genre forms: 32 bars, at most 8 sections, and they apply to a TAKE.
+  {
+    const uint8_t modes[] = {9, 13, 10, 0, 5, 6};  // House, UKG, Techno, Acid, Dub, Trip-Hop
+    for (uint8_t mode : modes) {
+      const Curve curve = genreCurve(mode);
+      assert(totalBars(curve) == 32 && curve.count <= kMaxSections);
+      Song song = takeSong();
+      assert(apply(song, curve, 0, 4, 4) == Status::Ok);
+      assert(song.length == 4 + 32);
+    }
+    // WAVE for the other modes (the preset, 16 bars).
+    assert(totalBars(genreCurve(3)) == totalBars(presetCurve(Preset::Wave)));
+    // A full song refuses with NoRoom and stays unchanged.
+    Song full{};
+    full.length = Song::kMaxPositions - 10;
+    for (int r = 0; r < full.length; ++r) full.positions[r].patterns[0] = static_cast<int16_t>(r % 8);
+    const Song before = full;
+    assert(apply(full, genreCurve(9), 0, 4, 4) == Status::NoRoom);
+    assert(full.length == before.length);
+    for (int r = 0; r < full.length; ++r)
+      for (int t = 0; t < SongPosition::kTrackCount; ++t)
+        assert(full.positions[r].patterns[t] == before.positions[r].patterns[t]);
+  }
+
+  // H4: an 8-row source over two 4-bar sections: the second section reads rows 4..7.
+  {
+    Song song{};
+    song.length = 8;
+    for (int r = 0; r < 8; ++r) song.positions[r].patterns[0] = static_cast<int16_t>(r);
+    EnergyCurve::Curve two{};
+    two.sections[0] = EnergyCurve::Section{4, 2};
+    two.sections[1] = EnergyCurve::Section{4, 2};
+    two.count = 2;
+    assert(apply(song, two, 0, 8, 8) == Status::Ok);
+    for (int b = 0; b < 8; ++b) assert(patternAt(song, 8 + b, SongTrack::SynthA) == b);
+    // A 4-row source keeps the old repeat: the second section starts again on row 0.
+    Song four = takeSong();
+    assert(apply(four, two, 0, 4, 4) == Status::Ok);
+    for (int b = 0; b < 4; ++b) assert(patternAt(four, 4 + b, SongTrack::SynthA) == b);
+    for (int b = 0; b < 4; ++b) assert(patternAt(four, 8 + b, SongTrack::SynthA) == b);
+  }
+
+  // H3: the bass comes off before a drop only in a section that has drums.
+  {
+    // A+B (5) -> DR (1): no drums in the section, so the bass stays on its last bar.
+    EnergyCurve::Curve curve{};
+    curve.sections[0] = EnergyCurve::Section{4, 5};
+    curve.sections[1] = EnergyCurve::Section{4, 1};
+    curve.count = 2;
+    Song song = takeSong();
+    assert(apply(song, curve, 0, 4, 4) == Status::Ok);
+    assert(patternAt(song, 7, SongTrack::SynthA) == 3);  // last bar of A+B keeps the bass
+    // FULL (4) -> DR (1): drums in the section, so the bass goes on its last bar.
+    EnergyCurve::Curve drop{};
+    drop.sections[0] = EnergyCurve::Section{4, 4};
+    drop.sections[1] = EnergyCurve::Section{4, 1};
+    drop.count = 2;
+    Song song2 = takeSong();
+    assert(apply(song2, drop, 0, 4, 4) == Status::Ok);
+    assert(patternAt(song2, 7, SongTrack::SynthA) < 0);
+    assert(patternAt(song2, 6, SongTrack::SynthA) == 2);
+  }
+
   std::puts("energy curve (SONG FORM): PASS");
   return 0;
 }

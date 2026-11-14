@@ -68,6 +68,11 @@ def test_transport_note_mode_keys_remain_live() -> None:
     base.require("projectTransportTimeline().trySnapshot(snapshot)" in keyboard and
                  "snapshot.absoluteSteps()" in keyboard,
                  "pulse generation must read the coherent project transport phase")
+    pulse_start = keyboard.index("bool PerformanceKeyboard::serviceTransportPulseClock")
+    pulse_end = keyboard.index("const double absoluteSteps", pulse_start)
+    pulse_guard = keyboard[pulse_start:pulse_end]
+    base.require("if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot)) return false;" in pulse_guard,
+                 "a transient timeline read miss must leave pulse clock state intact")
     base.require("snapshotCardputerUsbMidiBlockAnchor" in keyboard and
                  "anchorPlaybackMicros" in keyboard,
                  "hardware timing must use the dispatcher playback anchor")
@@ -78,7 +83,7 @@ def test_transport_note_mode_keys_remain_live() -> None:
                  "transportAnchorBlockSequence_" in header and
                  "transportAnchorMicros_" in header,
                  "transport pulses must be prepared ahead from a stable block anchor")
-    base.require("kGeneratedNoteOnStaleMicros = 12000u" in keyboard and
+    base.require("kGeneratedNoteOnStaleMicros = 60000u" in keyboard and
                  "lateness > kGeneratedNoteOnStaleMicros" in keyboard and
                  "leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)" in keyboard,
                  "late generated NoteOn must be shed instead of caught up")

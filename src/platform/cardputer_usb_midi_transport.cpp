@@ -24,9 +24,12 @@
 #include "src/midi/midi_input_parser.h"
 #include "src/midi/midi_input_queue.h"
 #include "src/midi/midi_io_state.h"
+#include "src/midi/din_enable_request.h"
+#include "src/midi/cutoff_sweep.h"
 #include "src/midi/external_midi_transport_event_queue.h"
 #include "src/midi/pattern_drum_gate_scheduler.h"
 #include "src/midi/project_smf_dispatch_policy.h"
+#include "src/midi/smf_project_gate_policy.h"
 #include "src/midi/project_transport_timeline.h"
 #include "src/midi/scheduled_midi_transport_event.h"
 #include "src/midi/scheduled_musical_event_queue.h"
@@ -205,6 +208,9 @@ struct MidiDispatchDiagnostics {
     uint32_t smfMaxNoteOnLatenessUs{0};
     uint32_t smfLateNoteOffSent{0};
     uint32_t smfTransportEpochDrops{0};
+    // NoteOn dropped because the transport snapshot stayed unreadable (seqlock
+    // miss) and the epoch was never verified. Not an epoch change.
+    uint32_t smfSnapshotMissDrops{0};
     uint32_t smfCleanupRetries{0};
     uint32_t smfTransportAborts{0};
     uint32_t smfTransportRecoveries{0};
@@ -792,11 +798,39 @@ bool dispatchSmfEvent(const ScheduledSmfMidiEvent& event) {
     return false;
 }
 
-bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event) {
+// Policy lives in smf_project_gate_policy.h. A seqlock miss is "unknown", not
+// STOP: only a NoteOn that was never verified is dropped, and under its own
+// counter. NoteOff and SPP never wait for or get dropped by a miss.
+SmfProjectGateResult projectSmfGate(const ScheduledSmfMidiEvent& event,
+                                    SmfGatePhase phase,
+                                    bool verifiedCurrent) {
+    if (event.projectTransportEpoch == 0) {
+        SmfProjectGateResult original;
+        original.verifiedCurrent = true;
+        return original;
+    }
+    return resolveSmfProjectGate(event.type, phase, verifiedCurrent, [&]() {
+        GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
+        const bool ok =
+            GroovePuterMidi::projectTransportTimeline().trySnapshot(transport);
+        return smfProjectGateClassify(
+            ok,
+            transport.valid,
+            transport.playing,
+            ok && scheduledSmfMidiEventTransportEpochIsCurrent(
+                      event, transport.transportEpoch));
+    });
+}
+
+bool projectSmfNoteOnStillCurrent(const ScheduledSmfMidiEvent& event,
+                                  bool& verifiedCurrent,
+                                  bool& missDrop) {
     if (event.projectTransportEpoch == 0) return true;
-    GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
-    return GroovePuterMidi::projectTransportTimeline().trySnapshot(transport) &&
-           GroovePuterMidi::projectSmfNoteOnStillCurrent(event, transport);
+    const SmfProjectGateResult gate =
+        projectSmfGate(event, SmfGatePhase::Late, verifiedCurrent);
+    verifiedCurrent = gate.verifiedCurrent;
+    missDrop = gate.missDrop;
+    return gate.action == SmfProjectGateAction::Dispatch;
 }
 
 void logDiagnosticsIfDue() {
@@ -841,7 +875,7 @@ void logDiagnosticsIfDue() {
         "drumGate=%u/%u/%u active=%u "
         "smfSent=%u smfStale=%u smfPanic=%u smfRetry=%u smfDrop=%u "
         "smfLateDrop=%u smfLateSent=%u smfMaxLateOnUs=%u smfLateOff=%u "
-        "smfEpochDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
+        "smfEpochDrop=%u smfMissDrop=%u smfCleanRetry=%u smfStall=%u/%u smfMaxBlockUs=%u "
         "clockSent=%u clockLate=%u clockDropped=%u start=%u continue=%u stop=%u "
         "transportFail=%u tsRetry=%u late=%u maxLateUs=%u stale=%u/%u badFrame=%u "
         "drop=%u/%u transportDrop=%u overflow=%u recovery=%u "
@@ -872,6 +906,7 @@ void logDiagnosticsIfDue() {
         static_cast<unsigned>(g_diagnostics.smfMaxNoteOnLatenessUs),
         static_cast<unsigned>(g_diagnostics.smfLateNoteOffSent),
         static_cast<unsigned>(g_diagnostics.smfTransportEpochDrops),
+        static_cast<unsigned>(g_diagnostics.smfSnapshotMissDrops),
         static_cast<unsigned>(g_diagnostics.smfCleanupRetries),
         static_cast<unsigned>(g_diagnostics.smfTransportAborts),
         static_cast<unsigned>(g_diagnostics.smfTransportRecoveries),
@@ -985,6 +1020,9 @@ enum class PendingKind : uint8_t {
     Smf,
 };
 
+void applyCardputerDinEnableRequest();
+void serviceCutoffAutomation();
+
 void midiDispatchTask(void*) {
     // Enabled at start-up for the first hardware slice: there is no UI toggle
     // yet, so this is the only way the DIN wire can be heard. Note that with
@@ -1006,6 +1044,10 @@ void midiDispatchTask(void*) {
     uint8_t smfFailedAttempts = 0;
     uint32_t lastFairnessYieldMs = millis();
     uint32_t pendingSmfLatenessUs = 0;
+    // Stack flags of the loop (no class state): the pending event's epoch was
+    // seen current by an earlier read; last late check dropped on a miss.
+    bool pendingSmfEpochVerified = false;
+    bool pendingSmfMissDrop = false;
 
     // Any wait in this loop gives CPU0 to the idle task, so it also resets
     // the fairness budget below (no extra 1 ms sleep right after a wait).
@@ -1018,6 +1060,8 @@ void midiDispatchTask(void*) {
         hasPendingSmf = false;
         smfFailedAttempts = 0;
         pendingSmfLatenessUs = 0;
+        pendingSmfEpochVerified = false;
+        pendingSmfMissDrop = false;
     };
 
     while (true) {
@@ -1036,6 +1080,11 @@ void midiDispatchTask(void*) {
             }
         }
         g_output.pollConnection();
+        // D5: retry NoteOffs the wire refused, without waiting for another event
+        // on the same lane. Bounded to a 5 ms cadence inside the output object.
+        (void)g_output.servicePendingReleases(static_cast<uint32_t>(micros()));
+        applyCardputerDinEnableRequest();
+        serviceCutoffAutomation();
         g_transport.pollSuspendState();
         // Bounded per iteration: the DIN wire moves 320 us per byte, so the
         // transport queues and this drains what the UART driver will take.
@@ -1163,15 +1212,17 @@ void midiDispatchTask(void*) {
         }
 
         if (hasPendingSmf && pendingSmf.projectTransportEpoch != 0) {
-            GroovePuterMidi::ProjectTransportBlockSnapshot transport{};
-            if (!GroovePuterMidi::projectTransportTimeline().trySnapshot(transport)) {
-                blockFor(pdMS_TO_TICKS(1));
-                continue;
-            }
-            if (!transport.valid || !transport.playing ||
-                !scheduledSmfMidiEventTransportEpochIsCurrent(
-                    pendingSmf, transport.transportEpoch)) {
-                ++g_diagnostics.smfTransportEpochDrops;
+            // A snapshot miss (seqlock) is "unknown", not STOP: no sleep, no
+            // `continue`, nothing else waits. Only a definite answer drops.
+            const SmfProjectGateResult gate = projectSmfGate(
+                pendingSmf, SmfGatePhase::Early, pendingSmfEpochVerified);
+            pendingSmfEpochVerified = gate.verifiedCurrent;
+            if (gate.action == SmfProjectGateAction::DropStale) {
+                if (gate.missDrop) {
+                    ++g_diagnostics.smfSnapshotMissDrops;
+                } else {
+                    ++g_diagnostics.smfTransportEpochDrops;
+                }
                 clearPendingSmf();
                 continue;
             }
@@ -1382,10 +1433,18 @@ void midiDispatchTask(void*) {
                 ++g_diagnostics.followMuteDrops;
                 clearPendingSmf();
             } else if (pendingSmf.type == ScheduledSmfMidiEventType::NoteOn &&
-                       !projectSmfNoteOnStillCurrent(pendingSmf)) {
+                       !projectSmfNoteOnStillCurrent(
+                           pendingSmf, pendingSmfEpochVerified,
+                           pendingSmfMissDrop)) {
                 // Stop/Restart can happen during the final <=1.5 ms busy-wait.
                 // Recheck the live transport immediately before the USB write.
-                ++g_diagnostics.smfTransportEpochDrops;
+                // A seqlock miss that could not be verified is counted apart
+                // from a real epoch change.
+                if (pendingSmfMissDrop) {
+                    ++g_diagnostics.smfSnapshotMissDrops;
+                } else {
+                    ++g_diagnostics.smfTransportEpochDrops;
+                }
                 clearPendingSmf();
             } else if (dispatchSmfEvent(pendingSmf)) {
                 if (!g_smfQueue->recordDispatched(pendingSmf)) {
@@ -1440,6 +1499,128 @@ void midiDispatchTask(void*) {
         drainControlEvents(2);
         logDiagnosticsIfDue();
 
+    }
+}
+
+// D1: the DIN enable toggle is requested from UI/control code and applied only by
+// midiDispatchTask. That task is the single writer of the DIN ring and of the
+// tee's secondary flag; see din_enable_request.h.
+GroovePuterMidi::DinEnableRequest g_dinEnable;
+
+void applyCardputerDinEnableRequest() {
+    bool enabled = false;
+    if (!g_dinEnable.takeChange(enabled)) return;
+    if (!enabled && g_wire.secondaryEnabled()) {
+        // Turning the wire off must not leave notes sounding on it. Only channels
+        // that hold a wire note are cut, so other owners' notes on the same
+        // physical receiver keep sounding. The request is queued on the UART owner
+        // and retried by its service(), so a full ring cannot drop it.
+        GroovePuterMidi::cardputerUartMidiTransport().requestChannelPanics(
+            g_output.wireOwnedChannelMask());
+    }
+    g_wire.setSecondaryEnabled(enabled);
+    g_dinEnable.markApplied(enabled);
+}
+
+// CUTOFF / AUTO SWEEP per synth voice. Each voice has one selected controller
+// (one of GroovePuterMidi::kControllers) with its own held value, its own known
+// flag, and one sweep. The UI only publishes requests; only the dispatcher applies
+// them and sends controller values, through the same g_output that owns every
+// other note and CC on the wire.
+struct VoiceControl {
+    GroovePuterMidi::CutoffVoice control;         // held values, selection, the sweep
+    bool returning = false;                       // sweep shape for the next start
+    uint8_t durationIndex = GroovePuterMidi::kDefaultDurationIndex;  // into kDurations
+};
+VoiceControl g_voice[2];
+uint32_t g_cutoffRequestApplied[2] = {0, 0};
+// Retry clock per voice and controller: a refused level is sent again after 20 ms.
+uint32_t g_cutoffNextTryMs[2][GroovePuterMidi::kControllerCount] = {};
+
+void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
+    MusicalEvent event{MusicalEventType::ControlChange,
+                       MusicalEventSource::PerformanceKeyboard,
+                       voice == 0 ? MusicalEventTarget::SynthA : MusicalEventTarget::SynthB,
+                       0, GroovePuterMidi::kControllers[controllerIndex].number, value, 0};
+    g_output.handleMusicalEvent(event);
+}
+
+void serviceCutoffAutomation() {
+    for (int voice = 0; voice < 2; ++voice) {
+        auto& channel = GroovePuterMidi::gCutoffControl[voice];
+        VoiceControl& state = g_voice[voice];
+        const uint32_t request = channel.loadRequest();
+        GroovePuterMidi::CutoffTransportView view;
+        GroovePuterMidi::ProjectTransportBlockSnapshot snapshot;
+        // The timeline is a seqlock: a read can lose to the audio task publishing a
+        // block. That is not a STOP. Without a view this pass applies no request and
+        // advances no sweep (an invalid view would cancel it); the request stays in
+        // its word and the next pass takes it. Levels are still delivered below.
+        const bool haveView =
+            GroovePuterMidi::projectTransportTimeline().trySnapshot(snapshot);
+        if (haveView) {
+            view.valid = snapshot.valid;
+            view.playing = snapshot.playing;
+            view.epoch = snapshot.transportEpoch;
+            view.bar = snapshot.absoluteSteps() / GroovePuterMidi::kProjectStepsPerBar;
+        }
+
+        if (haveView && request != 0u && request != g_cutoffRequestApplied[voice]) {
+            g_cutoffRequestApplied[voice] = request;
+            using Request = GroovePuterMidi::CutoffRequest;
+            const uint8_t wanted = Request::controller(request);
+            switch (Request::op(request)) {
+                case Request::kSelectController:
+                    state.control.select(wanted);
+                    break;
+                case Request::kManual:
+                    state.control.select(wanted);
+                    state.control.manual(Request::value(request));
+                    break;
+                case Request::kStartSweep:
+                    state.control.select(wanted);
+                    (void)state.control.startSweep(Request::value(request), view, state.returning,
+                        GroovePuterMidi::kDurations[state.durationIndex]);
+                    break;
+                case Request::kCancelSweep:
+                    state.control.cancelSweep();
+                    break;
+                case Request::kSetShape:
+                    state.returning = Request::value(request) != 0;
+                    break;
+                case Request::kSetDuration: {
+                    const uint8_t index = Request::value(request);
+                    if (index < GroovePuterMidi::kDurationCount) state.durationIndex = index;
+                    break;
+                }
+                case Request::kNone:
+                    break;
+            }
+        }
+
+        if (haveView) (void)state.control.tick(view);
+        // Level delivery: the wire must hold each level the voice owns now (the sweep's
+        // controller while it runs, and the selected one). A refused or unplugged send
+        // is not recorded by the output, so it is retried here, at most every 20 ms per
+        // controller, and a reconnect resends it. Nothing is sent before the user has
+        // set a value.
+        GroovePuterMidi::CutoffVoice::Level levels[2];
+        const uint8_t levelCount = state.control.levels(levels);
+        const uint32_t nowMs = millis();
+        for (uint8_t i = 0; i < levelCount; ++i) {
+            const uint8_t index = levels[i].index;
+            const uint8_t held = levels[i].value;
+            if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice),
+                                          GroovePuterMidi::kControllers[index].number, held) &&
+                static_cast<int32_t>(nowMs - g_cutoffNextTryMs[voice][index]) >= 0) {
+                emitControl(voice, index, held);
+                g_cutoffNextTryMs[voice][index] = nowMs + 20u;
+            }
+        }
+        channel.publish(state.control.value(), state.control.sweeping(),
+                        state.control.barsElapsed(view.bar), state.control.known(),
+                        state.control.selected(), state.returning, state.durationIndex,
+                        state.control.owner());
     }
 }
 
@@ -1811,24 +1992,12 @@ CardputerUsbMidiStatusSnapshot snapshotCardputerUsbMidiStatus() {
 }
 
 void setCardputerDinMidiEnabled(bool enabled) {
-    // Turning the wire off must not leave notes sounding on it. The owner
-    // cannot see the two wires separately, so the DIN queue is cleared through
-    // the channel-mode recovery the SMF path already uses.
-    if (!enabled && g_wire.secondaryEnabled()) {
-        auto& din = GroovePuterMidi::cardputerUartMidiTransport();
-        for (uint8_t channel = 0; channel < 16; ++channel) {
-            (void)din.sendControlChange(channel, 123, 0);
-        }
-        // Deliberately not drained here. service() is called only from
-        // midiDispatchTask, and the queue's producer/consumer split assumes
-        // exactly one drainer; draining from whatever task flips this toggle
-        // would race the dispatcher. The dispatcher picks these up on its next
-        // iteration, well before a human notices.
-    }
-    g_wire.setSecondaryEnabled(enabled);
+    g_dinEnable.request(enabled);
 }
 
-bool cardputerDinMidiEnabled() { return g_wire.secondaryEnabled(); }
+bool cardputerDinMidiEnabled() {
+    return g_dinEnable.appliedOr(g_wire.secondaryEnabled());
+}
 
 GroovePuterMidi::ExternalNoteQueue& cardputerExternalNoteQueue() {
     return g_externalNotes;

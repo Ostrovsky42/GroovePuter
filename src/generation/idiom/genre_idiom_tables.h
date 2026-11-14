@@ -193,6 +193,22 @@ inline constexpr IdiomNote k_chip_arp_P2_bass[] = {{0, 0, 1, 100, 0}, {2, 12, 1,
 inline constexpr IdiomNote k_chip_arp_P2_melody[] = {{0, 12, 1, 86, 0}, {1, 15, 1, 70, 0}, {2, 19, 1, 74, 0}, {3, 24, 1, 80, 0}, {4, 12, 1, 84, 0}, {5, 15, 1, 70, 0}, {6, 19, 1, 74, 0}, {7, 24, 1, 80, 0}, {8, 12, 1, 84, 0}, {9, 15, 1, 70, 0}, {10, 19, 1, 74, 0}, {11, 24, 1, 80, 0}, {12, 12, 1, 84, 0}, {13, 15, 1, 70, 0}, {14, 19, 1, 74, 0}, {15, 24, 1, 80, 0}};
 inline constexpr IdiomNote k_chip_arp_P3_bass[] = {{0, 0, 1, 98, 0}, {4, 0, 1, 90, 0}, {8, 0, 1, 96, 0}, {12, 0, 1, 90, 0}};
 inline constexpr IdiomNote k_chip_arp_P3_melody[] = {{0, 12, 1, 84, 0}, {2, 15, 1, 72, 0}, {4, 19, 1, 76, 0}, {6, 24, 1, 82, 0}, {8, 19, 1, 76, 0}, {10, 15, 1, 72, 0}, {12, 12, 1, 80, 0}, {14, 7, 1, 70, 0}};
+inline constexpr IdiomNote k_house_piano_bass_P1_bass[] = {{0, 0, 2, 104, 1}, {5, 0, 1, 86, 0}, {6, 12, 1, 98, 0}, {8, 0, 2, 100, 1}, {13, 3, 1, 84, 0}, {14, 0, 1, 90, 0}};
+inline constexpr IdiomStab k_house_piano_bass_P1_stab[] = {{3, 0, 0x4489u, 1, 74}, {9, 5, 0x489u, 2, 70}, {11, 0, 0x4489u, 1, 72}};
+inline constexpr IdiomNote k_house_piano_bass_P1_melody[] = {{15, 7, 1, 66, 0}};
+inline constexpr IdiomNote k_house_piano_bass_P2_bass[] = {{0, 0, 2, 104, 1}, {3, 0, 1, 80, 0}, {5, 0, 1, 86, 0}, {6, 12, 1, 98, 0}, {8, 0, 2, 100, 1}, {10, 3, 1, 84, 0}, {13, 0, 1, 88, 0}, {14, -5, 1, 78, 0}};
+inline constexpr IdiomStab k_house_piano_bass_P2_stab[] = {{3, 0, 0x4489u, 1, 74}, {7, 0, 0x4489u, 1, 66}, {9, 5, 0x4489u, 2, 72}, {11, 0, 0x4489u, 1, 70}, {15, 5, 0x4489u, 1, 68}};
+inline constexpr IdiomNote k_house_piano_bass_P2_melody[] = {{6, 3, 2, 66, 0}, {14, 7, 1, 72, 0}};
+inline constexpr IdiomNote k_house_piano_bass_P3_bass[] = {{0, 0, 4, 100, 0}, {8, 0, 4, 92, 0}};
+inline constexpr IdiomStab k_house_piano_bass_P3_stab[] = {{3, 0, 0x4489u, 3, 72}, {9, 5, 0x4489u, 3, 70}};
+inline constexpr IdiomNote k_house_organ_stab_P1_bass[] = {{0, 0, 4, 100, 0}, {8, 0, 4, 94, 0}, {12, -4, 3, 82, 0}};
+inline constexpr IdiomStab k_house_organ_stab_P1_stab[] = {{1, 0, 0x89u, 2, 70}, {5, 0, 0x89u, 2, 66}, {9, 8, 0x91u, 2, 72}, {13, 8, 0x91u, 2, 68}};
+inline constexpr IdiomNote k_house_organ_stab_P1_melody[] = {{4, 7, 2, 60, 0}, {12, 3, 2, 64, 0}};
+inline constexpr IdiomNote k_house_organ_stab_P2_bass[] = {{0, 0, 2, 100, 0}, {4, 0, 2, 88, 0}, {8, 0, 2, 94, 0}, {12, -4, 2, 86, 0}, {14, -5, 1, 80, 0}};
+inline constexpr IdiomStab k_house_organ_stab_P2_stab[] = {{1, 0, 0x89u, 2, 70}, {5, 0, 0x89u, 2, 66}, {9, 8, 0x91u, 2, 72}, {13, 3, 0x91u, 2, 68}, {15, 10, 0x91u, 1, 62}};
+inline constexpr IdiomNote k_house_organ_stab_P2_melody[] = {{6, 3, 1, 60, 0}, {14, 7, 2, 64, 0}};
+inline constexpr IdiomNote k_house_organ_stab_P3_bass[] = {{0, 0, 8, 96, 0}, {12, -4, 4, 84, 0}};
+inline constexpr IdiomStab k_house_organ_stab_P3_stab[] = {{5, 0, 0x89u, 6, 66}};
 
 inline constexpr IdiomVariant k_acid_chicago_jack = {"acid_chicago_jack", {{k_acid_chicago_jack_P1_bass, 10, k_acid_chicago_jack_P1_stab, 4, k_acid_chicago_jack_P1_melody, 2}, {k_acid_chicago_jack_P2_bass, 13, k_acid_chicago_jack_P2_stab, 4, k_acid_chicago_jack_P2_melody, 3}, {k_acid_chicago_jack_P3_bass, 8, k_acid_chicago_jack_P3_stab, 2, k_acid_chicago_jack_P3_melody, 1}}, {0, 0, 0, 0}};
 inline constexpr IdiomVariant k_acid_rolling = {"acid_rolling", {{k_acid_rolling_P1_bass, 14, k_acid_rolling_P1_stab, 4, k_acid_rolling_P1_melody, 2}, {k_acid_rolling_P2_bass, 13, k_acid_rolling_P2_stab, 4, k_acid_rolling_P2_melody, 3}, {k_acid_rolling_P3_bass, 8, k_acid_rolling_P3_stab, 2, k_acid_rolling_P3_melody, 1}}, {0, 0, 0, 0}};
@@ -217,6 +233,8 @@ inline constexpr IdiomVariant k_dnb_neuro = {"dnb_neuro", {{k_dnb_neuro_P1_bass,
 inline constexpr IdiomVariant k_dnb_funk = {"dnb_funk", {{k_dnb_funk_P1_bass, 7, k_dnb_funk_P1_stab, 2, k_dnb_funk_P1_melody, 1}, {k_dnb_funk_P2_bass, 8, k_dnb_funk_P2_stab, 3, k_dnb_funk_P2_melody, 2}, {k_dnb_funk_P3_bass, 4, k_dnb_funk_P3_stab, 1, nullptr, 0}}, {0, 0, 3, 0}};
 inline constexpr IdiomVariant k_dnb_atmos = {"dnb_atmos", {{k_dnb_atmos_P1_bass, 2, k_dnb_atmos_P1_stab, 1, k_dnb_atmos_P1_melody, 1}, {k_dnb_atmos_P2_bass, 3, k_dnb_atmos_P2_stab, 1, k_dnb_atmos_P2_melody, 2}, {k_dnb_atmos_P3_bass, 1, k_dnb_atmos_P3_stab, 1, nullptr, 0}}, {0, 0, 5, 5}};
 inline constexpr IdiomVariant k_chip_arp = {"chip_arp", {{k_chip_arp_P1_bass, 8, nullptr, 0, k_chip_arp_P1_melody, 16}, {k_chip_arp_P2_bass, 8, nullptr, 0, k_chip_arp_P2_melody, 16}, {k_chip_arp_P3_bass, 4, nullptr, 0, k_chip_arp_P3_melody, 8}}, {0, 5, 6, 0}};
+inline constexpr IdiomVariant k_house_piano_bass = {"house_piano_bass", {{k_house_piano_bass_P1_bass, 6, k_house_piano_bass_P1_stab, 3, k_house_piano_bass_P1_melody, 1}, {k_house_piano_bass_P2_bass, 8, k_house_piano_bass_P2_stab, 5, k_house_piano_bass_P2_melody, 2}, {k_house_piano_bass_P3_bass, 2, k_house_piano_bass_P3_stab, 2, nullptr, 0}}, {0, 3, 5, 6}};
+inline constexpr IdiomVariant k_house_organ_stab = {"house_organ_stab", {{k_house_organ_stab_P1_bass, 3, k_house_organ_stab_P1_stab, 4, k_house_organ_stab_P1_melody, 2}, {k_house_organ_stab_P2_bass, 5, k_house_organ_stab_P2_stab, 5, k_house_organ_stab_P2_melody, 2}, {k_house_organ_stab_P3_bass, 2, k_house_organ_stab_P3_stab, 1, nullptr, 0}}, {0, 0, 3, 3}};
 
 }  // namespace GenreIdiom
 

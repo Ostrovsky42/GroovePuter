@@ -76,19 +76,22 @@ int main() {
     assert(output.smfOwnerCount(2, 60) == 1);
     assert(output.smfOwnerCount(2, 64) == 1);
 
-    // Repeated same-note NoteOn is physically emitted to preserve SMF retrigger.
+    // Repeated same-note NoteOn from SMF retriggers with a NoteOff first, so the
+    // receiver never sees ON ON (was: "physically emitted", wire N N F).
     assert(output.handleSmfNoteOn(2, 60, 100));
-    assert(transport.packets.size() == 3);
+    assert(transport.packets.size() == 4);
+    assert(transport.packets[2].kind == Kind::Off && transport.packets[2].note == 60);
+    assert(transport.packets[3].kind == Kind::On && transport.packets[3].note == 60);
     assert(output.smfOwnerCount(2, 60) == 2);
     assert(output.wireOwnerCount(2, 60) == 2);
 
     // First NoteOff removes one overlapping SMF owner but must not cut the note.
     assert(output.handleSmfNoteOff(2, 60));
-    assert(transport.packets.size() == 3);
+    assert(transport.packets.size() == 4);
     assert(output.smfOwnerCount(2, 60) == 1);
     assert(output.wireOwnerCount(2, 60) == 1);
     assert(output.handleSmfNoteOff(2, 60));
-    assert(transport.packets.size() == 4);
+    assert(transport.packets.size() == 5);
     assert(transport.packets.back().kind == Kind::Off);
 
     // Close the independent E4 owner before the shared-owner panic scenario.
@@ -104,8 +107,9 @@ int main() {
     assert(output.releaseAllSmfNotes());
     assert(output.smfOwnerCount(7, 67) == 0);
     assert(output.wireOwnerCount(7, 67) == 1);
-    // SMF retrigger produced an On, but panic produced no Off while live owns it.
-    assert(transport.packets.size() == afterLiveOn + 1);
+    // SMF joined the live-held note without a write (no second On, no Off),
+    // and panic produced no Off while live owns it.
+    assert(transport.packets.size() == afterLiveOn);
 
     output.handleMusicalEvent(liveEvent(MusicalEventType::NoteOff, 67));
     assert(output.wireOwnerCount(7, 67) == 0);

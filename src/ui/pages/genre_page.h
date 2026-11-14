@@ -10,6 +10,7 @@
 #include "src/dsp/miniacid_engine.h"
 #include "src/generation/composition/rhythm_selection.h"
 #include "src/generation/tonal/scale_catalog.h"
+#include "src/midi/genre_sound_preset.h"
 #include "src/state/scene_revision.h"
 
 class GenrePage : public IPage {
@@ -20,6 +21,7 @@ class GenrePage : public IPage {
   bool handleEvent(UIEvent& ui_event) override;
   const std::string& getTitle() const override { return title_; }
   void setVisualStyle(VisualStyle style) override { style_ = style; }
+  void onExit() override;
 
  private:
   enum class FocusRow : uint8_t {
@@ -69,6 +71,9 @@ class GenrePage : public IPage {
   bool normalizePendingRhythm(bool notify);
   void cycleApplyMode(int delta);
   void applyCurrent(bool forceRegenerate = false);
+  // H8: SOUND send on ENTER (SEQTRAK profile): one controller step per frame.
+  void startSoundSend();
+  GenreSound::SoundSender soundSender_;
   void applyPreset(int index);
   void applyPendingProfile();
   bool generateFromG();

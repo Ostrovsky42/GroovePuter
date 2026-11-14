@@ -167,7 +167,7 @@ def main() -> None:
     require("fullRedraw" not in tools and "toolsSelectionDirty_" not in tools,
             "tools surface must not gate label/tab drawing behind dirtiness flags")
     tabs = block(page, "void PerformPage::drawToolTabs", "void PerformPage::drawToolsLayer")
-    require("kToolContextActiveNames[i]" in tabs and "x += (len + 3) * charW;" in tabs,
+    require("kToolContextActiveNames[i]" in tabs and "x += (len + 2) * charW;" in tabs,
             "context tabs must occupy fixed slots so labels do not shift when switching")
     require("selectedRowHint()" in tools,
             "tools surface must show what -/+ and Enter do for the selected row")
