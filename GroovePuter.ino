@@ -2,6 +2,7 @@
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
 #include <M5Cardputer.h>
+#include "src/ui/imu_probe.h"
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
@@ -1169,6 +1170,34 @@ void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
+#ifdef GROOVEPUTER_IMU_PROBE
+  {
+    static uint32_t lastImuMs = 0;
+    const uint32_t imuNow = millis();
+    if (imuNow - lastImuMs >= 20) {
+      lastImuMs = imuNow;
+      const uint32_t t0 = micros();
+      ImuProbe::enabled = M5.Imu.isEnabled();
+      if (ImuProbe::enabled) {
+        if (M5.Imu.update()) {
+          const auto& d = M5.Imu.getImuData();
+          ImuProbe::ax10 = static_cast<int16_t>(d.accel.x * 10.0f + (d.accel.x < 0 ? -0.5f : 0.5f));
+          ImuProbe::ay10 = static_cast<int16_t>(d.accel.y * 10.0f + (d.accel.y < 0 ? -0.5f : 0.5f));
+          ImuProbe::az10 = static_cast<int16_t>(d.accel.z * 10.0f + (d.accel.z < 0 ? -0.5f : 0.5f));
+          ++ImuProbe::winCount;
+        }
+        if (imuNow - ImuProbe::winStartMs >= 1000) {
+          ImuProbe::fps = ImuProbe::winCount;
+          ImuProbe::winCount = 0;
+          ImuProbe::winStartMs = imuNow;
+        }
+      }
+      const uint32_t cost = micros() - t0;
+      ImuProbe::lastCostUs = cost > 65535u ? 65535u : static_cast<uint16_t>(cost);
+      if (ImuProbe::lastCostUs > ImuProbe::peakCostUs) ImuProbe::peakCostUs = ImuProbe::lastCostUs;
+    }
+  }
+#endif
   GroovePuterPlatform::serviceCardputerPerformanceConfig(
       g_performanceKeyboard, millis());
   LedManager::instance().update();
@@ -1796,6 +1825,13 @@ void loop() {
          for (uint32_t i = 0; i < 64u; ++i) g_blockHist[i] = 0;
          g_blockHistMaxUs = 0;
        }
+#endif
+#ifdef GROOVEPUTER_IMU_PROBE
+       Serial.printf("[IMU] en=%d fps=%u cost=%uus peak=%uus a=%d/%d/%d (x0.1g)\n",
+           (int)ImuProbe::enabled, (unsigned)ImuProbe::fps,
+           (unsigned)ImuProbe::lastCostUs, (unsigned)ImuProbe::peakCostUs,
+           (int)ImuProbe::ax10, (int)ImuProbe::ay10, (int)ImuProbe::az10);
+       ImuProbe::peakCostUs = 0;
 #endif
        g_peakUiDrawUs = g_lastUiDrawUs;
     }

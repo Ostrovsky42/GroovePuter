@@ -2,6 +2,7 @@
 #include "ui_utils.h"
 #include "ui_widgets.h"
 #include "ui_theme.h"
+#include "imu_probe.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -261,11 +262,21 @@ namespace UI {
                      Layout::HEADER.y + Layout::HEADER.h - 1,
                      divider);
         gfx.setTextColor(foreground);
+#ifdef GROOVEPUTER_IMU_PROBE
+        char imuLine[40];
+        const char* headerText = gStatusLine;
+        if (status.context == UiStatusContext::Perform) {
+            ImuProbe::formatLine(imuLine, sizeof(imuLine));
+            headerText = imuLine;
+        }
+#else
+        const char* headerText = gStatusLine;
+#endif
         Widgets::drawClippedText(gfx,
                                  Layout::HEADER.x + 4,
                                  Layout::HEADER.y + 4,
                                  Layout::HEADER.w - 8,
-                                 gStatusLine);
+                                 headerText);
     }
 
     void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status) {
