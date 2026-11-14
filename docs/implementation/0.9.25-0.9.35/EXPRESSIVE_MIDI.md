@@ -43,7 +43,7 @@ rewrite a saved Scene, Phrase or Song.
 | CC channel projection for Synth A/B on SEQTRAK, GM and Generic; unsupported CC5 suppressed; Custom fallback channels | `tests/test_midi_performance_route_binding_0_9_7_tests.sh` |
 | Controller allowlist, clamping, dedupe, refused-send retry, disconnect/reconnect resend, output-mode gate, and note ownership unchanged | `tests/test_usb_midi_cutoff.cpp` via canonical host suite |
 | Profile label/channel and compact-screen fit for SEQTRAK, GM, Generic and Custom | `tests/run_midi_perform_ui_polish_tests.sh` |
-| Macro-transformed Pattern event, Note On velocity, source preservation, shortened gate and matching Note Off | `tests/run_pattern_phrase_p2_p0_compatibility.sh` (GCC repeat, Clang parity, ASan and UBSan) |
+| Macro-transformed Pattern event, Note On velocity, source preservation, shortened gate and matching Note Off | `tests/run_pattern_phrase_p2_p0_compatibility.sh` (GCC repeat, ASan and UBSan; Clang parity SKIP because `clang++` is unavailable) |
 
 The fake transports verify software message routing. They do not prove USB
 enumeration, device compatibility, audible results, DIN timing, or physical

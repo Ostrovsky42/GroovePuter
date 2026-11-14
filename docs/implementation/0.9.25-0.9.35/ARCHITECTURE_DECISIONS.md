@@ -82,6 +82,18 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Boundary:** macros do not emit CC or mutate stored material. Profile changes remain startup-bound. No Pitch Bend, aftertouch, gesture input, hardware behavior or sound-quality claim is made.
 
+### AD-012 — Endpoint recovery invalidates delivered controller levels
+
+**Decision:** a tee transport exposes a bounded controller-state epoch for primary endpoint mount edges. `UsbMidiOutput` uses an epoch change to invalidate only its cached controller-delivery knowledge; active note ownership continues through the existing endpoint cleanup rules.
+
+**Evidence:** fake USB+DIN transport coverage disconnects USB while DIN keeps the aggregate mounted state true, updates CC74 over DIN, then reconnects USB and verifies that the same CC value is sent to USB while an unrelated note owner remains active.
+
+### AD-013 — FORM copies each retained cell's source mode
+
+**Decision:** when FORM materializes a retained Synth A/B cell, it copies the source row's per-cell STEPS override using the same cyclic source index as the copied pattern. Empty or removed cells still clear their override through the existing `SongEdit::setPattern()` contract.
+
+**Evidence:** EnergyCurve unit coverage checks repeated source rows; playback coverage applies FORM to a Melody slot with STEPS override and verifies every generated row plays the underlying Pattern. The persisted Song schema is unchanged.
+
 ## Decisions still required by implementation
 
 - Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.29 remains transient and does not commit the playback view.

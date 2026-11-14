@@ -61,6 +61,8 @@ if command -v clang++ >/dev/null 2>&1; then
     "-O1" "${BUILD_DIR}/clang.txt"
   diff -u "${GCC_LOG1}" "${BUILD_DIR}/clang.txt"
   printf '%s\n' 'P2/P0 Clang parity: PASS'
+else
+  printf '%s\n' 'P2/P0 Clang parity: SKIP (clang++ unavailable)'
 fi
 
 ASAN_OPTIONS=detect_leaks=0 build_and_run g++ \

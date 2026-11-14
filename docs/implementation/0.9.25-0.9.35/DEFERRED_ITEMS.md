@@ -35,6 +35,7 @@ This list separates known unfinished work from verified baseline behavior. Items
 
 - **Arrangement listening:** INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO are bounded starting contours over existing energy levels and source rows. Their musical usefulness has not been evaluated by listening and remains pending for owner acceptance of 0.9.35.
 - **Per-section identity and motif development:** role names are transient FORM labels; materialized Song rows remain ordinary editable positions. The templates do not create independent motif variations or persist section-role metadata.
+- **FORM and the active loop range:** FORM preserves the user's current loop bounds. If the inserted arrangement extends beyond the loop end, expand the range to hear the new rows while loop mode is enabled. Do not silently change loop intent without a transactional Undo contract.
 
 ## 0.9.32 follow-up
 
@@ -43,3 +44,5 @@ This list separates known unfinished work from verified baseline behavior. Items
 - **Macro-to-CC mapping and automatic expression:** deferred; macros remain musical transformations and do not send controller messages.
 - **Live profile rebinding:** still unsupported. The active output uses its startup route snapshot; profile changes take effect on the next startup.
 - **Hardware MIDI claims:** USB enumeration, DIN behavior and Yamaha SEQTRAK reception remain `NOT TESTED` until owner acceptance of 0.9.35.
+- **CC retry deadline after extreme idle:** the wrap-safe 20 ms limiter can encounter signed half-range ambiguity if a cached deadline remains unused for more than roughly half the `uint32_t` millisecond range. Normal sends initialize/retry the deadline; this extreme-idle case is deferred and needs a focused clock-injection test before changing the limiter.
+- **Custom-route fake/UI channel agreement:** the route fake uses channels 5/7 while the Custom UI fallback displays 8/9. Existing tests cover the custom fallback and UI label separately but do not assert their exact shared projection. Tighten this fixture when expanding custom-route support.
