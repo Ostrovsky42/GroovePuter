@@ -6,8 +6,10 @@ resource gate and unpublished-package checks passed at exact artifact source SHA
 `615ac9642f1103ce1f9d4fcddcb083710b171db4`. Only the owner can accept physical
 behavior. At the owner's request, the app-only image was flashed to the connected
 GroovePuter; esptool write hash and independent readback verification passed, and
-the ESP32-S3 USB interface re-enumerated. No UI, audio, keyboard, SD or MIDI
-acceptance has been performed.
+the ESP32-S3 USB interface re-enumerated. The owner now reports the MIDI-export
+version is visible, Play/Stop works and the signal stops. Cold power-cycle,
+display readability, SD project persistence, keyboard and MIDI acceptance remain
+pending.
 Latest published package remains `v0.9.19`.
 
 ## Verified repository pipeline
@@ -116,8 +118,10 @@ unverified for installation.
   partition table at `0x8000`, and `boot_app0` at `0xe000` matched candidate
   hashes. App-only image `6a6c920b...` was written at `0x10000`; esptool's write
   hash and independent `verify_flash` passed, followed by USB re-enumeration.
-  This does not verify that the main UI started. No physical keyboard, internal
-  audio, SD, USB MIDI, DIN or SEQTRAK behavior has been tested.
+  The owner reports the version with MIDI Export visible, Play/Stop working and
+  the signal stopping. The exact displayed version string, cold power-cycle,
+  display readability and SD application save/load are still unconfirmed. No
+  keyboard, USB MIDI, DIN or SEQTRAK behavior has been tested.
 - At exact source SHA `615ac9642f1103ce1f9d4fcddcb083710b171db4`,
   `env TMPDIR=/tmp bash tests/run_host_tests.sh` exited 0; log:
   `/tmp/gp-0935-host-suite-615ac964.log`. The release-profile FS1B firmware

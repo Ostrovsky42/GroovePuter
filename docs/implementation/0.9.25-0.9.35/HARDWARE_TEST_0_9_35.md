@@ -1,8 +1,9 @@
 # GroovePuter 0.9.35 — owner hardware acceptance
 
-Status: **APP FLASH WRITTEN AND READBACK VERIFIED — HARDWARE ACCEPTANCE PENDING**.
-Only the firmware write, readback hash and USB re-enumeration were observed.
-Display, audio, keyboard, SD and MIDI acceptance remain pending.
+Status: **INITIAL UI AND PLAY/STOP REPORTED — HARDWARE ACCEPTANCE PENDING**.
+The owner reports the MIDI-export version is visible, Play/Stop works and the
+signal stops. SD is present; app detection and project save/load are untested.
+Keyboard, full display, MIDI and broader reliability checks remain pending.
 
 ## Candidate identity
 
@@ -30,7 +31,7 @@ Display, audio, keyboard, SD and MIDI acceptance remain pending.
 - Previous accepted rollback: `.16` merged image,
   SHA-256 `53f49d6ad92a386a6a0034f754db22d43e15107fe7f8d0e05e2960a2c62ec39f`;
   full restore steps are in `rollback/ROLLBACK.md` in the bundle.
-- SD card make/capacity: `PENDING`
+- SD card: inserted (owner report); make/capacity `PENDING`
 - External MIDI device / firmware: `PENDING`
 
 ## Install and recovery instructions
@@ -51,7 +52,9 @@ Display, audio, keyboard, SD and MIDI acceptance remain pending.
    This exact app-only write was performed with esptool v4.7.0. Esptool
    reported `Hash of data verified`; an independent `verify_flash` reported
    `verify OK (digest matched)`. The board re-enumerated on USB after reset.
-   The display and application workflow were not observed.
+   The owner later reported the candidate version visible and Play/Stop working,
+   with the signal stopping. Full display readability and the remaining
+   application workflow are still untested.
 
 4. Use the merged image at `0x0` only for an intentional full-layout install
    after backing up internal flash data. It is 4 MiB on an 8 MiB device; it does
@@ -79,17 +82,19 @@ or unrecoverable boot failure; preserve logs and use the documented rollback.
 | Check | Expected result | Result / notes |
 |---|---|---|
 | Flash candidate with its documented package/path | Tool accepts the exact artifact; no address/layout guesswork | `PASS` — app-only at `0x10000`; esptool write hash and independent readback verification passed; USB re-enumerated after reset (2026-11-14) |
-| Cold start | GroovePuter reaches the main UI without a reset loop | `NOT RUN` |
+| UI after flash reset | GroovePuter reaches the main UI and shows the candidate version | `PASS` — owner reports the version with MIDI Export visible; exact displayed version string not transcribed |
+| Cold power cycle | GroovePuter starts after full power-off/on without a reset loop | `NOT RUN` |
 | Second cold start | Same candidate starts again and retained project data remains available | `NOT RUN` |
-| Display | Text and selected states are readable on the physical 240×135 LCD | `NOT RUN` |
+| Display readability | Text and selected states are readable on the physical 240×135 LCD | `NOT RUN` — version is visible; overall readability not assessed |
 | Keyboard | Documented key actions work; no unusable required chord blocks the Golden Path | `NOT RUN` |
-| SD card | Project browser lists files; a project can be saved and reopened | `NOT RUN` |
+| SD card presence | Card is present in the device | `PASS` — owner reports SD is inserted; application recognition not checked |
+| SD project save/reopen | Project browser lists files; a project can be saved and reopened | `NOT RUN` |
 
 ## B. Internal sound
 
 | Check | Expected result | Result / notes |
 |---|---|---|
-| Start and stop playback | Sound starts and stops; no stuck internal notes | `NOT RUN` |
+| Start and stop playback | Sound starts and stops; no stuck internal notes | `PASS` — owner reports Play/Stop works and the signal stops; repeated cycles and external MIDI Note Off remain untested |
 | Generate and change genre | New material plays and the genre change is audible/visible as expected | `NOT RUN` |
 | Bass, synth and drums | Each committed part is audible and remains in time | `NOT RUN` |
 | Song section transition | Transition occurs at the displayed section boundary without hanging playback | `NOT RUN` |
@@ -168,9 +173,10 @@ available. Preserve the project and any temporary/export files before retrying.
 - Questions that require listening or physical operation: `PENDING`
 - Rollback used: `PENDING`
 - Owner decision: `NOT ACCEPTED`
-- Accepted areas: `NONE RECORDED`
+- Accepted areas: `Owner-reported UI/version visible; Play/Stop and signal stop; SD card inserted (app save/load pending)`
 - Rejected areas / follow-up issues: `PENDING`
 
-Only the owner records hardware acceptance. This limited app write/readback
-does not establish startup, internal audio, USB MIDI, SEQTRAK or musical quality.
-Record those outcomes separately; one passing area does not imply another passed.
+Only the owner records final hardware acceptance. The observations above are
+initial checks; they do not establish cold-boot reliability, SD persistence,
+USB MIDI, SEQTRAK or musical quality. Record those outcomes separately; one
+passing area does not imply another passed.
