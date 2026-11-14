@@ -27,7 +27,12 @@ constexpr uint8_t kStrumOptionsMs[] = {0, 8, 16, 24, 36};
 constexpr uint8_t kGateOptions[] = {25, 50, 60, 75, 95};
 constexpr double kTransportStepEpsilon = 1.0e-6;
 constexpr double kTransportScheduleLeadPulses = 0.5;
-constexpr uint32_t kGeneratedNoteOnStaleMicros = 12000u;
+// A pulse NoteOn served later than this is shed instead of caught up. Must
+// exceed the worst loop() pass between service() calls: drawUI every 40 ms
+// (frame up to ~30 ms) plus delay(5) is ~35-45 ms. At 12 ms every pulse that
+// landed behind a long UI frame was dropped silently; 60 ms covers the pass
+// with margin yet stays below one 16th at 250 BPM (60 ms), so there is no burst.
+constexpr uint32_t kGeneratedNoteOnStaleMicros = 60000u;
 constexpr uint32_t kMinimumTransportLeadMicros = 1000u;
 
 struct PerformanceScaleDefinition {
@@ -315,6 +320,7 @@ void PerformanceKeyboard::resetPerformanceDiagnostics() {
     scheduledHighWater_ = scheduledDepth();
     scheduledOverflowCount_ = 0;
     staleGeneratedNoteOnDrops_ = 0;
+    staleTransportPulseDrops_ = 0;
 }
 
 bool PerformanceKeyboard::scheduleGenerated(MusicalEventType type,
@@ -1392,6 +1398,7 @@ bool PerformanceKeyboard::serviceTransportPulseClock(uint32_t nowMicros) {
         std::llround(stepsUntilBoundary * static_cast<double>(sixteenthMicros)));
     const int32_t leadMicros = static_cast<int32_t>(dueMicros - nowMicros);
     if (leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)) {
+        ++staleTransportPulseDrops_;
         nextTransportPulseProjectStep_ += activePulseSteps;
         ++rateEpochOrdinal_;
         ++musicalPulseOrdinal_;

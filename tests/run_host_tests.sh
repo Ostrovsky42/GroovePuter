@@ -845,6 +845,18 @@ echo "Tee MIDI transport: OK"
   -Wall \
   -Wextra \
   -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_performance_euclid_pulse.cpp" \
+  "${ROOT_DIR}/src/input/performance_keyboard.cpp" \
+  -o "${BUILD_DIR}/test_performance_euclid_pulse"
+
+"${BUILD_DIR}/test_performance_euclid_pulse"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
   -Wno-unused-parameter \
   -Wno-misleading-indentation \
   -I"${ROOT_DIR}" \

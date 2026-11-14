@@ -163,9 +163,10 @@ int main() {
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
         assert(f.keyboard.scheduledDepth() > 0u);
 
-        // Delaying service beyond the 12 ms NoteOn window drops the stale hit
-        // instead of producing a wall-clock catch-up burst.
-        f.keyboard.service(4100000u);
+        // Delaying service beyond the 60 ms NoteOn window drops the stale hit
+        // instead of producing a wall-clock catch-up burst. (Was 12 ms /
+        // service(4100000u); 4100000u is now only ~20 ms late and must sound.)
+        f.keyboard.service(4200000u);
         assert(count(f.sink.events, MusicalEventType::NoteOn) == 0);
         assert(f.keyboard.staleGeneratedNoteOnDrops() >= 1u);
 
