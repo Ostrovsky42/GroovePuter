@@ -1,6 +1,7 @@
 // Per-cell source override: the same Melody slot plays Melody on a row whose
 // bit is 0 and steps on a row whose bit is 1; a Pattern slot always plays steps.
 #include "song_cell_source_common.h"
+#include "src/state/energy_curve.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -29,10 +30,24 @@ int main() {
   Song& song = engine.sceneManager().currentScene().songs[0];
   song.setStepsOverride(0, 1, true);
   song.setStepsOverride(0, 3, true);
+  // FORM materializes the selected row into ordinary Song rows and must keep
+  // its per-cell Melody/steps choice.
+  EnergyCurve::Curve form{};
+  form.sections[0] = {4, 4};
+  form.count = 1;
+  assert(EnergyCurve::apply(song, form, 1, 1, 4) == EnergyCurve::Status::Ok);
+  assert(song.length == 8);
+  assert(song.stepsOverrideAt(0, 4));
+  assert(song.stepsOverrideAt(0, 5));
+  assert(song.stepsOverrideAt(0, 6));
+  assert(song.stepsOverrideAt(0, 7));
+  // The existing loop still covers rows 0..3; turn it off to exercise the
+  // newly materialized tail without changing any loop-range contract.
+  engine.setLoopMode(false);
   engine.setSongMode(true);
   engine.setSongPosition(0);
 
-  const auto bars = play(engine, 4);
+  const auto bars = play(engine, 8);
   for (size_t i = 0; i < bars.size(); ++i) {
     std::printf("bar %zu:", i);
     for (int n : bars[i]) std::printf(" %d", n);
@@ -42,8 +57,13 @@ int main() {
   assert((bars[1] == std::set<int>{77}));              // bit 1: steps of the same slot
   assert((bars[2] == std::set<int>{40}));              // Pattern slot
   assert((bars[3] == std::set<int>{40}));              // Pattern slot with bit 1 still steps
+  assert((bars[4] == std::set<int>{77}));              // FORM kept source row's steps override
+  assert((bars[5] == std::set<int>{77}));              // repeated FORM row keeps the override
+  assert((bars[6] == std::set<int>{77}));              // repeated FORM row keeps the override
+  assert((bars[7] == std::set<int>{77}));              // repeated FORM row keeps the override
   assert(engine.songCellMaterialKind(0, kY, 0) == MiniAcid::SongCellMaterialKind::Melody);
   assert(engine.songCellMaterialKind(0, kY, 1) == MiniAcid::SongCellMaterialKind::Pattern);
+  assert(engine.songCellMaterialKind(0, kY, 4) == MiniAcid::SongCellMaterialKind::Pattern);
   std::puts("test_song_cell_source_playback PASS");
   return 0;
 }

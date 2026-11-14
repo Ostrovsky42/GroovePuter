@@ -212,6 +212,7 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
                     int insertAt) {
   using GroovePuterUndo::SongEdit::insertRow;
   using GroovePuterUndo::SongEdit::setPattern;
+  using GroovePuterUndo::SongEdit::setStepsOverride;
   if (curve.count == 0) return Status::NoSections;
   if (!validCurve(curve)) return Status::BadRange;
   const int length = song.length < 1 ? 1 : song.length;
@@ -220,9 +221,15 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
     return Status::BadRange;
   }
   SongPosition source[kMaxSourceRows]{};
+  bool sourceStepsOverride[kMaxSourceRows][2]{};
   bool any = false;
   for (int i = 0; i < sourceCount; ++i) {
-    source[i] = song.positions[sourceFirst + i];
+    const int sourceRow = sourceFirst + i;
+    source[i] = song.positions[sourceRow];
+    for (int voice = 0; voice < 2; ++voice) {
+      sourceStepsOverride[i][voice] =
+          song.stepsOverrideAt(voice, sourceRow);
+    }
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
       if (source[i].patterns[t] >= 0) any = true;
     }
@@ -241,7 +248,8 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
       // (an 8-row TAKE over two 4-bar sections: rows 0..3, then 4..7). A source no
       // longer than the section repeats from its first row, as before.
       const uint16_t sourceBar = sourceCount > section.bars ? inserted : bar;
-      const SongPosition& from = source[sourceBar % sourceCount];
+      const uint16_t sourceIndex = sourceBar % sourceCount;
+      const SongPosition& from = source[sourceIndex];
       Voices v = voicesFor(section.energy, bar);
       const bool lastBar = bar + 1 == section.bars;
       if (lastBar && s + 1 < curve.count) {
@@ -262,6 +270,10 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
       const auto put = [&](SongTrack track, bool on) {
         const int ti = GroovePuterUndo::SongEdit::trackIndex(track);
         setPattern(song, row, track, on ? from.patterns[ti] : -1);
+        if (ti >= 0 && ti < 2 && on && from.patterns[ti] >= 0) {
+          setStepsOverride(song, row, track,
+                           sourceStepsOverride[sourceIndex][ti]);
+        }
       };
       put(SongTrack::Drums, v.drums);
       put(SongTrack::SynthA, v.bass);

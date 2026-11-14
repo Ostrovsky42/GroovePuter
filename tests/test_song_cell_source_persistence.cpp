@@ -10,6 +10,7 @@
 #undef private
 #include "platform_sdl/scene_storage_sdl.h"
 #include "src/audio/pattern_paging.h"
+#include "src/state/energy_curve.h"
 
 SerialMock Serial;
 SDMock SD;
@@ -53,6 +54,32 @@ int main() {
     }
   }
   std::puts("bits survive save and load (streaming and document): PASS");
+
+  // A FORM-generated Song persists the copied source-mode bits through both
+  // production readers, including repeated rows from a one-row source.
+  Song& formSong = scenes.currentScene().songs[0];
+  formSong = Song{};
+  formSong.length = 2;
+  formSong.positions[0].patterns[0] = 7;
+  formSong.setStepsOverride(0, 0, true);
+  EnergyCurve::Curve form{};
+  form.sections[0] = {4, 4};
+  form.count = 1;
+  assert(EnergyCurve::apply(formSong, form, 0, 1, 1) ==
+         EnergyCurve::Status::Ok);
+  const std::string formBlob = scenes.dumpCurrentScene();
+  for (int loader = 0; loader < 2; ++loader) {
+    scenes.wipeToZero();
+    assert(loader == 0 ? scenes.loadScene(formBlob)
+                       : scenes.loadSceneJson(formBlob));
+    const Song& loaded = scenes.currentScene().songs[0];
+    assert(loaded.length == 6);
+    for (int row = 1; row <= 4; ++row) {
+      assert(loaded.positions[row].patterns[0] == 7);
+      assert(loaded.stepsOverrideAt(0, row));
+    }
+  }
+  std::puts("FORM-generated cell mode survives streaming and document reload: PASS");
 
   // Writer emits nothing when all bits are 0.
   scenes.wipeToZero();

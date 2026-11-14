@@ -102,8 +102,17 @@ int main() {
   // BUILD after the TAKE: 20 rows inserted, existing rows kept, sections restart the TAKE.
   {
     Song song = takeSong();
+    song.setStepsOverride(0, 0, true);
+    song.setStepsOverride(1, 1, true);
     assert(apply(song, presetCurve(Preset::Build), 0, 4, 4) == Status::Ok);
     assert(song.length == 24);
+    // The copied source cells keep their explicit STEPS choice even when the
+    // referenced slot is a Melody. Check an energy-4 section that retains both
+    // synth tracks; the lower-energy section intentionally removes them.
+    assert(song.stepsOverrideAt(0, 16));
+    assert(!song.stepsOverrideAt(1, 16));
+    assert(song.stepsOverrideAt(1, 17));
+    assert(!song.stepsOverrideAt(0, 17));
     for (int r = 0; r < 4; ++r) assert(patternAt(song, r, SongTrack::SynthA) == r);  // untouched
     // Section 1 (energy 1, rows 4..7): drums only, in TAKE order.
     for (int b = 0; b < 4; ++b) {
