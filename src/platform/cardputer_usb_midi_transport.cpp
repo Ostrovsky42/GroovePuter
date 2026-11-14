@@ -1541,6 +1541,9 @@ VoiceControl g_voice[2];
 uint32_t g_cutoffRequestApplied[2] = {0, 0};
 // Retry clock per voice and controller: a refused level is sent again after 20 ms.
 uint32_t g_cutoffNextTryMs[2][GroovePuterMidi::kControllerCount] = {};
+// One bit per controller records whether its deadline has been initialized.
+// millis() may already be past the signed half-range on first use after uptime.
+uint8_t g_cutoffAttemptedMask[2] = {0, 0};
 
 void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
@@ -1615,11 +1618,17 @@ void serviceCutoffAutomation() {
         for (uint8_t i = 0; i < levelCount; ++i) {
             const uint8_t index = levels[i].index;
             const uint8_t held = levels[i].value;
+            const uint8_t attemptedBit = static_cast<uint8_t>(1u << index);
+            const bool hasAttempted =
+                (g_cutoffAttemptedMask[voice] & attemptedBit) != 0u;
             if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice),
                                           GroovePuterMidi::kControllers[index].number, held) &&
-                static_cast<int32_t>(nowMs - g_cutoffNextTryMs[voice][index]) >= 0) {
+                GroovePuterMidi::cutoffSendDeadlineReached(
+                    hasAttempted, nowMs, g_cutoffNextTryMs[voice][index])) {
                 emitControl(voice, index, held);
-                g_cutoffNextTryMs[voice][index] = nowMs + 20u;
+                g_cutoffNextTryMs[voice][index] =
+                    nowMs + GroovePuterMidi::kCutoffSendIntervalMs;
+                g_cutoffAttemptedMask[voice] |= attemptedBit;
             }
         }
         channel.publish(state.control.value(), state.control.sweeping(),

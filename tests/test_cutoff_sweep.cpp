@@ -489,6 +489,25 @@ void testPublishedWordCarriesTheSweepOwner() {
     assert(channel.owner() == 5);
 }
 
+void testCutoffSendDeadlineIsFirstAttemptAndWrapSafe() {
+    using GroovePuterMidi::cutoffSendDeadlineReached;
+    using GroovePuterMidi::kCutoffSendIntervalMs;
+    assert(kCutoffSendIntervalMs == 20u);
+
+    // No previous attempt: a long uptime must never suppress the first write.
+    assert(cutoffSendDeadlineReached(false, 0x90000000u, 0u));
+
+    const uint32_t next = 1000u + kCutoffSendIntervalMs;
+    assert(!cutoffSendDeadlineReached(true, next - 1u, next));
+    assert(cutoffSendDeadlineReached(true, next, next));
+
+    const uint32_t attempt = ~uint32_t{0} - 10u;
+    const uint32_t wrappedDeadline = attempt + kCutoffSendIntervalMs;
+    assert(wrappedDeadline == 9u);
+    assert(!cutoffSendDeadlineReached(true, 8u, wrappedDeadline));
+    assert(cutoffSendDeadlineReached(true, 9u, wrappedDeadline));
+}
+
 }  // namespace
 
 int main() {
@@ -521,5 +540,6 @@ int main() {
     testNewSweepOnAnotherControllerKeepsTheOldValue();
     testNothingIsSentBeforeAValueIsSet();
     testPublishedWordCarriesTheSweepOwner();
+    testCutoffSendDeadlineIsFirstAttemptAndWrapSafe();
     return 0;
 }

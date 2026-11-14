@@ -9,6 +9,18 @@
 
 namespace GroovePuterMidi {
 
+inline constexpr uint32_t kCutoffSendIntervalMs = 20;
+
+// First send is immediately eligible, including after long uptime. Once a
+// deadline is active, signed subtraction preserves correctness across millis()
+// wrap as long as the bounded interval remains below INT32_MAX.
+inline bool cutoffSendDeadlineReached(bool hasAttempted,
+                                      uint32_t nowMs,
+                                      uint32_t nextAttemptMs) {
+    return !hasAttempted ||
+           static_cast<int32_t>(nowMs - nextAttemptMs) >= 0;
+}
+
 // Zero-based MIDI channels of the two synth performance routes. They must match
 // the UsbMidiRouteConfig fields used by the dispatcher (performanceSynthAChannel,
 // performanceSynthBChannel); a host test checks that they agree.
