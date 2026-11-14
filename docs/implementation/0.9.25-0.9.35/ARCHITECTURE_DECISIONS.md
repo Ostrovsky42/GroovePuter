@@ -88,6 +88,14 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Evidence:** fake USB+DIN transport coverage disconnects USB while DIN keeps the aggregate mounted state true, updates CC74 over DIN, then reconnects USB and verifies that the same CC value is sent to USB while an unrelated note owner remains active.
 
+### AD-014 — Freeze output-profile edits during playback
+
+**Decision:** Dynamic route/profile rebinding remains deferred through 0.9.35. Project → MIDI blocks preview changes and saves for Device Profile and External MIDI output while `MiniAcid::isPlaying()` is true, and shows `STOP TO CHANGE ROUTE`. After Stop, these settings remain next-boot selections and require the existing restart behavior to affect the active MIDI output. No profile edit may mutate the startup route snapshot or move an outstanding note to another destination.
+
+**Evidence:** `tests/test_midi_perform_ui_polish.cpp` drives both output settings while playing and stopped, checks the displayed lock hint, and verifies the persisted selections remain unchanged during playback. `bash tests/run_midi_perform_ui_polish_tests.sh` passes. This is an SDL/host UI contract; it does not validate hardware MIDI behavior.
+
+**Reason:** The current startup snapshot has no bounded prepare/release/activate transaction tied to note ownership. A visible stop gate is the safe fallback; implementing route generations immediately before integration would widen risk and scope.
+
 ### AD-013 — FORM copies each retained cell's source mode
 
 **Decision:** when FORM materializes a retained Synth A/B cell, it copies the source row's per-cell STEPS override using the same cyclic source index as the copied pattern. Empty or removed cells still clear their override through the existing `SongEdit::setPattern()` contract.

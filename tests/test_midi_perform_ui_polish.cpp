@@ -7,6 +7,7 @@
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/input/performance_keyboard.h"
+#include "src/ui/midi_device_profile_ui.h"
 #include "src/ui/pages/project_page.h"
 #include "src/ui/pages/perform_page.h"
 #include "src/ui/pages/synth_midi_page.h"
@@ -62,6 +63,7 @@ UIEvent key(char value) {
 UIEvent scan(KeyScanCode value) {
   UIEvent e{}; e.event_type = GROOVEPUTER_KEY_DOWN; e.scancode = value; return e;
 }
+namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
 
 class Events : public IMusicalEventSink {
  public:
@@ -87,6 +89,42 @@ int main() {
   assert(gfx.has("RESTART"));
   assert(!gfx.has("ACTIVE"));
   gfx.bodyFits();
+
+  // Device profile and output destination are next-boot route settings. Freeze
+  // their UI edits while playback is active so no route change can be mistaken
+  // for a live rebind.
+  const auto savedProfile =
+      GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+  const bool savedOutput =
+      GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+  engine.start();
+  ProjectPage lockedMidiProject(gfx, engine, AudioGuard{});
+  lockedMidiProject.onEnter(0);
+  auto lockedMidiSend = [&](UIEvent e) { lockedMidiProject.handleEvent(e); };
+  for (int i = 0; i < 3; ++i) lockedMidiSend(key('\t'));
+  lockedMidiSend(scan(GROOVEPUTER_DOWN));  // USB ROLE -> DEVICE PROFILE
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiDeviceProfile() == savedProfile);
+  gfx.texts.clear(); lockedMidiProject.draw(gfx);
+  assert(gfx.has("STOP TO CHANGE ROUTE"));
+  gfx.bodyFits();
+  lockedMidiSend(scan(GROOVEPUTER_DOWN));  // DEVICE PROFILE -> OUTPUT
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiOutputEnabled() == savedOutput);
+
+  engine.stop();
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiOutputEnabled() != savedOutput);
+  assert(GroovePuterPlatform::selectCardputerMidiOutputEnabledForNextBoot(savedOutput));
+  lockedMidiSend(scan(GROOVEPUTER_UP));  // OUTPUT -> DEVICE PROFILE
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiDeviceProfile() ==
+         ProfileUi::stepSelectableProfile(savedProfile, 1));
+  assert(GroovePuterPlatform::selectCardputerMidiDeviceProfileForNextBoot(savedProfile));
 
   project.onEnter(0);
   projectSend(key('\t')); projectSend(key('\t'));

@@ -19,7 +19,7 @@ This records current source behavior for the 0.9.25 audit. Source review is not 
 - Failed NoteOff writes remain represented as pending releases. The dispatcher retries on a bounded 5–20 ms backoff. UART transport separately reserves queue capacity for release traffic, records deferred NoteOffs and retries them before ordinary traffic.
 - Stop/panic paths release notes by source/target and can request scoped channel cleanup. `All Notes Off` is a recovery tool, not the normal per-note ownership mechanism. `TeeMidiTransport` tracks USB cleanup debt when DIN accepted cleanup while USB was stalled; before USB regains authority it sends channel CC123 cleanup.
 - On overall transport disconnect, the output snapshots every currently owned channel into its bounded pending-panic mask before abandoning SMF ownership and clearing active state. After reconnect, it sends one channel-level CC123 for each captured channel. This closes the full-transport-loss stuck-note gap for generated and SMF notes in the host fake-transport regression. With DIN enabled, USB unplug alone does not mean overall transport disconnect; tee failover remains active. USB MIDI mounted state checks TinyUSB's MIDI interface state, not only the CDC composite state.
-- Runtime pattern/performance routing is still a startup snapshot. Profile edits do not rebind live lanes, so a held note cannot be moved by an in-session route change; a live ownership-aware route transaction has not been implemented. Reboot/device lifecycle behavior remains subject to hardware acceptance.
+- Runtime pattern/performance routing is still a startup snapshot. Project → MIDI blocks Device Profile and External MIDI output preview/save while `MiniAcid::isPlaying()` and displays `STOP TO CHANGE ROUTE`. Once stopped, edits are saved for next boot; they do not rebind live lanes. A live ownership-aware route transaction has not been implemented. Reboot/device lifecycle behavior remains subject to hardware acceptance.
 - USB MIDI FIFO reads/writes assert that the caller is the MIDI dispatch task. The input dispatcher tracks source/session generations; queue recovery and routing configuration changes release owned notes before discarding/re-routing sessions.
 
 ## Clock and transport
@@ -44,7 +44,7 @@ The code has one `TransportClockRuntime` source selection (internal GroovePuter 
 5. Audit route persistence migrations and old project fixtures before adding fields. The current profile projection itself documents the incomplete Custom Performance target table.
 - The profile enum currently lists SeqtrakNative, GeneralMidi, GenericMidi and Custom; Internal is represented through route enable/target state rather than a device profile. Define the roadmap's Internal semantics without conflating output availability with musical role.
 
-Status: overall transport disconnect/reconnect cleanup is covered by a fake-transport regression; runtime route rebinding remains deliberately unavailable. Residual gaps above remain open; runtime claims are host-only; hardware status **NOT TESTED**.
+Status: overall transport disconnect/reconnect cleanup is covered by a fake-transport regression; runtime route rebinding remains deliberately unavailable and its UI path is locked during playback. Residual endpoint/integrated-dispatcher gaps above remain open; runtime claims are host-only; hardware status **NOT TESTED**.
 
 ## 0.9.27 output destination
 

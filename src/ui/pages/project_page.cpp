@@ -1601,6 +1601,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         case GROOVEPUTER_LEFT:
         case GROOVEPUTER_RIGHT: {
             const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
+            if (mini_acid_.isPlaying() &&
+                (main_focus_ == MainFocus::MidiDevice ||
+                 main_focus_ == MainFocus::MidiOutput)) {
+                UI::showToast("STOP TO CHANGE ROUTE", 1200);
+                return true;
+            }
             auto& led = mini_acid_.sceneManager().currentScene().led;
             if (main_focus_ == MainFocus::MidiInputEnabled ||
                 main_focus_ == MainFocus::MidiInputChannel ||
@@ -1732,6 +1738,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::MidiInputEnabled ||
             main_focus_ == MainFocus::MidiInputChannel ||
             main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+        if (mini_acid_.isPlaying() &&
+            (main_focus_ == MainFocus::MidiDevice ||
+             main_focus_ == MainFocus::MidiOutput)) {
+            UI::showToast("STOP TO CHANGE ROUTE", 1200);
+            return true;
+        }
         if (main_focus_ == MainFocus::LedTest) {
             LedManager::instance().testPulse(mini_acid_.sceneManager().currentScene().led);
             return true;
@@ -2200,18 +2212,23 @@ void ProjectPage::draw(IGfx& gfx) {
     } else if (main_focus_ == MainFocus::MidiDevice) {
       const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
       const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
-      std::snprintf(hint, sizeof(hint), "%s", selected != pending ? "ENTER SAVE PROFILE"
-          : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+      std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+          ? "STOP TO CHANGE ROUTE"
+          : (selected != pending ? "ENTER SAVE PROFILE"
+              : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                     ? "PROFILE: REBOOT REQUIRED"
+                     : "PROFILE ACTIVE IN COMPUTER MODE")));
     } else if (main_focus_ == MainFocus::MidiOutput) {
       const bool pending =
           GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
       const bool selectedOutput = midi_output_preview_ == 0xFF
           ? pending : midi_output_preview_ != 0;
-      std::snprintf(hint, sizeof(hint), "%s",
-                    selectedOutput != pending ? "ENTER SAVE OUTPUT MODE"
-                    : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
-                           ? "OUTPUT MODE: REBOOT REQUIRED"
-                           : "INTERNAL SOUND IS ALWAYS ACTIVE"));
+      std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+                    ? "STOP TO CHANGE ROUTE"
+                    : (selectedOutput != pending ? "ENTER SAVE OUTPUT MODE"
+                        : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                               ? "OUTPUT MODE: REBOOT REQUIRED"
+                               : "INTERNAL SOUND IS ALWAYS ACTIVE")));
     } else if (main_focus_ == MainFocus::MidiInputChannel) {
       std::snprintf(hint, sizeof(hint), "INPUT FILTER: OMNI OR CH1..16");
     } else {

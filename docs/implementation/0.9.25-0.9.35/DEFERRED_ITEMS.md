@@ -10,7 +10,7 @@ This list separates known unfinished work from verified baseline behavior. Items
 
 ## Baseline gaps for later milestones
 
-- **Live route/profile rebinding:** active USB output consumes a startup snapshot. Profile edits are persisted for the next boot; they do not update running MIDI lanes. Preserve that explicit behavior until a bounded, ownership-aware rebind transaction is implemented and tested.
+- **Live route/profile rebinding:** active USB output consumes a startup snapshot. Project → MIDI now blocks Device Profile and External MIDI output preview/save while playing; stopped edits remain next-boot settings and do not update running MIDI lanes. Keep dynamic rebinding deferred until a bounded, ownership-aware release/activate transaction is designed and tested.
 - **Custom Performance route table:** current persisted settings cannot fully describe A/B/DX/drum Performance routes. Custom projection fails closed; do not infer mappings from Pattern routes.
 - **Integrated route and endpoint lifecycle traces:** component tests cover ownership, pending releases, tee failover and UART queue pressure, but tests still need to prove the complete dispatcher path across route changes, per-endpoint loss/rejoin, project replacement and Song transitions.
 - **SMF v5 fixture:** source has a v5 reader, but the reviewed legacy fixtures directly cover v3 and v4 only. Add a v5 fixture before changing `.gpp` storage.
@@ -40,9 +40,9 @@ This list separates known unfinished work from verified baseline behavior. Items
 ## 0.9.32 follow-up
 
 - **Owner listening and performance feel:** host transforms and SDL readability are checked, but macro combinations, perceived timing, internal sound and physical controls need owner evaluation with the 0.9.35 candidate.
-- **Pitch Bend, aftertouch and motion/gesture input:** deferred P2. Add only after output-route support and lifecycle behavior are specified. No Cardputer IMU is assumed.
+- **Pitch Bend, aftertouch and motion/gesture input:** deferred through 0.9.35. Cardputer ADV includes a BMI270 six-axis IMU ([M5Stack specification](https://docs.m5stack.com/en/core/Cardputer-Adv)), but this roadmap does not add motion behavior or claim that its firmware path has been verified. Revisit only after integrated hardware acceptance.
 - **Macro-to-CC mapping and automatic expression:** deferred; macros remain musical transformations and do not send controller messages.
-- **Live profile rebinding:** still unsupported. The active output uses its startup route snapshot; profile changes take effect on the next startup.
+- **Live profile rebinding:** still unsupported. The active output uses its startup route snapshot; Project → MIDI locks profile/output changes while playing, and stopped changes take effect on the next startup.
 - **Hardware MIDI claims:** USB enumeration, DIN behavior and Yamaha SEQTRAK reception remain `NOT TESTED` until owner acceptance of 0.9.35.
 - **CC retry deadline after extreme idle:** the wrap-safe 20 ms limiter can encounter signed half-range ambiguity if a cached deadline remains unused for more than roughly half the `uint32_t` millisecond range. Normal sends initialize/retry the deadline; this extreme-idle case is deferred and needs a focused clock-injection test before changing the limiter.
 - **Custom-route fake/UI channel agreement:** the route fake uses channels 5/7 while the Custom UI fallback displays 8/9. Existing tests cover the custom fallback and UI label separately but do not assert their exact shared projection. Tighten this fixture when expanding custom-route support.

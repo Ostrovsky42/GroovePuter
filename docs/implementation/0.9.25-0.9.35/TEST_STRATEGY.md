@@ -32,6 +32,7 @@ Baseline SHA: `28918d9b78e9a527ce2b5ce201a465af5126f76a`. Test results are recor
 - **0.9.29:** Targeted macro engine and Performance UI tests pass; the P0 mock-MIDI integration verifies Pattern projection before shared audio/MIDI ownership; the P3 runtime test verifies Phrase projection without source mutation. SDL keyboard smoke covered macro select/value/reset, Play/Stop, Song row advance, page return, Scene Save/Load and 240×135 readability. The SDL run used dummy audio. The canonical full host suite passed (exit 0); the P0 compatibility runner passed deterministic GCC repeat, Clang parity, ASan and UBSan. No hardware behavior is established.
 - **0.9.30–0.9.31:** harmonic fallback and chord transitions, motif identity, transactional Song form generation, capacity refusal, Undo and round-trip fixtures.
 - **0.9.32:** CC ranges/order/rate limit/deduplication, Stop reset and disconnect cleanup.
+- **0.9.32 integration risk closure:** exercise Project → MIDI profile and output-mode edits during active playback; both preview and save must be blocked, while stopped edits remain available. `bash tests/run_midi_perform_ui_polish_tests.sh` covers this UI contract.
 - **0.9.33:** parse exported SMF with an independent parser and verify tempo, channels, delta times, track endings, deterministic round-trip, overlaps and failed-write cleanup.
 - **0.9.34–0.9.35:** reproducible release-profile FS1B artifact, checksums/provenance, old/new project fixtures, full SDL Golden Path and final resource delta.
 
