@@ -215,18 +215,28 @@ int main() {
   assert(gfx.has("TENSION"));
   assert(gfx.has("RESET ALL"));
   gfx.bodyFits();
+  // Rows are ENERGY, SPACE, MUTATION, TENSION, RESET ALL; the cursor starts on ENERGY.
+  send(scan(GROOVEPUTER_RIGHT));  // ENERGY +5%
+  assert(engine.performanceMacroState().energy == 5);
+  send(scan(GROOVEPUTER_LEFT));   // back to 0
+  send(scan(GROOVEPUTER_LEFT));   // negative values are allowed: ENERGY -5%
+  assert(engine.performanceMacroState().energy == -5);
+  send(scan(GROOVEPUTER_RIGHT));  // back to 0
+  send(scan(GROOVEPUTER_RIGHT));  // +5% again
+  assert(engine.performanceMacroState().energy == 5);
+  send(key('\n'));               // reset only ENERGY
+  assert(engine.performanceMacroState().energy == 0);
+  for (int i = 0; i < 3; ++i) send(scan(GROOVEPUTER_DOWN));  // ENERGY -> TENSION
   send(scan(GROOVEPUTER_RIGHT));  // TENSION +5%
   assert(engine.performanceMacroState().tension == 5);
-  send(scan(GROOVEPUTER_DOWN));  // ENERGY
-  send(scan(GROOVEPUTER_RIGHT));
-  assert(engine.performanceMacroState().energy == 5);
-  send(key('\n'));              // reset only ENERGY
-  assert(engine.performanceMacroState().energy == 0);
-  send(scan(GROOVEPUTER_UP));    // TENSION
-  send(key('\n'));              // reset only TENSION
+  send(scan(GROOVEPUTER_UP));     // MUTATION: reset only that row (stays 0)
+  send(key('\n'));
+  assert(engine.performanceMacroState().mutation == 0);
+  send(scan(GROOVEPUTER_DOWN));   // TENSION
+  send(key('\n'));               // reset only TENSION
   assert(engine.performanceMacroState().tension == 0);
   for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));
-  send(key('\n'));              // RESET ALL
+  send(key('\n'));               // RESET ALL
   assert(engine.performanceMacroState().valid());
   assert(engine.performanceMacroState().tension == 0 &&
          engine.performanceMacroState().energy == 0 &&

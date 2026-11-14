@@ -31,13 +31,13 @@ constexpr const char* kToolContextNames[] = {
     "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO",
 };
 constexpr GroovePuterPerformance::Macros::Control kMacroControls[] = {
-    GroovePuterPerformance::Macros::Control::Tension,
     GroovePuterPerformance::Macros::Control::Energy,
     GroovePuterPerformance::Macros::Control::Space,
     GroovePuterPerformance::Macros::Control::Mutation,
+    GroovePuterPerformance::Macros::Control::Tension,
 };
 
-uint8_t macroValue(const GroovePuterPerformance::Macros::State& state,
+int macroValue(const GroovePuterPerformance::Macros::State& state,
                    GroovePuterPerformance::Macros::Control control) {
     switch (control) {
         case GroovePuterPerformance::Macros::Control::Tension: return state.tension;
@@ -515,10 +515,11 @@ void PerformPage::adjustSelectedValue(int direction) {
             const auto control = kMacroControls[row];
             int next = static_cast<int>(macroValue(state, control)) +
                        (direction > 0 ? 5 : -5);
-            if (next < 0) next = 0;
+            if (next < GroovePuterPerformance::Macros::kValueMin)
+                next = GroovePuterPerformance::Macros::kValueMin;
             if (next > GroovePuterPerformance::Macros::kValueMax)
                 next = GroovePuterPerformance::Macros::kValueMax;
-            state.set(control, static_cast<uint8_t>(next));
+            state.set(control, next);
             miniAcid_.setPerformanceMacroState(state);
             return;
         }
@@ -1458,10 +1459,10 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         case PerformanceToolContext::Macro: {
             const auto state = miniAcid_.performanceMacroState();
             static constexpr const char* labels[] = {
-                "TENSION", "ENERGY", "SPACE", "MUTATION"};
+                "ENERGY", "SPACE", "MUTATION", "TENSION"};
             for (uint8_t row = 0; row < 4; ++row) {
-                std::snprintf(value, sizeof(value), "%u%%",
-                    static_cast<unsigned>(macroValue(state, kMacroControls[row])));
+                std::snprintf(value, sizeof(value), "%+d%%",
+                    macroValue(state, kMacroControls[row]));
                 drawRow(row, labels[row], value, true);
             }
             drawRow(4, "RESET ALL", "ENTER", true);
