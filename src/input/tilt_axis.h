@@ -1,4 +1,5 @@
-#pragma once
+#ifndef GROOVEPUTER_TILT_AXIS_H
+#define GROOVEPUTER_TILT_AXIS_H
 // Tilt to MIDI CC offset: pure, host-testable pieces. No sensor, no SDL, no
 // allocation. Used only by the GROOVEPUTER_TILT experiment; nothing includes
 // this header without that flag.
@@ -8,6 +9,8 @@
 // full scale at +-30 deg -> integer offset -63..+63 -> hysteresis of one step.
 #include <cmath>
 #include <cstdint>
+#include <cstdio>
+#include <cstring>
 
 #include "src/midi/midi_realtime_word.h"
 
@@ -32,8 +35,8 @@ inline float angleXDeg(float ax, float ay, float az) { return axisAngleDeg(ax, a
 inline float angleYDeg(float ax, float ay, float az) { return axisAngleDeg(ay, ax, az); }
 
 // TILT SENS: degrees of tilt that give full scale, one per step (index 0..3).
-inline constexpr float kSensRangeDeg[4] = {45.0f, 30.0f, 20.0f, 12.0f};
-inline constexpr uint8_t kSensDefault = 1;   // 30 deg, the first experiment's value
+inline constexpr float kSensRangeDeg[5] = {60.0f, 45.0f, 30.0f, 20.0f, 12.0f};
+inline constexpr uint8_t kSensDefault = 2;   // 30 deg, the first experiment's value
 
 // Delta angle (degrees from the captured zero) to a CC offset -63..+63.
 // Zero inside the dead zone, continuous from its edge, saturating at rangeDeg.
@@ -156,6 +159,10 @@ inline volatile uint8_t gSensIndex = kSensDefault;
 inline volatile uint8_t gAxisChoice[3] = {1, 4, 0};
 // TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
 inline volatile bool gFlickEnabled = true;
+// TILT ZERO request from PERFORM > INPUT; loop() applies it to the controller.
+inline volatile bool gZeroRequested = false;
+// Shared settings (not per project) are written by loop() when a setting changes.
+inline volatile bool gSaveRequested = false;
 
 // Mode state: enable/disable, zero capture on enable, the |a| ~ 1 g guard.
 class TiltController {
@@ -165,6 +172,15 @@ public:
     int offsetY() const { return y_.offset(); }
     TiltTarget target() const { return target_; }
     void setTarget(TiltTarget t) { target_ = t; }
+    // TILT ZERO: the current pose becomes zero on X, Y and Z (the next sample is captured).
+    void recalibrate() {
+        x_.reset();
+        y_.reset();
+        zAngle_ = 0.0f;
+        z_ = 0;
+        flick_.reset();
+        bad_ = false;
+    }
     // True once after each flick that moved the target (cleared on read).
     bool takeTargetChanged() {
         const bool changed = targetChanged_;
@@ -216,7 +232,7 @@ public:
             return true;   // hold the last offsets while the sample is unreliable
         }
         bad_ = false;
-        const float range = kSensRangeDeg[gSensIndex < 4 ? gSensIndex : kSensDefault];
+        const float range = kSensRangeDeg[gSensIndex < 5 ? gSensIndex : kSensDefault];
         x_.update(angleXDeg(ax, ay, az), dt, range);
         y_.update(angleYDeg(ax, ay, az), dt, range);
         // Yaw: integrate the gyro, leak toward zero, then the same dead zone and scale.
@@ -241,7 +257,7 @@ public:
     }
 
 private:
-    static constexpr float kGyroLeakMs = 3000.0f;   // turns back to zero in a few seconds
+    static constexpr float kGyroLeakMs = 9000.0f;   // a held yaw drifts back to zero over ~9 s
     TiltAxis x_;
     TiltAxis y_;
     float zAngle_ = 0.0f;
@@ -261,4 +277,54 @@ inline TiltController gController;
 inline MidiRealtimeWord gWord;
 inline volatile bool gToggleRequested = false;
 
+// Shared TILT settings, kept across projects: TILT SENS, the X/Y/Z controllers and
+// TILT FLICK. The target and the zero are not stored (the target starts at ALL, the
+// zero is a pose). Plain text, one key per line; unknown or bad values keep defaults.
+struct StoredSettings {
+    uint8_t sens = kSensDefault;
+    uint8_t choice[3] = {1, 4, 0};
+    bool flick = true;
+};
+
+// Writes the file body into out; returns the number of characters (not counting the NUL).
+inline int formatSettings(const StoredSettings& v, char* out, size_t size) {
+    return std::snprintf(out, size, "sens=%u\nx=%u\ny=%u\nz=%u\nflick=%u\n",
+                         static_cast<unsigned>(v.sens), static_cast<unsigned>(v.choice[0]),
+                         static_cast<unsigned>(v.choice[1]), static_cast<unsigned>(v.choice[2]),
+                         v.flick ? 1u : 0u);
+}
+
+// Reads the text back. Starts from the defaults, so a missing or partial file is harmless.
+inline StoredSettings parseSettings(const char* text) {
+    StoredSettings v{};
+    const char* line = text;
+    while (line != nullptr && *line != '\0') {
+        unsigned value = 0;
+        if (std::sscanf(line, "sens=%u", &value) == 1 && value < 5u) v.sens = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "x=%u", &value) == 1 && value <= 4u) v.choice[0] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "y=%u", &value) == 1 && value <= 4u) v.choice[1] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "z=%u", &value) == 1 && value <= 4u) v.choice[2] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "flick=%u", &value) == 1 && value <= 1u) v.flick = value != 0u;
+        const char* next = std::strchr(line, '\n');
+        line = next == nullptr ? nullptr : next + 1;
+    }
+    return v;
+}
+
+inline StoredSettings currentSettings() {
+    StoredSettings v{};
+    v.sens = static_cast<uint8_t>(gSensIndex);
+    for (uint8_t i = 0; i < 3; ++i) v.choice[i] = static_cast<uint8_t>(gAxisChoice[i]);
+    v.flick = gFlickEnabled;
+    return v;
+}
+
+inline void applySettings(const StoredSettings& v) {
+    gSensIndex = v.sens;
+    for (uint8_t i = 0; i < 3; ++i) gAxisChoice[i] = v.choice[i];
+    gFlickEnabled = v.flick;
+}
+
 }  // namespace GroovePuterTilt
+
+#endif  // GROOVEPUTER_TILT_AXIS_H

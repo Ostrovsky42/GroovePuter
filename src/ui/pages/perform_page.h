@@ -48,6 +48,7 @@ enum class PerformInputRow : uint8_t {
     TiltYRow,       // TILT Y: the same choice for the Y axis
     TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
     TiltFlickRow,   // TILT FLICK: ON = a quick flick cycles the target; OFF = menu only
+    TiltZeroRow,    // TILT ZERO: press to make the current pose the zero of X, Y and Z
     Count,
 };
 
@@ -94,7 +95,7 @@ public:
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
     static constexpr uint8_t kTiltRowFirst = performInputRow(PerformInputRow::TiltTargetRow);
-    static constexpr uint8_t kTiltRowLast = performInputRow(PerformInputRow::TiltFlickRow);
+    static constexpr uint8_t kTiltRowLast = performInputRow(PerformInputRow::TiltZeroRow);
     static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
     static_assert(kPartnerRowLast + 1 == kTiltRowFirst, "TILT follows the HELPER group");
     static_assert(kTiltRowLast + 1 == kInputRowCount, "TILT Y is the last INPUT row");

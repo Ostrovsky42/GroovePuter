@@ -231,8 +231,9 @@ void testZGyroAndSensitivity() {
     CHECK(packOffsets(false, 1, 2, TiltTarget::A, 3) == 0u);
 
     // Sensitivity: the same delta gives a larger offset at a smaller full scale.
-    CHECK(offsetForDelta(20.0f, kSensRangeDeg[0]) < offsetForDelta(20.0f, kSensRangeDeg[3]));
-    CHECK(offsetForDelta(12.0f, kSensRangeDeg[3]) == kMaxOffset);
+    CHECK(offsetForDelta(20.0f, kSensRangeDeg[0]) < offsetForDelta(20.0f, kSensRangeDeg[4]));
+    CHECK(offsetForDelta(12.0f, kSensRangeDeg[4]) == kMaxOffset);
+    CHECK(kSensRangeDeg[0] == 60.0f && kSensRangeDeg[kSensDefault] == 30.0f);
 
     // Gyro: a steady 60 deg/s turn for about 0.5 s moves Z off zero, then the leak
     // (3 s) brings it back toward zero while the device is held still.
@@ -242,10 +243,46 @@ void testZGyroAndSensitivity() {
     for (int i = 0; i < 40; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t, 60.0f); }
     CHECK(c.offsetZ() > 0);
     const int peak = c.offsetZ();
-    for (int i = 0; i < 300; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t, 0.0f); }
+    for (int i = 0; i < 600; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t, 0.0f); }   // 12 s
     CHECK(c.offsetZ() < peak / 2);            // leaked back, not stuck
     c.disable();
     CHECK(c.offsetZ() == 0);
+}
+
+void testRecalibrateMakesThePoseZero() {
+    using namespace GroovePuterTilt;
+    TiltController c;
+    uint32_t t = 0;
+    c.enable(t);
+    for (int i = 0; i < 5; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t); }   // rest is the zero
+    // Hold a 30-degree pose on X for a while: offset away from zero.
+    for (int i = 0; i < 60; ++i) { t += 20; c.feed(0.5f, 0.0f, 0.866f, t); }
+    CHECK(c.offsetX() > 20);
+    // TILT ZERO at this pose: the same pose now reads as zero.
+    c.recalibrate();
+    for (int i = 0; i < 20; ++i) { t += 20; c.feed(0.5f, 0.0f, 0.866f, t); }
+    CHECK(c.offsetX() == 0 && c.offsetY() == 0 && c.offsetZ() == 0);
+    // A further tilt from the new zero moves the offset again.
+    for (int i = 0; i < 60; ++i) { t += 20; c.feed(0.0f, 0.5f, 0.866f, t); }
+    CHECK(c.offsetY() > 20);
+}
+
+void testSharedSettingsRoundTripAndBadValues() {
+    using namespace GroovePuterTilt;
+    StoredSettings v{};
+    v.sens = 4;
+    v.choice[0] = 2; v.choice[1] = 3; v.choice[2] = 4;
+    v.flick = false;
+    char text[96];
+    formatSettings(v, text, sizeof(text));
+    const StoredSettings back = parseSettings(text);
+    CHECK(back.sens == 4 && back.choice[0] == 2 && back.choice[1] == 3 && back.choice[2] == 4);
+    CHECK(!back.flick);
+    // Bad or missing lines keep the defaults; a bad value does not overwrite a good one.
+    const StoredSettings partial = parseSettings("sens=9\nx=77\nflick=yes\nz=2\n");
+    CHECK(partial.sens == kSensDefault && partial.choice[0] == 1 && partial.choice[2] == 2);
+    CHECK(partial.flick);
+    CHECK(parseSettings("").choice[1] == 4);
 }
 
 int main() {
@@ -259,6 +296,8 @@ int main() {
     testController();
     testGravityGuard();
     testZGyroAndSensitivity();
+    testRecalibrateMakesThePoseZero();
+    testSharedSettingsRoundTripAndBadValues();
     if (g_fail) { std::printf("%d failure(s)\n", g_fail); return 1; }
     std::printf("tilt_axis: all tests passed\n");
     return 0;
