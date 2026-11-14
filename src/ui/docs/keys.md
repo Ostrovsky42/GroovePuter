@@ -657,6 +657,12 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `Enter` on Save | Save under the current name (unnamed project: asks for a name) |
 | `A` on Save | Save As: type a new name |
 
+In PROJECT > MIDI, `Device Profile` selects the external target (SEQTRAK, GM
+or GENERIC). `External MIDI` selects `INTERNAL` or `INT + MIDI`; the built-in
+sound remains active in both modes, and MIDI input remains independently
+configured. The selection is marked with `*` until `Enter` saves it and takes
+effect after reboot. Changing the profile does not turn external output back on.
+
 MIDI import (PROJECT > Import MIDI, pick a file): the IMPORT track list shows one row
 per channel (#, NAME, CH, N notes, RANGE, per-bar strip, TARGET).
 `Up/Down` track, `T` target (A, B, DRUMS, SKIP), `Left/Right` bar cursor,

@@ -55,6 +55,7 @@ struct DrumMidiRoute {
 struct MidiOutputSettings {
     MidiDeviceProfile profile{MidiDeviceProfile::SeqtrakNative};
 
+    // Master gate for all outbound external MIDI. Internal audio is independent.
     bool enabled{true};
     bool liveEnabled{true};
     bool patternSynthAEnabled{true};
@@ -90,6 +91,10 @@ uint8_t uiMidiChannelFromZeroBased(uint8_t zeroBasedChannel);
 MidiOutputSettings makeDefaultMidiOutputSettings(MidiDeviceProfile profile);
 void applyMidiDeviceProfile(MidiDeviceProfile profile,
                             MidiOutputSettings& settings);
+MidiOutputSettings composeNextBootMidiOutputSettings(
+    const MidiOutputSettings& active,
+    MidiDeviceProfile pendingProfile,
+    bool externalMidiEnabled);
 
 bool isValidMidiOutputSettings(const MidiOutputSettings& settings);
 void sanitizeMidiOutputSettings(MidiOutputSettings& settings);

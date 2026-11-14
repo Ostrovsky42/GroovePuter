@@ -20,7 +20,11 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Decision:** Genre, Rhythm, Feel, Harmony, Motif, Arrangement, Performance, Routing and Sound remain distinct responsibilities. Device profiles may select destinations and supported controls; they do not own notes or rewrite material.
 
-**Open design item:** the profile enum has SEQTRAK, General MIDI, Generic MIDI and Custom, but no explicit Internal profile. Define the visible Internal semantics by projecting existing output-target state before adding another profile owner.
+**Decision:** Keep `MidiDeviceProfile` for external device identity. `MidiOutputSettings.enabled` is the independent destination switch: OFF means internal audio only; ON means internal audio plus the selected external MIDI profile. The Project → MIDI screen labels these states `INTERNAL` and `INT + MIDI`. Disabling external output gates Pattern, Performance, SMF and outbound transport messages; it does not disable internal synthesis or MIDI input. Both changes remain next-boot settings.
+
+**Approaches considered:** Adding `Internal` to the device-profile enum would mix endpoint identity with destination enable and require special capability/profile restore rules. Adding a second persisted output-mode enum would duplicate the existing `enabled` bit and require a migration. Reusing the existing bit and exposing it as a separate UI row preserves the schema and keeps routing/profile ownership separate; this is the chosen approach.
+
+**Evidence:** `MidiSettingsCodec` already persists the enable bit; startup route projections and `UsbMidiOutput` have output gates. The remaining direct outbound transport path is gated in the dispatcher. See `MIDI_CONTRACTS.md` and the 0.9.27 milestone entry.
 
 ### AD-004 — Real-time changes stay bounded
 

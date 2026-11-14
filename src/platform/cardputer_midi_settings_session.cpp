@@ -90,6 +90,7 @@ public:
         const GroovePuterMidi::MidiOutputSettings& settings =
             profileRuntime.settings();
         pendingProfile_ = settings.profile;
+        pendingOutputEnabled_ = settings.enabled;
 
         // R5/R6 publish the frozen Pattern + predefined Performance startup
         // routes before the dispatcher begins. R7 profile edits intentionally
@@ -119,10 +120,17 @@ public:
         return pendingProfile_;
     }
 
+    bool pendingOutputEnabled() {
+        if (!initialized_) initialize();
+        return pendingOutputEnabled_;
+    }
+
     bool restartRequired() {
         if (!initialized_) initialize();
-        return pendingProfile_ !=
-               GroovePuterMidi::midiDeviceProfileRuntime().profile();
+        const GroovePuterMidi::MidiOutputSettings& active =
+            GroovePuterMidi::midiDeviceProfileRuntime().settings();
+        return pendingProfile_ != active.profile ||
+               pendingOutputEnabled_ != active.enabled;
     }
 
     bool selectProfileForNextBoot(GroovePuterMidi::MidiDeviceProfile profile) {
@@ -133,8 +141,9 @@ public:
         // Build the persisted candidate from the active runtime snapshot. The
         // active USB/transport capability owner stays unchanged until reboot.
         GroovePuterMidi::MidiOutputSettings candidate =
-            GroovePuterMidi::midiDeviceProfileRuntime().settings();
-        GroovePuterMidi::applyMidiDeviceProfile(profile, candidate);
+            GroovePuterMidi::composeNextBootMidiOutputSettings(
+                GroovePuterMidi::midiDeviceProfileRuntime().settings(),
+                profile, pendingOutputEnabled_);
 
         const bool saved = persistence_.save(candidate);
         if (saved) pendingProfile_ = profile;
@@ -144,6 +153,25 @@ public:
             GroovePuterMidi::midiDeviceProfileName(profile),
             GroovePuterMidi::midiDeviceProfileName(
                 GroovePuterMidi::midiDeviceProfileRuntime().profile()),
+            static_cast<unsigned>(restartRequired() ? 1 : 0));
+        return saved;
+    }
+
+    bool selectOutputEnabledForNextBoot(bool enabled) {
+        if (!initialized_) initialize();
+        if (enabled == pendingOutputEnabled_) return true;
+
+        const GroovePuterMidi::MidiOutputSettings candidate =
+            GroovePuterMidi::composeNextBootMidiOutputSettings(
+                GroovePuterMidi::midiDeviceProfileRuntime().settings(),
+                pendingProfile_, enabled);
+        const bool saved = persistence_.save(candidate);
+        if (saved) pendingOutputEnabled_ = enabled;
+        Serial.printf(
+            "[MIDI-SETTINGS] output-save=%u output=%s profile=%s reboot=%u\n",
+            static_cast<unsigned>(saved ? 1 : 0),
+            enabled ? "INT+MIDI" : "INTERNAL",
+            GroovePuterMidi::midiDeviceProfileName(pendingProfile_),
             static_cast<unsigned>(restartRequired() ? 1 : 0));
         return saved;
     }
@@ -158,10 +186,10 @@ public:
 
         // Preserve a pending next-boot profile selection when a later transport
         // control change is persisted before reboot.
-        GroovePuterMidi::MidiOutputSettings record = profileRuntime.settings();
-        if (pendingProfile_ != record.profile) {
-            GroovePuterMidi::applyMidiDeviceProfile(pendingProfile_, record);
-        }
+        GroovePuterMidi::MidiOutputSettings record =
+            GroovePuterMidi::composeNextBootMidiOutputSettings(
+                profileRuntime.settings(), pendingProfile_,
+                pendingOutputEnabled_);
         record.transportClockSource = source;
         record.externalFollowEnabled = externalFollowEnabled;
 
@@ -184,6 +212,7 @@ private:
     GroovePuterMidi::MidiSettingsPersistence persistence_{storage_};
     GroovePuterMidi::MidiDeviceProfile pendingProfile_{
         GroovePuterMidi::MidiDeviceProfile::SeqtrakNative};
+    bool pendingOutputEnabled_{true};
     bool initialized_{false};
 };
 
@@ -290,7 +319,15 @@ bool selectCardputerMidiDeviceProfileForNextBoot(
     return settingsSession().selectProfileForNextBoot(profile);
 }
 
-bool cardputerMidiDeviceProfileRestartRequired() {
+bool pendingCardputerMidiOutputEnabled() {
+    return settingsSession().pendingOutputEnabled();
+}
+
+bool selectCardputerMidiOutputEnabledForNextBoot(bool enabled) {
+    return settingsSession().selectOutputEnabledForNextBoot(enabled);
+}
+
+bool cardputerMidiSettingsRestartRequired() {
     return settingsSession().restartRequired();
 }
 

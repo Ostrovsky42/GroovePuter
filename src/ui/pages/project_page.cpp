@@ -23,6 +23,7 @@
 #include "../help_dialog_frames.h"
 #include "../ui_widgets.h"
 #include "../midi_device_profile_ui.h"
+#include "../midi_output_mode_ui.h"
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_host_midi.h"
@@ -35,6 +36,7 @@
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
+namespace MidiOutputModeUi = GroovePuterUi::MidiOutputModeUi;
 namespace InputUi = GroovePuterUi::MidiInputUi;
 std::string generateMemorableName() {
   static const char* adjectives[] = {
@@ -687,6 +689,7 @@ void ProjectPage::onEnter(int context) {
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
   midi_profile_preview_ = ProfileUi::kUnsetPreview;
+  midi_output_preview_ = 0xFF;
   usb_role_preview_ = 0xFF;
 }
 
@@ -1571,8 +1574,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (section_ == ProjectSection::Midi) {
             midi_profile_preview_ = ProfileUi::encodePreview(
                 GroovePuterPlatform::pendingCardputerMidiDeviceProfile());
+            midi_output_preview_ = static_cast<uint8_t>(
+                GroovePuterPlatform::pendingCardputerMidiOutputEnabled() ? 1 : 0);
         } else if (previousSection == ProjectSection::Midi) {
             midi_profile_preview_ = ProfileUi::kUnsetPreview;
+            midi_output_preview_ = 0xFF;
         }
         return true;
     }
@@ -1616,6 +1622,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 const auto next = ProfileUi::stepSelectableProfile(
                     current, right ? 1 : -1);
                 midi_profile_preview_ = ProfileUi::encodePreview(next);
+                return true;
+            }
+            if (main_focus_ == MainFocus::MidiOutput) {
+                const bool pending =
+                    GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+                const bool current = midi_output_preview_ == 0xFF
+                    ? pending : midi_output_preview_ != 0;
+                midi_output_preview_ = static_cast<uint8_t>(current ? 0 : 1);
                 return true;
             }
             if (main_focus_ == MainFocus::Volume) {
@@ -1738,10 +1752,28 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             std::snprintf(
                 toast, sizeof(toast), "MIDI %s %s",
                 ProfileUi::shortName(selected),
-                GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()
+                GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
                     ? "SAVED - REBOOT"
                     : "ACTIVE");
             UI::showToast(toast, 1400);
+            return true;
+        }
+        if (main_focus_ == MainFocus::MidiOutput) {
+            const bool pending =
+                GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+            const bool selected = midi_output_preview_ == 0xFF
+                ? pending : midi_output_preview_ != 0;
+            if (!GroovePuterPlatform::selectCardputerMidiOutputEnabledForNextBoot(
+                    selected)) {
+                UI::showToast("MIDI output save failed", 1400);
+                return true;
+            }
+            midi_output_preview_ = static_cast<uint8_t>(selected ? 1 : 0);
+            UI::showToast(
+                GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                    ? "MIDI OUTPUT SAVED - REBOOT"
+                    : "MIDI OUTPUT ACTIVE",
+                1400);
             return true;
         }
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
@@ -2024,6 +2056,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::LedTest: label = "Test LED"; break;
       case MainFocus::UsbRole: label = "USB Role"; break;
       case MainFocus::MidiDevice: label = "Device Profile"; break;
+      case MainFocus::MidiOutput: label = "External MIDI"; break;
       case MainFocus::MidiInputEnabled: label = "MIDI Input"; break;
       case MainFocus::MidiInputChannel: label = "Input Channel"; break;
       case MainFocus::MidiInputTarget: label = "Input Route"; break;
@@ -2085,6 +2118,16 @@ void ProjectPage::draw(IGfx& gfx) {
         const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
         std::snprintf(line, sizeof(line), "<%s>%s",
                       ProfileUi::shortName(selected), selected != pending ? "*" : "");
+        break;
+      }
+      case MainFocus::MidiOutput: {
+        const bool pending =
+            GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+        const bool selectedOutput = midi_output_preview_ == 0xFF
+            ? pending : midi_output_preview_ != 0;
+        std::snprintf(line, sizeof(line), "<%s>%s",
+                      MidiOutputModeUi::outputModeName(selectedOutput),
+                      selectedOutput != pending ? "*" : "");
         break;
       }
       case MainFocus::MidiInputEnabled: {
@@ -2158,7 +2201,17 @@ void ProjectPage::draw(IGfx& gfx) {
       const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
       const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
       std::snprintf(hint, sizeof(hint), "%s", selected != pending ? "ENTER SAVE PROFILE"
-          : (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+          : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+    } else if (main_focus_ == MainFocus::MidiOutput) {
+      const bool pending =
+          GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+      const bool selectedOutput = midi_output_preview_ == 0xFF
+          ? pending : midi_output_preview_ != 0;
+      std::snprintf(hint, sizeof(hint), "%s",
+                    selectedOutput != pending ? "ENTER SAVE OUTPUT MODE"
+                    : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                           ? "OUTPUT MODE: REBOOT REQUIRED"
+                           : "INTERNAL SOUND IS ALWAYS ACTIVE"));
     } else if (main_focus_ == MainFocus::MidiInputChannel) {
       std::snprintf(hint, sizeof(hint), "INPUT FILTER: OMNI OR CH1..16");
     } else {

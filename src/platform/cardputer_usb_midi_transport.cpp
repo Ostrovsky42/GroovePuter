@@ -19,6 +19,7 @@
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
 #include "src/midi/midi_companion_settings.h"
+#include "src/midi/midi_device_profile_runtime.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/midi_input_dispatcher.h"
 #include "src/midi/midi_input_parser.h"
@@ -1024,14 +1025,16 @@ void applyCardputerDinEnableRequest();
 void serviceCutoffAutomation();
 
 void midiDispatchTask(void*) {
-    // Enabled at start-up for the first hardware slice: there is no UI toggle
-    // yet, so this is the only way the DIN wire can be heard. Note that with
-    // DIN on, mounted() is true even with no USB host, so SMF no longer parks
-    // in USB WAIT when nothing is listening on USB.
+    // Keep the DIN secondary available, but apply the persisted external MIDI
+    // output switch to the shared owner before dispatching any notes. With DIN
+    // on, mounted() remains true even when output is disabled and no USB host
+    // exists; UsbMidiOutput's enabled gate also covers SMF and generated notes.
     g_wire.setSecondaryEnabled(true);
     if (!g_output.begin()) {
         Serial.println("[MIDI-DISPATCH] USB MIDI begin failed");
     }
+    g_output.setEnabled(
+        GroovePuterMidi::midiDeviceProfileRuntime().settings().enabled);
 
     ScheduledMusicalEvent pendingMusical{};
     ScheduledMusicalEvent pendingDrumGate{};
@@ -1122,8 +1125,9 @@ void midiDispatchTask(void*) {
         // deadline-wait race; this early check prevents stale lifecycle packets
         // from surviving a quick SEQ MASTER -> GP MASTER round trip.
         if (hasPendingTransport &&
-            !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
-                GroovePuterMidi::transportClockRuntime().source())) {
+            (!g_output.enabled() ||
+             !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+                 GroovePuterMidi::transportClockRuntime().source()))) {
             ++g_diagnostics.outboundTransportSuppressed;
             hasPendingTransport = false;
             continue;
@@ -1344,7 +1348,8 @@ void midiDispatchTask(void*) {
         }
 
         if (kind == PendingKind::Transport) {
-            if (!GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+            if (!g_output.enabled() ||
+                !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
                     GroovePuterMidi::transportClockRuntime().source())) {
                 ++g_diagnostics.outboundTransportSuppressed;
             } else if (pendingTransport.type == MidiTransportEventType::Clock &&

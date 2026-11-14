@@ -45,3 +45,11 @@ The code has one `TransportClockRuntime` source selection (internal GroovePuter 
 - The profile enum currently lists SeqtrakNative, GeneralMidi, GenericMidi and Custom; Internal is represented through route enable/target state rather than a device profile. Define the roadmap's Internal semantics without conflating output availability with musical role.
 
 Status: overall transport disconnect/reconnect cleanup is covered by a fake-transport regression; runtime route rebinding remains deliberately unavailable. Residual gaps above remain open; runtime claims are host-only; hardware status **NOT TESTED**.
+
+## 0.9.27 output destination
+
+- The existing persisted `MidiOutputSettings.enabled` bit is the external-output master. OFF is presented as `INTERNAL`; ON is presented as `INT + MIDI`. The internal audio engine remains active in either state.
+- Device profile and output enable are independent pending settings. Selecting Generic/GM/SEQTRAK does not turn external output back on, and selecting Internal does not erase the selected profile. The settings codec remains schema v2; no storage migration was added.
+- At boot, `MidiDeviceProfileRuntime` publishes role projections from the persisted settings and `UsbMidiOutput` receives the same external-output enable. This gates generated Pattern/Performance notes, SMF note output, MIDI input-thru echo and controller traffic. The dispatcher's direct Clock/Start/Continue/Stop path is suppressed while external output is off.
+- MIDI input configuration remains independent, so incoming clock/control routing is not conflated with outgoing destination selection. Profile and destination changes take effect after reboot; active USB output lanes are not rebound live.
+- Host UI evidence covers preview, save feedback, profile independence and visible layout. The SDL platform stub does not exercise Cardputer Preferences persistence or physical transport output; those remain software-source/codec evidence and hardware acceptance items, respectively. Hardware status **NOT TESTED**.

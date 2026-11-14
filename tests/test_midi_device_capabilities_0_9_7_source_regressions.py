@@ -41,7 +41,7 @@ assert "static constexpr std::size_t kPayloadSize = 34;" in codec_h
 assert "MidiDeviceProfile::GenericMidi" in session_cpp
 assert "profileRuntime.applyProfile" not in session_cpp
 assert "midiDeviceProfileRuntime().applyProfile" not in session_cpp
-assert "applyMidiDeviceProfile(profile, candidate)" in session_cpp
+assert "composeNextBootMidiOutputSettings" in session_cpp
 assert "persistence_.save(candidate)" in session_cpp
 
 print("0.9.7-R2 device capability source regressions: PASS")

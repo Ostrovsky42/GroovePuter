@@ -33,3 +33,33 @@
 **Known risks:** Recovery uses channel-level CC123 because the disconnected receiver's note state is unknown; another sender sharing that channel may also be silenced. Per-endpoint Tee loss/rejoin remains unaudited. Host and firmware build evidence do not establish device behavior.
 **Hardware status:** `NOT TESTED`
 **Decision:** `GO`
+
+## Version 0.9.27 — MIDI Device Profiles
+
+**Version:** 0.9.27
+
+**Base commit:** `a4bd5dc737ad54de40f8477034cdfe498c43d393`
+
+**Result commit:** pending
+
+**Goal:** Make external MIDI enablement selectable independently from the external device profile, while keeping internal audio available.
+
+**Implemented:** Added a Project → MIDI `External MIDI` setting with `INTERNAL` and `INT + MIDI` modes. It composes with the existing persisted settings without changing schema v2; both profile and output mode are next-boot settings. The output master gate is applied to the shared `UsbMidiOutput` owner and outbound transport lifecycle events, covering generated notes, Performance, SMF and clock paths. MIDI profile selection does not rewrite musical material. Added help text and SDL evidence for preview/save and profile independence.
+
+**Not implemented:** Runtime route rebinding, immediate output-mode changes without reboot, and physical MIDI endpoint validation.
+
+**Tests added:** Output-mode label and next-boot settings unit tests; output-destination source regressions; registered in `tests/run_host_tests.sh`.
+
+**Tests passed:** Targeted output-destination runner; sequential MIDI device-profile/UI aggregate; SDL build; SDL keyboard scenario covering output-mode preview/save and profile independence; Cardputer ADV FS1B firmware build with `--warnings all` and link proof. Full `bash tests/run_host_tests.sh` ran through its final `test_ui_view_continuity_loop_tab: OK` marker; the terminal wrapper closed before its numeric exit code was captured.
+
+**Tests failed / pending:** No failure marker appeared in the full host log. The wrapper's exact exit code was not preserved, so this evidence is recorded as completion through the final test marker rather than an asserted numeric exit code. SDL used dummy audio; no audio-quality claim. No hardware tests were run.
+
+**Memory delta:** 0 B global DRAM versus baseline: 187,612 B / 191,488 B; 3,876 B headroom.
+
+**Firmware size delta:** Arduino program-storage report +1,056 B versus baseline (1,743,122 B); app-only BIN +1,056 B (1,743,280 B). BIN SHA-256: `223c8858cd36c390a66e9bb03a40d3c6d08be4e61cd66552c4c784a84fd37daa`.
+
+**Known risks:** Mode is applied at next boot because the MIDI route snapshot is frozen at startup. Host mocks and firmware compilation do not prove Cardputer USB behavior or sound. The full-suite terminal wrapper's exit code was not retained.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO`
