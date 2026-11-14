@@ -70,7 +70,7 @@
 
 **Base commit:** `efa5434562fa70303a75c5097a44f7d7e3911702`
 
-**Result commit:** Pending local milestone commit.
+**Result commit:** `f718fbb0e1d81d3353741a86643b3c321d617e13` (local implementation commit; this log update follows it).
 
 **Goal:** Expose the four transient musical macros in Performance and apply them to Pattern/Phrase/Song playback through the existing playback and output owners.
 
