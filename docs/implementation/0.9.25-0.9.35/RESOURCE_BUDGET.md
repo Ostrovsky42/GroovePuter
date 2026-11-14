@@ -195,3 +195,39 @@ Build logs: `/tmp/gp-0933-final-default-build.log` and
 `/tmp/gp-0933-final-fs1b-build.log`. These are exact-source compile/link
 measurements for the 0.9.33 result commit. No artifact was flashed. Runtime
 memory, physical SD behavior, audio timing and MIDI behavior remain unmeasured.
+
+## 0.9.34 productization build identity — exploratory
+
+These two FS1B firmware builds were made from source commit
+`0d973ffcae96f056bb1605de2000a8bac787d2f7` with `tree=dirty`. The embedded
+identity is `0.9.35-dev`; the packager confirmed that the ELF contains that
+version and source SHA. These builds prove the release profile compiles and
+that identity stamping adds negligible static state. They are not clean-source
+or final-candidate evidence.
+
+| Build profile | Program storage report | App-only BIN | Static DRAM | Gate headroom | `.dram0.data` | `.dram0.bss` |
+|---|---:|---:|---:|---:|---:|---:|
+| FS1B, release `CDCOnBoot=default` | 1,808,354 B | 1,808,512 B | 188,060 B | 3,428 B | 44,812 B | 143,248 B |
+| FS1B, comparison `CDCOnBoot=cdc` | 1,759,710 B | 1,759,872 B | 187,636 B | 3,852 B | 44,732 B | 142,904 B |
+
+The CDC-on comparison is like-for-like with the `.33` FS1B build: +116 B program
+storage, +128 B app image and no static-DRAM change. The release profile is a
+different compiler target from the `.33` baseline; do not read its larger
+footprint as an identity-stamping delta.
+
+Release-profile app-only BIN SHA-256:
+`dacc59dd4e64a6faad520992a2266e2e0d303a303b7da0596e7771f159abc95e`; merged
+BIN SHA-256:
+`d01eb4778112286b6672e1b7c71f557e6bcf7a63584fabfb46cc8142481bc9e8`.
+Comparison-profile app-only BIN SHA-256:
+`cff61bafdd2e293f972e889e92f9a11db9774793c9ad8b3826c0aad894d9ffa1`; merged
+BIN SHA-256:
+`845f609914e5af741d53692b8521a26d3191bfdf4060993b7178a5cd066eaa38`.
+
+Build logs are `/tmp/gp-0934-build-identity.log` and
+`/tmp/gp-0934-build-identity-cdc.log`. The release-profile package dry-run
+includes the verified `.16` rollback bundle; all package checksums passed, and
+two independently generated ZIPs were byte-identical. Dry-run ZIP SHA-256:
+`b664e80d691d51b6e6cc6ef26928913372b9bb5cb6a0c949023dd4e83e1d9747`.
+Its manifest records `working_tree=NOT_CHECKED`; do not treat it as the `.35`
+candidate. No firmware was flashed.

@@ -8,6 +8,7 @@
 #include "esp_rom_sys.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
+#include "src/build_identity_generated.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
@@ -504,6 +505,10 @@ void setup() {
   AudioDiagnostics::instance().enable(false);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
+  Serial.printf("[BUILD] version=%s commit=%s tree=%s\n",
+                GroovePuterBuild::kVersion,
+                GroovePuterBuild::kSourceCommit,
+                GroovePuterBuild::kSourceDirty ? "dirty" : "clean");
   uint32_t prevBootStage = g_bootStage;
   Serial.printf("[BOOT] Previous stage retained: %u\n", (unsigned)prevBootStage);
   markBootStage(1, "setup-entry");

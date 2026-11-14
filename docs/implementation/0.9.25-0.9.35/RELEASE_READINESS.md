@@ -1,7 +1,9 @@
 # Release readiness — 0.9.25–0.9.35
 
-Status: `.34` productization in progress. The current unpublished `.33` software
-build is not a `.35` candidate and is not ready for owner hardware acceptance.
+Status: `.34` productization in progress. Build identity, release-version
+resolution, clean-source enforcement and rollback bundling are implemented and
+focused-tested. The current unpublished `.33` software build is not a `.35`
+candidate and is not ready for owner hardware acceptance.
 Latest published package remains `v0.9.19`.
 
 ## Verified repository pipeline
@@ -32,25 +34,30 @@ bundle containing:
   checksum.
 
 The generator checks image presence, partition/recipe offsets, component overlap,
-app/merged sizes and the configured static DRAM gate. The current `.33` FS1B dry
-run was generated locally and checksummed; it is structural packaging evidence
-only. It was not opened in M5Burner, installed through M5Launcher, published or
-flashed to hardware. The legacy M5Burner schema/device label and newer Web Burner
-compatibility remain unverified.
+app/merged sizes, configured static DRAM gate, ELF build identity, and—when
+requested—the exact clean source SHA and tree. Final-candidate packaging requires
+a rollback archive. The packager checks its outer SHA, accepted FQBN, recorded
+owner acceptance and internal image checksums, then bundles restore instructions.
+Direct Arduino IDE builds retain a fallback `0.0.0-dev / unknown` identity;
+the scripted build replaces it with the exact version and commit in its staged
+source tree.
+The current `.34` dry-run was generated from an earlier dirty build and is
+engineering evidence only. It was not opened in M5Burner, installed through
+M5Launcher, published or flashed to hardware. The legacy M5Burner schema/device
+label and newer Web Burner compatibility remain unverified.
 
 ## Remaining `.34` / `.35` package work
 
-- Build the release FQBN (`CDCOnBoot=default`) with FS1B from the exact final
-  candidate SHA and preserve its linker map, build log, ELF and binaries.
-- Embed or expose build version and source SHA in the firmware diagnostics, then
-  confirm they match the package manifest for the exact artifact-producing SHA.
-- Make the packager prove that the supplied source SHA matches the source tree;
-  reject dirty/uncommitted source for the final candidate bundle.
-- Produce a rollback image and explicit restore instructions from the previous
-  accepted package. The source archive is now identified below, but the current
-  package generator does not yet include rollback material.
-- Run the deterministic package generator against the artifact-producing build;
-  check manifest, hashes, image addresses and archive reproducibility.
+- Rebuild the release FQBN (`CDCOnBoot=default`) with FS1B from the exact final
+  `.35` SHA and preserve its linker map, build log, ELF and binaries. An
+  exploratory release-profile build exists, but it predates current packaging
+  changes and was made from a dirty source tree.
+- Rebuild the artifact from the clean `.35` SHA and prove the embedded version
+  and source SHA match its manifest.
+- Run the clean-source package gate on that exact SHA, include the verified
+  rollback bundle, and compare repeated final archives byte-for-byte.
+- Run the full host/SDL/MIDI/storage/resource gates on the exact
+  artifact-producing SHA; the previous full host-suite result is `.33` evidence.
 - Publish no GitHub Release and submit nothing to M5Burner/M5Launcher before
   separate owner approval after hardware acceptance.
 
@@ -78,6 +85,15 @@ it does not prove current M5Burner or Web Burner acceptance.
 - `.33` export implementation: `3f492197d460a5e59664d0fefb3be0519902c0df`.
 - `.33` expanded export tests: `7a1b5c6b`.
 - `.34` package generator: `db29299fb130ad23bd5be6693f29242044e75e01`.
+- `.34` build identity and rollback integration remain uncommitted on the active
+  integration worktree; focused package, identity and version resolver tests
+  pass. `git diff --check` passes.
+- Two package dry-runs built from the existing `0.9.35-dev` FS1B artifacts were
+  byte-identical (ZIP SHA-256
+  `b664e80d691d51b6e6cc6ef26928913372b9bb5cb6a0c949023dd4e83e1d9747`) and
+  include the accepted `.16` rollback images. Their source tree was
+  `NOT_CHECKED`, so neither manifest nor firmware is a clean candidate. Every
+  file checksum passed.
 - The `.33` default and FS1B builds passed with `--warnings all`; exact sizes,
   hashes and static-DRAM headroom are in [`RESOURCE_BUDGET.md`](RESOURCE_BUDGET.md).
 - Focused exporter/parser and package-generator checks passed. The complete
@@ -107,8 +123,9 @@ subsequently flashed to that Cardputer, its upload hash was checked and the
 board re-enumerated. Per-step telemetry was not supplied. Use this product
 image as the rollback candidate and preserve the archive's flash instructions;
 do not describe the product image as having its own separate per-step acceptance
-record. The `.35` handoff must still bundle the extracted rollback files and
-instructions, then verify their hashes inside the final archive.
+record. The `.35` handoff must regenerate the package from its exact clean SHA,
+bundle these rollback files and instructions, then verify their hashes inside
+the final archive.
 
 ## `.35` handoff gate
 

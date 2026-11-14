@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 import pathlib
+import subprocess
 import tempfile
 import unittest
 import zipfile
@@ -12,10 +13,15 @@ SCRIPT = ROOT / "scripts/package_hardware_candidate.py"
 SPEC = importlib.util.spec_from_file_location("candidate_packager", SCRIPT)
 packager = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(packager)
+CARDPUTER_FQBN = (
+    "m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,"
+    "USBMode=default,CDCOnBoot=default,UploadMode=cdc"
+)
 
 
 class CandidatePackagingTests(unittest.TestCase):
-    def make_build(self, root, app_offset="0x10000"):
+    def make_build(self, root, app_offset="0x10000", source_sha="a" * 40,
+                   version="0.9.34"):
         build = root / "build"
         generated = build / ".arduino-build"
         generated.mkdir(parents=True)
@@ -48,26 +54,58 @@ class CandidatePackagingTests(unittest.TestCase):
             "GroovePuter.ino.merged.bin": bytes([0xA5]) * (4 * 1024 * 1024),
             "GroovePuter.ino.bootloader.bin": b"bootloader",
             "GroovePuter.ino.partitions.bin": b"partition-table",
-            "GroovePuter.ino.elf": b"elf",
+            "GroovePuter.ino.elf": b"ELF build identity " + version.encode("ascii")
+            + b" " + source_sha.encode("ascii"),
             "GroovePuter.ino.map": b"map",
         }.items():
             (build / name).write_bytes(data)
         return build
 
-    def package(self, root, build, out_name):
+    def package(self, root, build, out_name, *, source_sha="a" * 40,
+                require_clean_source=False, repository_root=None,
+                rollback_archive=None, rollback_sha256=None, version="0.9.34"):
         return packager.prepare_candidate_package(
             build_dir=build,
             output_dir=root / out_name,
-            version="0.9.34",
-            source_sha="a" * 40,
-            fqbn="m5stack:esp32:m5stack_cardputer:PSRAM=disabled",
+            version=version,
+            source_sha=source_sha,
+            fqbn=CARDPUTER_FQBN,
             core_version="m5stack:esp32@3.2.2",
             arduino_cli_version="arduino-cli 1.4.0",
             esp_idf_commit="858a988d6eb90f54661abe282c523879c6ad0116",
             platform_txt=root / "platform.txt",
             boot_app0=root / "boot_app0.bin",
             build_log=root / "build.log",
+            require_clean_source=require_clean_source,
+            repository_root=repository_root,
+            rollback_archive=rollback_archive,
+            rollback_sha256=rollback_sha256,
         )
+
+    def make_rollback_archive(self, root):
+        archive = root / "rollback.zip"
+        files = {
+            "rollback/product/GroovePuter.ino.bin": b"accepted-app-image",
+            "rollback/product/GroovePuter.ino.merged.bin": b"accepted-full-image",
+            "rollback/product/GroovePuter.ino.bootloader.bin": b"accepted-bootloader",
+            "rollback/product/GroovePuter.ino.partitions.bin": b"accepted-partitions",
+            "rollback/product/provenance.txt": (
+                "source_commit=" + "f" * 40 + f"\nfqbn={CARDPUTER_FQBN}\n"
+            ).encode("utf-8"),
+            "rollback/HARDWARE-ACCEPTANCE.txt": (
+                "owner declared hardware acceptance PASS\n"
+            ).encode("utf-8"),
+        }
+        checksums = "".join(
+            f"{hashlib.sha256(data).hexdigest()}  {path.rsplit('/', 1)[-1]}\n"
+            for path, data in files.items()
+            if "/product/" in path and path.endswith(".bin")
+        )
+        files["rollback/product/SHA256SUMS.txt"] = checksums.encode("ascii")
+        with zipfile.ZipFile(archive, "w") as zipped:
+            for name, contents in files.items():
+                zipped.writestr(name, contents)
+        return archive
 
     def test_manifest_addresses_checksums_and_legacy_m5burner_structure(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -126,6 +164,166 @@ class CandidatePackagingTests(unittest.TestCase):
             build = self.make_build(root, app_offset="0x20000")
             with self.assertRaisesRegex(ValueError, "app partition offset"):
                 self.package(root, build, "package")
+
+    def test_rejects_elf_without_manifest_version_and_commit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            build = self.make_build(root)
+            (build / "GroovePuter.ino.elf").write_bytes(b"ELF missing identity")
+            with self.assertRaisesRegex(ValueError, "ELF build identity"):
+                self.package(root, build, "package")
+
+    def test_accepts_release_candidate_semver_with_build_metadata(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            version = "0.9.35-rc+0123456"
+            build = self.make_build(root, version=version)
+            output, _ = self.package(
+                root, build, "release-candidate", version=version
+            )
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["version"], version)
+
+    def test_clean_source_gate_matches_commit_and_rejects_dirty_tree(self):
+        self.assertTrue(
+            callable(getattr(packager, "validate_clean_source", None)),
+            "candidate packaging must validate the source commit and clean tree",
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            repo = pathlib.Path(directory) / "repo"
+            repo.mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "config", "user.name", "Packaging Test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "config", "user.email", "packaging@example.test"],
+                check=True,
+            )
+            source_file = repo / "tracked.txt"
+            source_file.write_text("committed\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "fixture"],
+                check=True,
+                capture_output=True,
+            )
+            commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+            ).strip()
+
+            packager.validate_clean_source(repo, commit)
+            with self.assertRaisesRegex(ValueError, "does not match HEAD"):
+                packager.validate_clean_source(repo, "b" * 40)
+
+            source_file.write_text("uncommitted\n", encoding="utf-8")
+            with self.assertRaisesRegex(ValueError, "source tree is dirty"):
+                packager.validate_clean_source(repo, commit)
+
+    def test_package_records_verified_clean_source(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            repo = root / "source"
+            repo.mkdir()
+            subprocess.run(["git", "init", str(repo)], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "config", "user.name", "Packaging Test"],
+                check=True,
+            )
+            subprocess.run(
+                ["git", "-C", str(repo), "config", "user.email", "packaging@example.test"],
+                check=True,
+            )
+            (repo / "tracked.txt").write_text("clean\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "commit", "-m", "fixture"],
+                check=True,
+                capture_output=True,
+            )
+            commit = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"], text=True
+            ).strip()
+            build = self.make_build(root, source_sha=commit)
+            rollback = self.make_rollback_archive(root)
+            output, _ = self.package(
+                root,
+                build,
+                "clean-package",
+                source_sha=commit,
+                require_clean_source=True,
+                repository_root=repo,
+                rollback_archive=rollback,
+                rollback_sha256=hashlib.sha256(rollback.read_bytes()).hexdigest(),
+            )
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["source"]["working_tree"], "CLEAN")
+
+    def test_includes_verified_rollback_images_and_provenance(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            build = self.make_build(root)
+            rollback = self.make_rollback_archive(root)
+            rollback_hash = hashlib.sha256(rollback.read_bytes()).hexdigest()
+            output, _ = self.package(
+                root,
+                build,
+                "candidate",
+                rollback_archive=rollback,
+                rollback_sha256=rollback_hash,
+            )
+            manifest = json.loads((output / "manifest.json").read_text())
+            self.assertEqual(manifest["rollback"]["source_commit"], "f" * 40)
+            self.assertEqual(manifest["rollback"]["archive_sha256"], rollback_hash)
+            self.assertIn(
+                "DIAGNOSTIC_IMAGE_OWNER_PASS",
+                manifest["rollback"]["owner_hardware_acceptance"],
+            )
+            self.assertEqual(
+                (output / "rollback/GroovePuter.ino.merged.bin").read_bytes(),
+                b"accepted-full-image",
+            )
+            self.assertIn(
+                "owner declared hardware acceptance PASS",
+                (output / "rollback/HARDWARE-ACCEPTANCE.txt").read_text(),
+            )
+            self.assertIn("overwrites the currently installed firmware",
+                          (output / "rollback/ROLLBACK.md").read_text())
+            rollback_sums = (output / "rollback/SHA256SUMS.txt").read_text()
+            for filename in (
+                "GroovePuter.ino.bin",
+                "GroovePuter.ino.merged.bin",
+                "GroovePuter.ino.bootloader.bin",
+                "GroovePuter.ino.partitions.bin",
+            ):
+                self.assertIn(filename, rollback_sums)
+
+    def test_rejects_rollback_with_wrong_archive_or_internal_checksum(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            build = self.make_build(root)
+            rollback = self.make_rollback_archive(root)
+            with self.assertRaisesRegex(ValueError, "rollback archive SHA-256"):
+                self.package(
+                    root, build, "bad-archive-hash", rollback_archive=rollback,
+                    rollback_sha256="0" * 64,
+                )
+            self.assertFalse((root / "bad-archive-hash").exists())
+
+            with zipfile.ZipFile(rollback) as zipped:
+                entries = {name: zipped.read(name) for name in zipped.namelist()}
+            entries["rollback/product/GroovePuter.ino.bin"] = b"tampered app"
+            with zipfile.ZipFile(rollback, "w") as zipped:
+                for name, contents in entries.items():
+                    zipped.writestr(name, contents)
+            rollback_hash = hashlib.sha256(rollback.read_bytes()).hexdigest()
+            with self.assertRaisesRegex(ValueError, "rollback artifact checksum"):
+                self.package(
+                    root, build, "bad-internal-hash", rollback_archive=rollback,
+                    rollback_sha256=rollback_hash,
+                )
+            self.assertFalse((root / "bad-internal-hash").exists())
 
 
 if __name__ == "__main__":

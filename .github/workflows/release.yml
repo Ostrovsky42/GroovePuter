@@ -51,6 +51,16 @@ jobs:
           git init "$HOME/esp-idf"
           git -C "$HOME/esp-idf" remote add origin https://github.com/espressif/esp-idf.git
           git -C "$HOME/esp-idf" fetch --depth=1 origin 858a988d6eb90f54661abe282c523879c6ad0116
+      - name: Resolve firmware version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version_line="$(python3 scripts/resolve_build_version.py \
+            --ref-name "$GITHUB_REF_NAME" \
+            --ref-type "$GITHUB_REF_TYPE" \
+            --source-sha "$GITHUB_SHA")"
+          printf '%s\n' "$version_line" >> "$GITHUB_ENV"
+          printf 'Resolved firmware version: %s\n' "${version_line#*=}"
       - name: Verify release firmware reproducibility
         run: bash tests/test_release_firmware_reproducibility.sh
       - name: Build product release FS1B image

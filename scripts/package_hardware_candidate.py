@@ -7,10 +7,12 @@ import argparse
 import csv
 import hashlib
 import json
+import mmap
 import re
 import shutil
 import subprocess
 import zipfile
+from zipfile import BadZipFile
 from pathlib import Path
 
 
@@ -18,6 +20,18 @@ APP_NAME = "GroovePuter.ino.bin"
 MERGED_NAME = "GroovePuter.ino.merged.bin"
 DRAM_BUDGET_DEFAULT = 191_488
 REPOSITORY = "https://github.com/Ostrovsky42/GroovePuter"
+ROLLBACK_FILES = (
+    "GroovePuter.ino.bin",
+    "GroovePuter.ino.merged.bin",
+    "GroovePuter.ino.bootloader.bin",
+    "GroovePuter.ino.partitions.bin",
+)
+ROLLBACK_OFFSETS = {
+    "GroovePuter.ino.bin": "0x10000",
+    "GroovePuter.ino.merged.bin": "0x0",
+    "GroovePuter.ino.bootloader.bin": "0x1000",
+    "GroovePuter.ino.partitions.bin": "0x8000",
+}
 
 
 def sha256(path: Path) -> str:
@@ -26,6 +40,156 @@ def sha256(path: Path) -> str:
         for block in iter(lambda: source.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def file_contains(path: Path, value: bytes) -> bool:
+    with path.open("rb") as source:
+        with mmap.mmap(source.fileno(), 0, access=mmap.ACCESS_READ) as contents:
+            return contents.find(value) >= 0
+
+
+def validate_clean_source(repository_root: Path, source_sha: str) -> None:
+    repository_root = repository_root.resolve()
+    head = subprocess.run(
+        ["git", "rev-parse", "--verify", "HEAD"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if head.returncode != 0:
+        raise ValueError(f"cannot read source HEAD in {repository_root}")
+    if head.stdout.strip().lower() != source_sha.lower():
+        raise ValueError("supplied source SHA does not match HEAD")
+
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=repository_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if status.returncode != 0:
+        raise ValueError(f"cannot read source status in {repository_root}")
+    if status.stdout.strip():
+        raise ValueError("source tree is dirty")
+
+
+def add_rollback_bundle(
+    archive_path: Path, expected_sha256: str, output_dir: Path, fqbn: str
+) -> dict:
+    actual_sha256 = sha256(archive_path)
+    if not re.fullmatch(r"[0-9a-fA-F]{64}", expected_sha256):
+        raise ValueError("rollback archive SHA-256 must be 64 hex digits")
+    if actual_sha256.lower() != expected_sha256.lower():
+        raise ValueError("rollback archive SHA-256 does not match supplied value")
+
+    output = output_dir / "rollback"
+    output.mkdir()
+    try:
+        with zipfile.ZipFile(archive_path) as source:
+            names = source.namelist()
+            acceptance_names = [
+                name for name in names
+                if name.endswith("/HARDWARE-ACCEPTANCE.txt")
+            ]
+            provenance_names = [
+                name for name in names if name.endswith("/product/provenance.txt")
+            ]
+            checksum_names = [
+                name for name in names if name.endswith("/product/SHA256SUMS.txt")
+            ]
+            if not (len(acceptance_names) == len(provenance_names) ==
+                    len(checksum_names) == 1):
+                raise ValueError("rollback archive lacks unique acceptance/provenance/checksum records")
+
+            acceptance = source.read(acceptance_names[0]).decode("utf-8")
+            if not re.search(r"(?i)owner.{0,80}(?:PASS|ACCEPTED)|PASS.{0,80}owner", acceptance):
+                raise ValueError("rollback archive has no owner hardware acceptance PASS")
+            provenance = source.read(provenance_names[0]).decode("utf-8")
+            provenance_values = dict(
+                line.split("=", 1) for line in provenance.splitlines() if "=" in line
+            )
+            source_commit = provenance_values.get("source_commit", "")
+            if not re.fullmatch(r"[0-9a-fA-F]{40,64}", source_commit):
+                raise ValueError("rollback provenance has no full source commit SHA")
+            if provenance_values.get("fqbn") != fqbn:
+                raise ValueError("rollback FQBN does not match candidate FQBN")
+
+            checksum_text = source.read(checksum_names[0]).decode("ascii")
+            checksums = {}
+            for line in checksum_text.splitlines():
+                match = re.fullmatch(r"([0-9a-fA-F]{64})\s+\*?(.+)", line.strip())
+                if not match:
+                    raise ValueError("rollback checksum manifest has an invalid line")
+                digest, filename = match.groups()
+                if filename in checksums:
+                    raise ValueError("rollback checksum manifest has duplicate paths")
+                checksums[filename] = digest.lower()
+
+            selected = {}
+            for filename in ROLLBACK_FILES:
+                if filename not in checksums:
+                    raise ValueError(f"rollback checksum manifest omits {filename}")
+                matches = [
+                    name for name in names
+                    if name.endswith("/product/" + filename)
+                ]
+                if len(matches) != 1:
+                    raise ValueError(f"rollback archive must contain one product/{filename}")
+                info = source.getinfo(matches[0])
+                if info.file_size <= 0:
+                    raise ValueError(f"rollback artifact is empty: {filename}")
+                digest = hashlib.sha256()
+                destination = output / filename
+                with source.open(info) as stream, destination.open("wb") as target:
+                    for block in iter(lambda: stream.read(1024 * 1024), b""):
+                        digest.update(block)
+                        target.write(block)
+                if digest.hexdigest() != checksums[filename]:
+                    raise ValueError(f"rollback artifact checksum mismatch: {filename}")
+
+            (output / "provenance.txt").write_text(provenance, encoding="utf-8")
+            (output / "HARDWARE-ACCEPTANCE.txt").write_text(
+                acceptance, encoding="utf-8"
+            )
+    except (BadZipFile, KeyError, UnicodeDecodeError) as error:
+        raise ValueError(f"invalid rollback archive: {error}") from error
+
+    instructions = (
+        "# Restore the accepted 0.9.16 baseline\n\n"
+        "This bundle contains the product image from source commit "
+        f"`{source_commit.lower()}`. The recorded owner PASS was for its companion "
+        "USB diagnostic image. The same-source, same-FQBN product image was later "
+        "flashed to that Cardputer and the board re-enumerated; no per-step product "
+        "telemetry was supplied.\n\n"
+        "For a full restore, power off the Cardputer ADV, hold G0 while powering "
+        "on, then release G0 to enter download mode. Run `python -m esptool "
+        "--chip esp32s3 --port <PORT> write_flash 0x0 "
+        "GroovePuter.ino.merged.bin` with the serial port substituted for `<PORT>`. "
+        "This overwrites the currently installed firmware and flash layout. Back "
+        "up any data stored in flash first. The app-only file may be written at "
+        "`0x10000` only when the existing bootloader and partition table match "
+        "this image.\n\n"
+        "Before flashing, verify `SHA256SUMS.txt` in this directory. No rollback "
+        "image has been flashed as part of candidate preparation.\n"
+    )
+    (output / "ROLLBACK.md").write_text(instructions, encoding="utf-8")
+    checksum_text = "".join(
+        f"{sha256(path)}  {path.name}\n"
+        for path in sorted(output.iterdir())
+        if path.is_file() and path.name != "SHA256SUMS.txt"
+    )
+    (output / "SHA256SUMS.txt").write_text(checksum_text, encoding="utf-8")
+    return {
+        "source_commit": source_commit.lower(),
+        "archive_sha256": actual_sha256,
+        "owner_hardware_acceptance": (
+            "DIAGNOSTIC_IMAGE_OWNER_PASS; PRODUCT_IMAGE_SAME_SOURCE_FQBN_"
+            "SUBSEQUENTLY_FLASHED_AND_REENUMERATED; NO_PER_STEP_TELEMETRY"
+        ),
+        "artifacts": list(ROLLBACK_FILES),
+    }
 
 
 def parse_build_report(path: Path) -> dict[str, int]:
@@ -162,14 +326,21 @@ def prepare_candidate_package(
     fqbn: str, core_version: str, arduino_cli_version: str,
     esp_idf_commit: str, platform_txt: Path, boot_app0: Path,
     build_log: Path, dram_budget: int = DRAM_BUDGET_DEFAULT,
+    require_clean_source: bool = False, repository_root: Path | None = None,
+    rollback_archive: Path | None = None, rollback_sha256: str | None = None,
 ) -> tuple[Path, Path]:
     build_dir = build_dir.resolve()
     platform_txt = platform_txt.resolve()
     boot_app0 = boot_app0.resolve()
     build_log = build_log.resolve()
     output_dir = output_dir.resolve()
+    if rollback_archive is not None:
+        rollback_archive = rollback_archive.resolve()
 
-    if not re.fullmatch(r"\d+\.\d+\.\d+(?:[-+][A-Za-z0-9.-]+)?", version):
+    if not re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?(?:\+[A-Za-z0-9.-]+)?",
+        version,
+    ):
         raise ValueError(f"invalid semantic version: {version}")
     if not re.fullmatch(r"(?:[0-9a-fA-F]{40}|[0-9a-fA-F]{64})", source_sha):
         raise ValueError("source SHA must be a full 40- or 64-digit hex SHA")
@@ -177,6 +348,16 @@ def prepare_candidate_package(
         raise ValueError("DRAM budget must be positive")
     if output_dir.exists():
         raise ValueError(f"output directory already exists: {output_dir}")
+    if require_clean_source and rollback_archive is None:
+        raise ValueError("clean-source candidate package requires a verified rollback archive")
+    if (rollback_archive is None) != (rollback_sha256 is None):
+        raise ValueError("rollback archive and expected SHA-256 must be supplied together")
+    source_state = "NOT_CHECKED"
+    if require_clean_source:
+        validate_clean_source(
+            repository_root or Path(__file__).resolve().parents[1], source_sha
+        )
+        source_state = "CLEAN"
 
     inputs = {
         "app": build_dir / APP_NAME,
@@ -190,6 +371,10 @@ def prepare_candidate_package(
                         "platform": platform_txt, "build_log": build_log}.items():
         if not path.is_file() or path.stat().st_size == 0:
             raise ValueError(f"missing/empty {label} input: {path}")
+
+    if (not file_contains(inputs["elf"], version.encode("utf-8"))
+            or not file_contains(inputs["elf"], source_sha.lower().encode("ascii"))):
+        raise ValueError("ELF build identity does not match manifest version/source SHA")
 
     layout = flash_layout(build_dir, platform_txt)
     if inputs["app"].stat().st_size > layout["app_partition"]["size_bytes"]:
@@ -220,6 +405,16 @@ def prepare_candidate_package(
     burner_firmware = burner_root / "firmware"
     for directory in (artifacts_dir, launcher_dir, burner_firmware):
         directory.mkdir(parents=True, exist_ok=True)
+
+    rollback_manifest = None
+    if rollback_archive is not None and rollback_sha256 is not None:
+        try:
+            rollback_manifest = add_rollback_bundle(
+                rollback_archive, rollback_sha256, output_dir, fqbn
+            )
+        except Exception:
+            shutil.rmtree(output_dir, ignore_errors=True)
+            raise
 
     shutil.copyfile(inputs["app"], artifacts_dir / APP_NAME)
     shutil.copyfile(inputs["merged"], artifacts_dir / MERGED_NAME)
@@ -275,7 +470,7 @@ def prepare_candidate_package(
         "schema_version": 1,
         "status": "UNPUBLISHED_CANDIDATE; HARDWARE_UNVERIFIED",
         "version": version,
-        "source": {"commit": source_sha.lower()},
+        "source": {"commit": source_sha.lower(), "working_tree": source_state},
         "build": {
             "profile": "Cardputer ADV FS1B dynamic FatFs",
             "fqbn": fqbn,
@@ -290,6 +485,7 @@ def prepare_candidate_package(
             "m5burner_legacy": "STRUCTURE_ONLY_DRY_RUN",
             "m5burner_web": "NOT_TESTED",
         },
+        "rollback": rollback_manifest,
         "artifacts": [],
     }
     manifest["artifacts"].append(record_artifact(
@@ -314,6 +510,14 @@ def prepare_candidate_package(
             output_dir, burner_firmware / filename,
             "M5Burner dry-run " + component["role"], component["offset"],
         ))
+    if rollback_manifest is not None:
+        for filename in ROLLBACK_FILES:
+            manifest["artifacts"].append(record_artifact(
+                output_dir,
+                output_dir / "rollback" / filename,
+                "verified rollback image",
+                ROLLBACK_OFFSETS[filename],
+            ))
     (output_dir / "manifest.json").write_text(
         json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
         encoding="utf-8",
@@ -331,6 +535,8 @@ def prepare_candidate_package(
         "- `m5launcher/`: app-only payload. Compatibility is not hardware-accepted.\n"
         "- `m5burner-dry-run/`: legacy manifest/firmware structure only; not submitted "
         "or tested in M5Burner.\n\n"
+        "- `rollback/`: checksum-verified 0.9.16 product images and owner acceptance "
+        "record for recovery; this image has not been flashed during packaging.\n\n"
         "See `manifest.json`, `resource-report.json` and `SHA256SUMS.txt` for "
         "source, profile, addresses, resource numbers and checksums.\n",
         encoding="utf-8",
@@ -365,6 +571,10 @@ def cli() -> int:
     parser.add_argument("--arduino-cli-version", required=True)
     parser.add_argument("--esp-idf-commit", required=True)
     parser.add_argument("--dram-budget", type=int, default=DRAM_BUDGET_DEFAULT)
+    parser.add_argument("--require-clean-source", action="store_true")
+    parser.add_argument("--repository-root", type=Path)
+    parser.add_argument("--rollback-archive", type=Path)
+    parser.add_argument("--rollback-sha256")
     args = parser.parse_args()
 
     output, archive = prepare_candidate_package(
@@ -380,6 +590,10 @@ def cli() -> int:
         boot_app0=args.boot_app0,
         build_log=args.build_log,
         dram_budget=args.dram_budget,
+        require_clean_source=args.require_clean_source,
+        repository_root=args.repository_root,
+        rollback_archive=args.rollback_archive,
+        rollback_sha256=args.rollback_sha256,
     )
     print(f"Candidate package directory: {output}")
     print(f"Reproducible archive: {archive}")

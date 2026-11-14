@@ -16,7 +16,7 @@ This list separates known unfinished work from verified baseline behavior. Items
 - **SMF v5 fixture:** source has a v5 reader, but the reviewed legacy fixtures directly cover v3 and v4 only. Add a v5 fixture before changing `.gpp` storage.
 - **MIDI export fidelity:** `.33` exports the committed Song as SMF, but temporary Performance macros, Voice audio, Drum FX and internal Drum automation are not rendered. Conditional/probability steps are flattened and marked. This is documented behavior, not a lossless audio/render export.
 - **M5Launcher compatibility:** the local package generator emits a separate app-only payload marked `HARDWARE_UNVERIFIED`; exact installation compatibility has not been established on a Cardputer ADV.
-- **Release profile and provenance:** the `.33` firmware evidence uses `CDCOnBoot=cdc`. A release-profile FS1B build with `CDCOnBoot=default`, source-tree cleanliness/SHA enforcement and rollback artifact instructions remain for `.34–.35`.
+- **Final release provenance:** build identity, release-version resolution, clean-source verification and rollback-package support are implemented in `.34`. Exploratory `CDCOnBoot=default` FS1B firmware and packaging evidence exist, but were built from a dirty pre-final source. Rebuild and validate all artifacts from the exact clean `.35` SHA.
 - **User documentation alignment:** README, Quickstart, Manual, key map, MIDI setup and troubleshooting now describe the internal `.33–.35` line while keeping v0.9.19 identified as the latest published release. Link and content review remains part of `.34` closure.
 - **Hardware and musical acceptance:** all physical keyboard, internal audio, USB MIDI, DIN MIDI and SEQTRAK behavior remains **NOT TESTED** until the owner accepts the 0.9.35 candidate.
 

@@ -243,3 +243,31 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO` for the host-validated `.33` engineering milestone. Hardware remains `NOT TESTED`; do not use this milestone's firmware as an intermediate hardware checkpoint.
+
+## Version 0.9.34 — Productization (in progress)
+
+**Version:** 0.9.34
+
+**Base commit:** `0d973ffcae96f056bb1605de2000a8bac787d2f7` (0.9.33 package/docs integration).
+
+**Result commit:** pending; current implementation is uncommitted.
+
+**Goal:** Make the candidate build identifiable and its unpublished handoff package reproducible, traceable and recoverable.
+
+**Implemented:** Firmware build identity records semantic version, full source SHA and clean/dirty state in the ELF and boot diagnostics. A tested resolver maps release tags and branches to deterministic versions. The packager can verify ELF identity and clean source SHA/tree, reject a mismatched rollback archive, validate its accepted FQBN and internal product hashes, and bundle rollback images, provenance, owner acceptance record and restore instructions. A clean-source package requires rollback material.
+
+**Tests added:** Version resolver cases; generated build identity; ELF/manifest identity match; clean-tree and source-HEAD validation; rollback outer hash, internal image checksums, FQBN and package cleanup on failure; reproducible package archive fixture.
+
+**Tests passed:** `python3 tests/test_build_identity.py`; `python3 tests/test_release_version_resolution.py`; `python3 tests/test_hardware_candidate_packaging.py` (9 tests); `git diff --check`. A release-profile FS1B firmware build completed with `--warnings all` and the project DRAM gate. The package dry-run verified all bundled checksums and two generated archives compared byte-for-byte.
+
+**Tests pending:** Full canonical host suite after `.34` edits; final clean-SHA release build and packaging; complete `.35` SDL, mock-MIDI, persistence/export fixture and resource acceptance lanes.
+
+**Memory delta:** Identity adds 0 B static DRAM in the like-for-like FS1B `CDCOnBoot=cdc` comparison to `.33`: 187,636 B. Exploratory release profile `CDCOnBoot=default`: 188,060 B, 3,428 B headroom against the provisional 191,488 B gate. The profiles differ, so this is not attributed to identity.
+
+**Firmware size delta:** Like-for-like CDC-on exploratory build: +116 B program storage, +128 B app BIN. Release profile: 1,808,354 B program storage and 1,808,512 B app BIN; it is a different build profile and has no exact `.33` release-profile comparison.
+
+**Known risks:** Firmware builds and package dry-run use source commit `0d973ffc...` with a dirty worktree; manifest records `working_tree=NOT_CHECKED`. They are engineering evidence, not the hardware candidate. M5Launcher and M5Burner compatibility remain unverified. No full host suite has yet been rerun after `.34` changes.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** pending `.34` closure and exact-SHA `.35` integration.
