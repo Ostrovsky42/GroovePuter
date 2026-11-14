@@ -159,7 +159,7 @@ Expected: all compatibility and sanitizer variants pass.
 - Modify: `docs/implementation/0.9.25-0.9.35/DEFERRED_ITEMS.md`
 - Modify: `docs/implementation/0.9.25-0.9.35/RESOURCE_BUDGET.md`
 - Modify: `docs/implementation/0.9.25-0.9.35/VERSION_LOG.md`
-- Modify: `tests/run_rhythm_browser_engine_tests.sh` (link the existing MIDI settings implementation required by the profile-aware synth MIDI page)
+- Modify: `tests/run_rhythm_browser_engine_tests.sh` and `tests/run_drum_ctrl_backspace_tests.sh` (link the existing MIDI settings implementation required by the profile-aware synth MIDI page)
 
 **Interfaces:**
 - Record exactly which existing macro, gate, CC whitelist, profile route, dedupe, retry, reconnect and throttle behaviors were tested.
