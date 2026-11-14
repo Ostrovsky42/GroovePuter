@@ -159,7 +159,7 @@ Expected: all compatibility and sanitizer variants pass.
 - Modify: `docs/implementation/0.9.25-0.9.35/DEFERRED_ITEMS.md`
 - Modify: `docs/implementation/0.9.25-0.9.35/RESOURCE_BUDGET.md`
 - Modify: `docs/implementation/0.9.25-0.9.35/VERSION_LOG.md`
-- Modify: `tests/run_rhythm_browser_engine_tests.sh` and `tests/run_drum_ctrl_backspace_tests.sh` (link the existing MIDI settings implementation required by the profile-aware synth MIDI page)
+- Modify: `platform_sdl/Makefile` so the profile-aware synth MIDI page's existing settings implementation is part of the canonical SDL source set.
 
 **Interfaces:**
 - Record exactly which existing macro, gate, CC whitelist, profile route, dedupe, retry, reconnect and throttle behaviors were tested.
@@ -175,7 +175,7 @@ Run: `env TMPDIR=/tmp/grooveputer-0932-host-tmp bash tests/run_host_tests.sh`
 
 Expected: exit 0; capture the exact final exit code and any known pre-existing failures.
 
-- [ ] **Step 3: Build SDL and both firmware profiles** using existing project targets; record exact command/results and binary/DRAM deltas versus the 0.9.31 records.
+- [ ] **Step 3: Build SDL and both firmware profiles** using existing project targets; record exact command/results and binary/DRAM deltas versus the 0.9.31 records. SDL test runners that consume `platform_sdl/Makefile` inherit the same source set.
 
 Run: `make -C platform_sdl clean all CXX=g++`
 

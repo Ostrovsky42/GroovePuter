@@ -17,7 +17,7 @@ fi
 
 RUNTIME_SOURCES=" ${DEFAULT_SOURCES} "
 RUNTIME_SOURCES="${RUNTIME_SOURCES// sdl_main.cpp / }"
-RUNTIME_SOURCES="${RUNTIME_SOURCES} ../tests/test_pattern_phrase_p0_runtime.cpp ../src/midi/usb_midi_output.cpp ../src/midi/midi_companion_settings.cpp"
+RUNTIME_SOURCES="${RUNTIME_SOURCES} ../tests/test_pattern_phrase_p0_runtime.cpp ../src/midi/usb_midi_output.cpp"
 
 SDL_CFLAGS="$(sdl2-config --cflags 2>/dev/null || true)"
 SDL_LIBS="$(sdl2-config --libs 2>/dev/null || true)"
