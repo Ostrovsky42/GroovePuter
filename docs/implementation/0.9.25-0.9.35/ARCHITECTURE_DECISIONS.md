@@ -74,6 +74,14 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Boundary:** FORM offers genre curves plus transient INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO starting curves; BUILD, DROP and WAVE retain their existing keys. Editing a curve labels it CUSTOM. No role label persists after materialization, and the templates do not generate independent motif variations. Do not describe generated curves as musically accepted without listening.
 
+### AD-011 — Expressive MIDI extends the existing owners
+
+**Decision:** Keep macro-transformed note velocity and duration on the existing Pattern/Phrase event path into `RuntimeSynthPlaybackState`; keep selected CC and sweep messages on `UsbMidiOutput` and its allowlist, route projection, dedupe and retry state. Display the applied synth channel from the existing profile projection, with the current Cardputer fallback identified for Custom. Use an explicit per-synth/controller attempted bit and wrap-safe 20 ms deadline for dispatch pacing.
+
+**Evidence:** host traces cover CC74 routing across SEQTRAK, GM and Generic plus Custom fallback; the cutoff output suite covers allowlist, dedupe, retry, reconnect and note-ownership isolation; UI tests check route labels and fit; Pattern runtime tests compare transformed velocity/duration, preserve the source event and observe Note Off at the projected gate deadline. See `EXPRESSIVE_MIDI.md`.
+
+**Boundary:** macros do not emit CC or mutate stored material. Profile changes remain startup-bound. No Pitch Bend, aftertouch, gesture input, hardware behavior or sound-quality claim is made.
+
 ## Decisions still required by implementation
 
 - Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.29 remains transient and does not commit the playback view.

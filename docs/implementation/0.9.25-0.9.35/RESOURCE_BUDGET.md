@@ -104,3 +104,46 @@ FS1B candidate artifacts:
 
 Both build and link-map checks are host toolchain evidence. No image was
 flashed, and no physical Cardputer behavior is claimed.
+
+## 0.9.32 expressive MIDI
+
+The dispatcher adds a two-byte `g_cutoffAttemptedMask[2]` so each synth can
+distinguish a first controller attempt from a wrap-safe retry deadline. It
+reuses the fixed per-controller deadline table. The route label is formatted
+into a bounded stack buffer; there is no new musical-event queue or stored
+material.
+
+| Build | Program storage report | App-only BIN | Static DRAM | Gate headroom | Result |
+|---|---:|---:|---:|---:|---|
+| `bash scripts/build.sh --warnings all` | 1,722,218 B | 1,722,368 B | 187,620 B | 3,868 B | PASS; default FatFs profile, not SD-safe |
+| `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,746,682 B | 1,746,832 B | 187,628 B | 3,860 B | PASS; candidate-only FatFs map |
+
+Compared with 0.9.31, program storage grew by 1,088 B in the default profile
+and 1,080 B in FS1B. The FS1B app-only BIN grew by 1,072 B. Static DRAM grew
+by 16 B in each profile, leaving under 3.9 KiB before the provisional
+191,488-byte gate. The default linker map reports `.dram0.data` 44,732 B and
+`.dram0.bss` 142,888 B; FS1B reports 44,732 B and 142,896 B. Stack high-water
+and runtime heap were not measured.
+
+Both builds use
+`m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
+Only FS1B is the candidate-only FatFs software build; its map contains
+`build/cardputer-adv-dynbuffers/fatfs-dynbuffers/libfatfs.a` and excludes the
+stock FatFs archive.
+
+Default-profile artifacts (not the SD-safe candidate):
+
+- App-only BIN: 1,722,368 B; SHA-256 `8a7941696fed8979108317158de14487cdc5c9858df6915232629428f92e1073`.
+- Merged BIN: 4,194,304 B; SHA-256 `b5de43ac8d63d77759b9e68e0d2ef28bc1d4dcea635596e9072d4e0574171433`.
+- ELF: 37,500,460 B; SHA-256 `acdd41449de4384c77fc5b21dcae2e4d931d48e32e3e6868f3a578f91e77cb5a`.
+
+FS1B candidate artifacts:
+
+- App-only BIN: 1,746,832 B; SHA-256 `5d10ffae35937ae236f772e83203f766ea4bb4bdca523ea9e92ace156edf3d82`.
+- Merged BIN: 4,194,304 B; SHA-256 `dd9eaa5d17cab14c83322d8dffa7191fcb8dba35f030975248b49e7321658849`.
+- ELF: 37,446,652 B; SHA-256 `6d72995208f48780b7486d80d3de934df1173772cafc5686709b08aced522272`.
+- Link map: `build/cardputer-adv-dynbuffers/.arduino-build/GroovePuter.ino.map`; candidate FatFs present, stock FatFs absent.
+
+These are compile/link measurements only. No firmware was flashed; runtime
+heap, stack, audio timing, actual SD behavior and device behavior remain
+unmeasured.

@@ -35,3 +35,11 @@ This list separates known unfinished work from verified baseline behavior. Items
 
 - **Arrangement listening:** INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO are bounded starting contours over existing energy levels and source rows. Their musical usefulness has not been evaluated by listening and remains pending for owner acceptance of 0.9.35.
 - **Per-section identity and motif development:** role names are transient FORM labels; materialized Song rows remain ordinary editable positions. The templates do not create independent motif variations or persist section-role metadata.
+
+## 0.9.32 follow-up
+
+- **Owner listening and performance feel:** host transforms and SDL readability are checked, but macro combinations, perceived timing, internal sound and physical controls need owner evaluation with the 0.9.35 candidate.
+- **Pitch Bend, aftertouch and motion/gesture input:** deferred P2. Add only after output-route support and lifecycle behavior are specified. No Cardputer IMU is assumed.
+- **Macro-to-CC mapping and automatic expression:** deferred; macros remain musical transformations and do not send controller messages.
+- **Live profile rebinding:** still unsupported. The active output uses its startup route snapshot; profile changes take effect on the next startup.
+- **Hardware MIDI claims:** USB enumeration, DIN behavior and Yamaha SEQTRAK reception remain `NOT TESTED` until owner acceptance of 0.9.35.

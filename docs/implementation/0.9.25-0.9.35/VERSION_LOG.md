@@ -183,3 +183,33 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO` for the existing FORM-based arrangement milestone; motif development and owner listening remain open for 0.9.35.
+
+## Version 0.9.32 — Expressive MIDI and performance controls
+
+**Version:** 0.9.32
+
+**Base commit:** `084b7a78dcabf5cffc6c4767e0748edd740207d5`
+
+**Result commit:** `bbe29a875fa5e76dcb77131ca199b2b3810e42df`
+
+**Goal:** Verify that transient Pattern expression, selected CC output and MIDI profile routes remain predictable through the existing MIDI owners.
+
+**Implemented:** Added a pure wrap-safe 20 ms controller retry deadline with explicit first-attempt state; the dispatcher stores one attempted bit per allowed controller and synth. The Synth MIDI page now displays the applied profile's Performance channel and identifies the existing Custom CH08/09 fallback. Pattern MIDI continues to use the transformed event duration through `RuntimeSynthPlaybackState` for Note Off. Added profile/channel, UI-label, limiter and Note Off host coverage. Added `midi_companion_settings.cpp` to the canonical SDL application source list because the profile-aware screen uses its existing route sanitizer.
+
+**Not implemented:** Automatic macro-to-CC mapping, live route rebinding, persisted macros, Pitch Bend, aftertouch, motion/gesture support, or any new device profile. No musical listening acceptance is claimed.
+
+**Tests added:** First-attempt/20 ms/wrap deadline checks; fake CC74 traces for SEQTRAK, General MIDI, Generic MIDI and Custom fallback; unsupported CC suppression; Synth MIDI profile/channel label and 240×135 fit checks; Pattern macro velocity/duration projection and source preservation; Note Off one subtick before and exactly at the transformed deadline.
+
+**Tests passed:** Targeted `test_cutoff_sweep` and `test_usb_midi_cutoff` builds/runs; `bash tests/run_midi_performance_route_binding_0_9_7_tests.sh`; `bash tests/run_midi_perform_ui_polish_tests.sh`; `bash tests/run_pattern_phrase_p2_p0_compatibility.sh` (GCC deterministic repeat, Clang parity, ASan and UBSan); canonical `env TMPDIR=/tmp/grooveputer-0932-host-tmp bash tests/run_host_tests.sh` (exit 0); `make -C platform_sdl clean all CXX=g++`; `bash scripts/build.sh --warnings all`; `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` including candidate-only FatFs map proof; `git diff --check`.
+
+**Tests failed / pending:** Early canonical host-suite attempts exposed missing `midi_companion_settings.cpp` links in SDL source consumers. The fix was made at the source of truth, `platform_sdl/Makefile`; the standard SDL build and final canonical suite then passed. During test development, a direct `processSequencerEvents()` check did not release a note because production checks deadlines in the audio per-sample loop. The integration test now drives the existing `releaseDue()`/consumer path at the exact projected deadline; no production note-lifecycle change was needed. The full host suite also prints the existing SDL fixture fallback message when no saved Scene is present; the affected tests pass. Physical hardware, audible quality and external device behavior remain untested by design.
+
+**Memory delta:** Default static globals 187,620 B, +16 B versus 0.9.31; FS1B 187,628 B, +16 B. Headroom to the project's provisional 191,488 B gate is 3,868 B and 3,860 B respectively. FS1B `.dram0.data` / `.dram0.bss`: 44,732 B / 142,896 B. Stack high-water and runtime heap were not measured.
+
+**Firmware size delta:** Program-storage report grew by 1,088 B in default profile to 1,722,218 B and by 1,080 B in FS1B to 1,746,682 B. App-only BIN is 1,722,368 B default (+1,088 B) and 1,746,832 B FS1B (+1,072 B). Merged images are 4,194,304 B in both builds. Artifact SHA-256 values are in `RESOURCE_BUDGET.md`.
+
+**Known risks:** The static DRAM gate remains provisional with under 4 KiB headroom. Default FatFs is not the SD-safe candidate; only the FS1B map proves candidate FatFs and excludes stock FatFs. Macro sound and physical control feel remain owner listening checks. No Cardputer, USB MIDI, DIN MIDI or SEQTRAK test was performed.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO` for the host-validated 0.9.32 engineering milestone. Hardware remains `NOT TESTED` by design.
