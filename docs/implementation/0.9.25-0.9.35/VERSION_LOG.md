@@ -274,32 +274,42 @@ updates the stale docs regression expectations; productization code is in
 
 **Decision:** `GO` for 0.9.34 productization, `HOST-VALIDATED / HARDWARE-UNVERIFIED`. `.35` still requires a clean integrated candidate and rerun of every acceptance lane.
 
-## Version 0.9.35 — Integration closure (in progress)
+## Version 0.9.35 — Integration closure
 
-**Version:** 0.9.35
+**Version:** `0.9.35-rc+615ac96`
 
-**Base commit:** `a11b601b9e5645ab3bf4938f7f5cb32294c6578e` (local `.34` integration HEAD).
+**Base commit:** `a11b601b9e5645ab3bf4938f7f5cb32294c6578e`.
 
-**Result commit:** Pending; current worktree contains uncommitted regression and evidence-document updates.
+**Result / artifact-producing commit:** `615ac9642f1103ce1f9d4fcddcb083710b171db4` (clean source tree). This report update is documentation-only and follows that tested source SHA.
 
-**Goal:** Close integration risks and produce the first software-validated hardware candidate; physical acceptance remains with the owner.
+**Goal:** Close the software integration gates and prepare one unpublished Cardputer ADV candidate for the owner's first hardware acceptance.
 
-**Implemented:** Added a deterministic `MusicalEventRouter` → `UsbMidiOutput` → USB-primary/DIN-secondary tee trace. It verifies same-pitch ownership shared by Pattern and Performance, primary USB loss while DIN remains mounted, final NoteOff delivered to DIN, startup route stability after a later route snapshot publication, primary CC123 cleanup before post-reconnect NoteOn, section-like note transition ordering, and zero note ownership after teardown. No production runtime code changed.
+**Implemented:** Added `testRouterTeeDisconnectAndFrozenRouteIntegration` in `tests/test_usb_midi_pending_release.cpp`. The deterministic `MusicalEventRouter` → `UsbMidiOutput` → USB-primary/DIN-secondary tee trace covers shared same-pitch Pattern/Performance ownership, USB loss with DIN mounted, final NoteOff delivered through DIN, frozen startup routing after a later snapshot publication, USB CC123 cleanup before post-reconnect NoteOn, section-like transition ordering, and zero owned notes after teardown. No production runtime code changed in this integration commit.
 
-**Not implemented:** Full Cardputer dispatcher queue fault injection, USB-only endpoint loss/rejoin trace, exact `.35` firmware/package build, and final candidate acceptance.
+**Not implemented / deferred:** Hardware-specific active-playback profile rebinding; the UI keeps route changes unavailable during playback and applies stopped edits after restart. Real Cardputer dispatcher scheduling, physical USB enumeration, M5Launcher installation and M5Burner acceptance remain unverified. No new musical features were added.
 
-**Tests added:** `testRouterTeeDisconnectAndFrozenRouteIntegration` in `tests/test_usb_midi_pending_release.cpp`.
+**Tests added:** The USB/DIN integration trace above; existing export/parser, project compatibility, FORM/Undo, and MIDI lifecycle fixtures remain part of the canonical host suite.
 
-**Tests passed:** Focused command `c++ -std=c++17 -Wall -Wextra -Werror -I. tests/test_usb_midi_pending_release.cpp src/midi/usb_midi_output.cpp -o /tmp/gp-0935-midi-lifecycle-test && /tmp/gp-0935-midi-lifecycle-test`; `git diff --check`. SDL preflight at `a11b601b` covered Melody length/note boundaries, STEPS switching, Song generation, FORM entry and slot-capacity refusal without partial mutation.
+**Tests passed:**
 
-**Tests failed / pending:** An accidental full-suite invocation was terminated before completion because its output/exit status could not be captured; it is not counted. Rerun the full host suite with a saved log. Exact candidate SDL Golden Path, final FS1B firmware build, resource delta, deterministic package and `.35` artifact SHA validation remain pending. SDL used dummy audio; no physical Cardputer, keyboard, audio, USB MIDI, DIN or SEQTRAK behavior was tested.
+- Focused trace compile/run with `-Wall -Wextra -Werror`.
+- `env TMPDIR=/tmp bash tests/run_host_tests.sh`, exit 0 on clean exact SHA `615ac9642f1103ce1f9d4fcddcb083710b171db4`; log `/tmp/gp-0935-host-suite-615ac964.log`.
+- Clean SDL build at the same source SHA. Interactive Xephyr run used dummy audio and verified: create/accept a Melody, extend it to two bars, add a bar-two note, refuse a shortening that would truncate that note, generate in STOP and PLAY, create a Material TAKE, apply FORM to insert 36 bars after the source block, save and reload the project, change and restore the external-output mode in Project settings, and export MIDI. Screenshots are under `/tmp/gp-0935-sdl-615ac964/xephyr-run/`.
+- The SDL-exported `grooveputer_scene-Song1-2.mid` (12,737 bytes) passed `tests/parse_smf_export_file.py` with exit 0.
+- Release-profile FS1B Cardputer build with `--warnings all`, exact source identity, candidate-only FatFs linker-map proof and DRAM gate; log `/tmp/gp-0935-fs1b-release-615ac964.log`.
+- `tests/test_release_firmware_reproducibility.sh` built the same exact-version app image twice with matching SHA-256 `6a6c920b3cab4c241464b02209680962743211d4d592af6c6adfd5a315339567`; log `/tmp/gp-0935-fw-repro-615ac964.log`.
+- Corrected clean-source package built twice from the exact source SHA with the `.16` rollback and hardware checklist. Both archives were byte-identical; final ZIP SHA-256 `b9810a1f98fa20a6d5f98ece295c52eaae0209eed79a1c050a7311bf09675731`. ZIP integrity and all 20 inner SHA-256 entries passed. Manifest/M5Burner addresses use the Cardputer board-specific bootloader offset `0x0` and record 8 MiB physical flash versus the 4 MiB merged-image span.
+- The packaging regression test now covers board-specific bootloader offset `0x0`, physical flash capacity 8 MiB versus the 4 MiB merged-image span, FlashSize menu overrides, and both documented flash spans. `python3 tests/test_hardware_candidate_packaging.py` passes all 12 tests; `py_compile` and `git diff --check` pass.
+- At the owner's request, the app-only image was flashed on the connected GroovePuter at `0x10000` using esptool v4.7.0. The device's bootloader at `0x0`, partition table at `0x8000`, and `boot_app0` at `0xe000` matched candidate hashes before writing. Esptool reported `Hash of data verified`; independent `verify_flash` returned `verify OK (digest matched)`, followed by USB re-enumeration. This does not verify main UI startup, sound or MIDI.
 
-**Memory delta:** No production source changed in this in-progress trace; no new final-candidate memory measurement has been made.
+**Tests failed / stopped:** No product-gate failure. A duplicate full-suite rerun after packaging-only changes was stopped after 12 minutes during sanitizer compilation and is not counted; the complete host suite on the unchanged firmware source SHA `615ac964...` passed above. An initial `CDCOnBoot=cdc` compile with `0.0.0-dev` identity completed but is not a candidate build. A follow-up CDC-on compile with the RC identity was canceled after confirming that the release FQBN is `CDCOnBoot=default`; neither run is counted as candidate evidence.
 
-**Firmware size delta:** Not measured for `.35`; the focused change is host-test-only.
+**Memory delta:** Static DRAM is 188,060 B, unchanged from the `.34` release-profile build. Headroom is 3,428 B against the provisional 191,488 B gate. `.dram0.data` is 44,812 B and `.dram0.bss` is 143,248 B. Runtime heap and task stack high-water were not measured.
 
-**Known risks:** The host trace does not model the Cardputer dispatcher task or actual USB enumeration. Live route rebinding remains deliberately unavailable during playback and stopped edits apply on next startup. The candidate must rerun all acceptance lanes at its exact clean artifact-producing SHA.
+**Firmware size delta:** Program storage 1,808,354 B; app-only BIN 1,808,512 B; merged full image 4,194,304 B. App-only SHA-256 `6a6c920b3cab4c241464b02209680962743211d4d592af6c6adfd5a315339567`; merged SHA-256 `2d3d78a10baf44af9e966b42fd8d72326412d01dcef2cadd40daf360058d5c19`; ELF SHA-256 `4038a6671dc840e94677abe10dbd910151040cf861c3944e020cfacded27c003`.
 
-**Hardware status:** `NOT TESTED`
+**Known risks:** The static DRAM gate is provisional and has 3,428 B headroom; runtime heap and stack usage were not measured. The release build emits legacy compiler warnings (mostly repeated pinned-core macro redefinitions; also format-truncation and type-limits warnings), though it exits successfully with the DRAM gate passing. The host tee trace does not model the real Cardputer dispatcher task or USB enumeration. A full old-app readback attempt ended with a serial CRC error before the write; the verified `.16` rollback bundle remains available. Physical UI startup, audio, keyboard feel, SD behavior and MIDI/SEQTRAK interoperability still require owner testing.
 
-**Decision:** `IN PROGRESS`; no hardware handoff yet.
+**Hardware status:** `HARDWARE-UNVERIFIED` (app write/readback and USB re-enumeration observed; runtime acceptance pending).
+
+**Decision:** `GO — READY_FOR_OWNER_HARDWARE_TEST`. Candidate bundle is local and unpublished. App-only firmware was flashed at the owner's request; no M5Burner/M5Launcher upload was performed, and no public release was created.

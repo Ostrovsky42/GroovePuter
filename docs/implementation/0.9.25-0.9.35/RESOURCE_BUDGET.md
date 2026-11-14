@@ -259,3 +259,48 @@ Artifact SHA-256 values:
 The manifest records the matching full source SHA and `working_tree=CLEAN`;
 every bundled file passed `sha256sum -c`. This is `.34` engineering evidence,
 not a `.35` hardware candidate. No image was flashed.
+
+## 0.9.35 release-profile hardware candidate
+
+Artifact-producing source SHA: `615ac9642f1103ce1f9d4fcddcb083710b171db4`;
+source tree was clean. Firmware build identity is `0.9.35-rc+615ac96`.
+FQBN:
+`m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=default,UploadMode=cdc`.
+The FS1B build log is `/tmp/gp-0935-fs1b-release-615ac964.log`; the linker map
+contains the candidate dynamic-buffer FatFs archive and excludes stock FatFs.
+The release build and project DRAM budget check passed.
+
+| Program storage | App-only BIN | Merged image | Static DRAM | Gate headroom | `.dram0.data` | `.dram0.bss` |
+|---:|---:|---:|---:|---:|---:|---:|
+| 1,808,354 B | 1,808,512 B | 4,194,304 B | 188,060 B | 3,428 B | 44,812 B | 143,248 B |
+
+Static DRAM matches `.34` release profile (delta 0 B). Runtime heap and task
+stack high-water remain unmeasured. The fixed DRAM gate is provisional.
+
+The selected Cardputer ADV profile has 8 MiB physical flash and bootloader
+address `0x0`; the partition table, `boot_app0` and app are at `0x8000`,
+`0xe000` and `0x10000`. The candidate merged artifact spans 4 MiB from `0x0`.
+Its 8 MiB target capacity and 4 MiB artifact span are recorded separately in
+`manifest.json`.
+
+| Artifact | Size | SHA-256 |
+|---|---:|---|
+| `GroovePuter.ino.bin` (app-only) | 1,808,512 B | `6a6c920b3cab4c241464b02209680962743211d4d592af6c6adfd5a315339567` |
+| `GroovePuter.ino.merged.bin` | 4,194,304 B | `2d3d78a10baf44af9e966b42fd8d72326412d01dcef2cadd40daf360058d5c19` |
+| `GroovePuter.ino.elf` | 37,897,036 B | `4038a6671dc840e94677abe10dbd910151040cf861c3944e020cfacded27c003` |
+
+Two same-source, same-profile builds produced the same app-only BIN hash;
+log: `/tmp/gp-0935-fw-repro-615ac964.log`. The connected device's bootloader,
+partition table and `boot_app0` readbacks matched the candidate. At the owner's
+request, the app-only image was written at `0x10000`; esptool write verification
+and independent `verify_flash` passed, followed by USB re-enumeration. Display,
+audio, SD and MIDI were not checked. An earlier 3 MiB readback attempt for an
+extra app-partition backup ended with a serial CRC error before any write.
+
+The corrected clean-source package is built twice with the verified `.16`
+rollback archive and compared byte-for-byte. Candidate archive:
+`build/release-candidate/0.9.35-HARDWARE-CANDIDATE-owner-handoff.zip`; ZIP SHA-256
+`b9810a1f98fa20a6d5f98ece295c52eaae0209eed79a1c050a7311bf09675731`. Both ZIPs
+were byte-identical; ZIP integrity and every bundled checksum passed. The
+archive remains unpublished; M5Launcher and M5Burner installation compatibility
+remain unverified.

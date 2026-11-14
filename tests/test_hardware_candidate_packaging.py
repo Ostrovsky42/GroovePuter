@@ -42,6 +42,11 @@ class CandidatePackagingTests(unittest.TestCase):
             "0x10000 \"{build.path}/{build.project_name}.bin\"\n",
             encoding="utf-8",
         )
+        (root / "boards.txt").write_text(
+            "m5stack_cardputer.build.flash_size=8MB\n"
+            "m5stack_cardputer.build.bootloader_addr=0x0\n",
+            encoding="utf-8",
+        )
         (root / "boot_app0.bin").write_bytes(b"boot-app0")
         (root / "build.log").write_text(
             "Sketch uses 123,456 bytes (4%) of program storage space.\n"
@@ -120,6 +125,9 @@ class CandidatePackagingTests(unittest.TestCase):
             self.assertEqual(manifest["memory"]["dram_headroom_bytes"], 3852)
             self.assertEqual(manifest["flash"]["app_partition"]["offset"], "0x10000")
             self.assertEqual(manifest["flash"]["merged_image"]["offset"], "0x0")
+            self.assertEqual(manifest["flash"]["components"][0]["offset"], "0x0")
+            self.assertEqual(manifest["flash"]["target_device_flash_bytes"], 8 * 1024 * 1024)
+            self.assertEqual(manifest["flash"]["merged_image"]["size_bytes"], 4 * 1024 * 1024)
             self.assertEqual(manifest["compatibility"]["m5launcher"], "HARDWARE_UNVERIFIED")
 
             burner = output / "m5burner-dry-run"
@@ -130,7 +138,7 @@ class CandidatePackagingTests(unittest.TestCase):
             self.assertEqual(names, [
                 "GroovePuter_0x10000.bin",
                 "boot_app0_0xe000.bin",
-                "bootloader_0x1000.bin",
+                "bootloader_0x0.bin",
                 "partitions_0x8000.bin",
             ])
             self.assertIn("has not been opened in M5Burner", (burner / "README.md").read_text())
@@ -148,6 +156,23 @@ class CandidatePackagingTests(unittest.TestCase):
             with zipfile.ZipFile(archive) as zipped:
                 self.assertIn("manifest.json", zipped.namelist())
                 self.assertIn("m5burner-dry-run/m5burner.json", zipped.namelist())
+
+    def test_flash_size_menu_overrides_board_default(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = pathlib.Path(directory)
+            build = self.make_build(root)
+            (root / "boards.txt").write_text(
+                "m5stack_cardputer.build.flash_size=8MB\n"
+                "m5stack_cardputer.build.bootloader_addr=0x0\n"
+                "m5stack_cardputer.menu.FlashSize.4M.build.flash_size=4MB\n",
+                encoding="utf-8",
+            )
+            layout = packager.flash_layout(
+                build,
+                root / "platform.txt",
+                CARDPUTER_FQBN + ",FlashSize=4M",
+            )
+            self.assertEqual(layout["target_device_flash_bytes"], 4 * 1024 * 1024)
 
     def test_package_zip_is_reproducible(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -179,6 +204,14 @@ class CandidatePackagingTests(unittest.TestCase):
                     self.assertIn(f"handoff/{name}", zipped.namelist())
                 readme = zipped.read("README.md").decode("utf-8")
                 self.assertIn("handoff/HARDWARE_TEST_0_9_35.md", readme)
+
+    def test_hardware_checklist_documents_both_flash_spans(self):
+        checklist = (
+            ROOT / "docs/implementation/0.9.25-0.9.35/HARDWARE_TEST_0_9_35.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("0x10000 artifacts/GroovePuter.ino.bin", checklist)
+        self.assertIn("0x0 artifacts/GroovePuter.ino.merged.bin", checklist)
+        self.assertIn("overwrites the first 4 MiB", checklist)
 
     def test_rejects_partition_table_that_disagrees_with_flash_recipe(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -233,8 +233,37 @@ def property_value(text: str, key: str) -> str:
     return match.group(1)
 
 
-def flash_layout(build_dir: Path, platform_txt: Path) -> dict:
+def board_property_value(
+    boards_text: str, board_id: str, options: dict[str, str], key: str,
+    platform_text: str,
+) -> str:
+    board_key = f"{board_id}.{key}"
+    match = re.search(rf"(?m)^{re.escape(board_key)}\s*=\s*(\S+)\s*$", boards_text)
+    value = match.group(1) if match else None
+    for option, selection in options.items():
+        menu_key = f"{board_id}.menu.{option}.{selection}.{key}"
+        match = re.search(rf"(?m)^{re.escape(menu_key)}\s*=\s*(\S+)\s*$", boards_text)
+        if match:
+            value = match.group(1)
+    if value is not None:
+        return value
+    return property_value(platform_text, key)
+
+
+def flash_layout(build_dir: Path, platform_txt: Path, fqbn: str) -> dict:
     platform = platform_txt.read_text(encoding="utf-8", errors="replace")
+    fqbn_parts = fqbn.split(":", 3)
+    if len(fqbn_parts) < 3 or not fqbn_parts[2]:
+        raise ValueError(f"invalid FQBN: {fqbn}")
+    board_id = fqbn_parts[2]
+    options = {}
+    if len(fqbn_parts) == 4:
+        for option in fqbn_parts[3].split(","):
+            if "=" in option:
+                name, selection = option.split("=", 1)
+                options[name] = selection
+    boards_txt = platform_txt.with_name("boards.txt")
+    boards = boards_txt.read_text(encoding="utf-8", errors="replace") if boards_txt.is_file() else ""
     sdkconfig = (build_dir / ".arduino-build/sdkconfig").read_text(
         encoding="utf-8", errors="replace"
     )
@@ -244,7 +273,9 @@ def flash_layout(build_dir: Path, platform_txt: Path) -> dict:
     if recipe is None:
         raise ValueError("platform recipe has no merged-image flash layout")
 
-    bootloader_offset = int(property_value(platform, "build.bootloader_addr"), 0)
+    bootloader_offset = int(board_property_value(
+        boards, board_id, options, "build.bootloader_addr", platform
+    ), 0)
     partition_match = re.search(
         r"(?m)^CONFIG_PARTITION_TABLE_OFFSET=(0x[0-9a-fA-F]+)", sdkconfig
     )
@@ -281,16 +312,21 @@ def flash_layout(build_dir: Path, platform_txt: Path) -> dict:
             f"app partition offset {app_offset:#x} disagrees with flash recipe "
             f"{recipe_app_offset:#x}"
         )
-    flash_size = property_value(platform, "build.flash_size")
+    flash_size = board_property_value(
+        boards, board_id, options, "build.flash_size", platform
+    )
     size_match = re.fullmatch(r"(\d+)([KMG]B)", flash_size, re.IGNORECASE)
     if not size_match:
-        raise ValueError(f"unsupported build.flash_size value: {flash_size}")
+        raise ValueError(f"unsupported target flash size: {flash_size}")
     scale = {"KB": 1024, "MB": 1024**2, "GB": 1024**3}
-    flash_bytes = int(size_match.group(1)) * scale[size_match.group(2).upper()]
+    device_flash_bytes = int(size_match.group(1)) * scale[size_match.group(2).upper()]
+    merged_size = (build_dir / MERGED_NAME).stat().st_size
+    if merged_size > device_flash_bytes:
+        raise ValueError("merged image exceeds the target board flash capacity")
     return {
-        "device_flash_bytes": flash_bytes,
+        "target_device_flash_bytes": device_flash_bytes,
         "app_partition": {"offset": f"0x{app_offset:x}", "size_bytes": app_size},
-        "merged_image": {"offset": "0x0", "size_bytes": flash_bytes},
+        "merged_image": {"offset": "0x0", "size_bytes": merged_size},
         "components": [
             {"role": "bootloader", "offset": f"0x{bootloader_offset:x}"},
             {"role": "partition_table", "offset": f"0x{partition_offset:x}"},
@@ -385,11 +421,11 @@ def prepare_candidate_package(
             or not file_contains(inputs["elf"], source_sha.lower().encode("ascii"))):
         raise ValueError("ELF build identity does not match manifest version/source SHA")
 
-    layout = flash_layout(build_dir, platform_txt)
+    layout = flash_layout(build_dir, platform_txt, fqbn)
     if inputs["app"].stat().st_size > layout["app_partition"]["size_bytes"]:
         raise ValueError("application image exceeds the generated app partition")
-    if inputs["merged"].stat().st_size != layout["merged_image"]["size_bytes"]:
-        raise ValueError("merged image size disagrees with platform flash size")
+    if layout["merged_image"]["size_bytes"] > layout["target_device_flash_bytes"]:
+        raise ValueError("merged image exceeds the target device flash capacity")
     component_offsets = [int(item["offset"], 16) for item in layout["components"]]
     component_sizes = [
         inputs["bootloader"].stat().st_size,
@@ -466,7 +502,8 @@ def prepare_candidate_package(
         "# M5Burner dry-run package\n\n"
         "This directory uses the documented legacy M5Stack firmware repository "
         "layout: `m5burner.json` plus a `firmware/` directory. Its filename/address "
-        "pairs come from the installed M5Stack ESP32 core flash recipe. The package "
+        "pairs come from the selected board's effective properties and installed "
+        "M5Stack ESP32 core flash recipe. The package "
         "was structurally checked only; it has not been opened in M5Burner, submitted, "
         "or tested in the newer Web Burner. Do not publish it as compatible.\n\n"
         "The device string in the category is a proposed label, not a verified catalog ID.\n",
@@ -505,7 +542,8 @@ def prepare_candidate_package(
         layout["app_partition"]["offset"],
     ))
     manifest["artifacts"].append(record_artifact(
-        output_dir, artifacts_dir / MERGED_NAME, "merged full image",
+        output_dir, artifacts_dir / MERGED_NAME,
+        "merged image; writes the recorded span from offset 0x0",
         layout["merged_image"]["offset"],
     ))
     manifest["artifacts"].append(record_artifact(
@@ -537,16 +575,20 @@ def prepare_candidate_package(
     (output_dir / "README.md").write_text(
         f"# GroovePuter {version} candidate package\n\n"
         f"Source commit: `{source_sha.lower()}`. This is an unpublished, "
-        "software-validated package. Hardware, physical SD behavior, M5Launcher "
-        "installation and external MIDI remain unverified.\n\n"
+        "software-validated package. The app-only image was written and its "
+        "readback hash verified on the connected GroovePuter; display, audio, SD "
+        "workflow and external MIDI acceptance remain unverified.\n\n"
         "Verify this ZIP against its adjacent `.sha256` sidecar and verify the "
         "extracted files with `sha256sum -c SHA256SUMS.txt`. The owner checklist "
-        "and full-flash command are in `handoff/HARDWARE_TEST_0_9_35.md`.\n\n"
+        "and tested app-only flash command are in `handoff/HARDWARE_TEST_0_9_35.md`.\n\n"
         "- `artifacts/GroovePuter.ino.bin`: app-only image for app offset "
         f"`{layout['app_partition']['offset']}`; bootloader and partition table "
-        "must already match this build.\n"
-        "- `artifacts/GroovePuter.ino.merged.bin`: full merged image for offset `0x0`; "
-        "contains bootloader, partition table, boot_app0 and app.\n"
+        "must already match this build. This is the update path and preserves "
+        "other flash partitions.\n"
+        f"- `artifacts/GroovePuter.ino.merged.bin`: {layout['merged_image']['size_bytes']}-byte "
+        "merged image for offset `0x0`; writes its full span, including the "
+        "bootloader, partition table, boot_app0, app and erased gaps. Back up "
+        "internal flash data before using it.\n"
         "- `m5launcher/`: app-only payload. Compatibility is not hardware-accepted.\n"
         "- `m5burner-dry-run/`: legacy manifest/firmware structure only; not submitted "
         "or tested in M5Burner.\n\n"

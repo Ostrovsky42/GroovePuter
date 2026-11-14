@@ -1,8 +1,8 @@
 # GroovePuter 0.9.35 — owner hardware acceptance
 
-Status: **READY TO RUN — NO HARDWARE TESTS PERFORMED**. This checklist is for
-the first owner acceptance pass. Blank result fields are intentional; do not
-convert them to PASS from host or SDL evidence.
+Status: **APP FLASH WRITTEN AND READBACK VERIFIED — HARDWARE ACCEPTANCE PENDING**.
+Only the firmware write, readback hash and USB re-enumeration were observed.
+Display, audio, keyboard, SD and MIDI acceptance remain pending.
 
 ## Candidate identity
 
@@ -11,39 +11,58 @@ convert them to PASS from host or SDL evidence.
 - Candidate bundle: the archive containing this checklist; verify its sidecar.
 - Verify the bundle against its adjacent `.zip.sha256` sidecar; do not rely on
   a copied checksum value.
-- Full-flash artifact: `artifacts/GroovePuter.ino.merged.bin`, 4,194,304 B,
+- Merged artifact: `artifacts/GroovePuter.ino.merged.bin`, 4,194,304 B,
   SHA-256 `2d3d78a10baf44af9e966b42fd8d72326412d01dcef2cadd40daf360058d5c19`,
-  flash address `0x0`.
+  flash address `0x0`; spans the first 4 MiB of the board's 8 MiB flash.
 - App-only artifact: `artifacts/GroovePuter.ino.bin`, 1,808,512 B,
   SHA-256 `6a6c920b3cab4c241464b02209680962743211d4d592af6c6adfd5a315339567`,
-  flash address `0x10000`; use only with the matching bootloader and partition table.
+  flash address `0x10000`; use only when the installed bootloader and partition
+  table match the candidate.
+- Observed device: ESP32-S3 QFN56 rev 0.2, 8 MiB GD flash. The current app
+  contained GroovePuter; enclosure revision was not independently inspected.
+- Candidate-compatible layout read from device: bootloader at `0x0` SHA-256
+  `71242cb75e7388e23b901146ba56790eb8ab9b0667e1cbc3c28e6770fe60296f`,
+  partition table at `0x8000` SHA-256
+  `aaae2888c5a6a348004b5b436f47abb25ae32e72d9003902955a998eda723edd`, and
+  `boot_app0` at `0xe000` SHA-256
+  `f94c5d786a7a8fab06ac5d10e33bf37711a6697636dc037559ea19cc410a17f0`.
+- Test date / operator: `2026-11-14 / Luna, at owner's request`
 - Previous accepted rollback: `.16` merged image,
   SHA-256 `53f49d6ad92a386a6a0034f754db22d43e15107fe7f8d0e05e2960a2c62ec39f`;
   full restore steps are in `rollback/ROLLBACK.md` in the bundle.
-- Test date / operator: `PENDING`
-- Cardputer ADV hardware revision: `PENDING`
 - SD card make/capacity: `PENDING`
 - External MIDI device / firmware: `PENDING`
 
 ## Install and recovery instructions
 
-1. Back up project files from the SD card.
+1. Back up project files from the SD card. The app-only update preserves other
+   flash partitions; the merged image overwrites the first 4 MiB and can erase
+   NVS/SPIFFS data in that span.
 2. Extract the bundle and verify `sha256sum -c SHA256SUMS.txt`; also verify the
    bundle SHA against the `.zip.sha256` sidecar before extracting.
-3. Enter Cardputer ADV download mode: power off, hold G0 while applying power,
-   then release G0.
-4. Flash the **merged** image at offset `0x0`:
+3. For an app update, first confirm the existing bootloader at `0x0` and
+   partition table at `0x8000` match the candidate. On the connected device,
+   both matched exactly. Then write the app-only image at `0x10000`:
 
    ```sh
-   python -m esptool --chip esp32s3 --port <PORT> write_flash 0x0 artifacts/GroovePuter.ino.merged.bin
+   esptool --chip esp32s3 --port <PORT> --baud 115200 --no-stub --after hard_reset write_flash --flash_mode keep --flash_freq keep --flash_size keep 0x10000 artifacts/GroovePuter.ino.bin
    ```
 
-   Command syntax was checked with esptool v4.7.0; it has not been run against
-   a connected device.
+   This exact app-only write was performed with esptool v4.7.0. Esptool
+   reported `Hash of data verified`; an independent `verify_flash` reported
+   `verify OK (digest matched)`. The board re-enumerated on USB after reset.
+   The display and application workflow were not observed.
 
-5. Keep the accepted `.16` rollback bundle available. Its merged image is also
-   written at `0x0`; see `rollback/ROLLBACK.md` for recovery details and the
-   acceptance-record limitation.
+4. Use the merged image at `0x0` only for an intentional full-layout install
+   after backing up internal flash data. It is 4 MiB on an 8 MiB device; it does
+   not represent a full readback backup. The command is:
+
+   ```sh
+   esptool --chip esp32s3 --port <PORT> --baud 115200 --no-stub --after hard_reset write_flash --flash_mode keep --flash_freq keep --flash_size keep 0x0 artifacts/GroovePuter.ino.merged.bin
+   ```
+
+   Keep the accepted `.16` rollback bundle available and see
+   `rollback/ROLLBACK.md` for recovery details.
 
 Record the candidate SHA from both the handoff manifest and firmware diagnostic
 identity before testing. If they disagree, stop and resolve provenance first.
@@ -59,7 +78,7 @@ or unrecoverable boot failure; preserve logs and use the documented rollback.
 
 | Check | Expected result | Result / notes |
 |---|---|---|
-| Flash candidate with its documented package/path | Tool accepts the exact artifact; no address/layout guesswork | `NOT RUN` |
+| Flash candidate with its documented package/path | Tool accepts the exact artifact; no address/layout guesswork | `PASS` — app-only at `0x10000`; esptool write hash and independent readback verification passed; USB re-enumerated after reset (2026-11-14) |
 | Cold start | GroovePuter reaches the main UI without a reset loop | `NOT RUN` |
 | Second cold start | Same candidate starts again and retained project data remains available | `NOT RUN` |
 | Display | Text and selected states are readable on the physical 240×135 LCD | `NOT RUN` |
@@ -152,6 +171,6 @@ available. Preserve the project and any temporary/export files before retrying.
 - Accepted areas: `NONE RECORDED`
 - Rejected areas / follow-up issues: `PENDING`
 
-Only the owner records hardware acceptance. Record Cardputer startup, internal
-audio, USB MIDI, SEQTRAK and musical-quality outcomes separately; one passing
-area does not imply another passed.
+Only the owner records hardware acceptance. This limited app write/readback
+does not establish startup, internal audio, USB MIDI, SEQTRAK or musical quality.
+Record those outcomes separately; one passing area does not imply another passed.
