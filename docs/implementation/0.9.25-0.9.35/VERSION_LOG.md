@@ -130,7 +130,7 @@
 
 **Base commit:** `bdc439b14167313a22ee810a9b37b02aabd44a17`
 
-**Result commit:** pending documentation result commit.
+**Result commit:** `7e39d1a9c600d8d54f85c16000fca4fc444f991a`
 
 **Goal:** Verify that generated and arranged material follows existing harmonic context, keeps chord changes aligned to harmonic rhythm, and fails closed when the route is invalid or stale.
 
