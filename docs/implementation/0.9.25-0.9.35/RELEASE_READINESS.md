@@ -108,6 +108,16 @@ it does not prove current M5Burner or Web Burner acceptance.
   `/tmp/gp-0933-stable-host-suite.log`.
 - No physical firmware, keyboard, internal audio, SD, USB MIDI or SEQTRAK test
   has been performed for this development line.
+- SDL preflight at integration HEAD `a11b601b` exercised Melody creation and
+  length editing, a bar-2 note, refusal to shrink across existing notes,
+  STEPS/Melody switching, Song generation, FORM entry and full-slot refusal
+  without partial Song mutation. SDL used dummy audio. This is a partial
+  software workflow check, not final `.35` SDL acceptance.
+- A focused host trace added in the current uncommitted `.35` worktree covers
+  event-router/output/tee behavior across USB loss with DIN active, shared note
+  ownership, captured-route stability, DIN release and USB cleanup before
+  post-reconnect traffic. Its direct compile/run passes; the complete host
+  suite and candidate gates have not yet run on this worktree state.
 
 ## Rollback source identified
 

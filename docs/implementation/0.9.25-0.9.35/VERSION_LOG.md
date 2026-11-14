@@ -273,3 +273,33 @@ updates the stale docs regression expectations; productization code is in
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO` for 0.9.34 productization, `HOST-VALIDATED / HARDWARE-UNVERIFIED`. `.35` still requires a clean integrated candidate and rerun of every acceptance lane.
+
+## Version 0.9.35 — Integration closure (in progress)
+
+**Version:** 0.9.35
+
+**Base commit:** `a11b601b9e5645ab3bf4938f7f5cb32294c6578e` (local `.34` integration HEAD).
+
+**Result commit:** Pending; current worktree contains uncommitted regression and evidence-document updates.
+
+**Goal:** Close integration risks and produce the first software-validated hardware candidate; physical acceptance remains with the owner.
+
+**Implemented:** Added a deterministic `MusicalEventRouter` → `UsbMidiOutput` → USB-primary/DIN-secondary tee trace. It verifies same-pitch ownership shared by Pattern and Performance, primary USB loss while DIN remains mounted, final NoteOff delivered to DIN, startup route stability after a later route snapshot publication, primary CC123 cleanup before post-reconnect NoteOn, section-like note transition ordering, and zero note ownership after teardown. No production runtime code changed.
+
+**Not implemented:** Full Cardputer dispatcher queue fault injection, USB-only endpoint loss/rejoin trace, exact `.35` firmware/package build, and final candidate acceptance.
+
+**Tests added:** `testRouterTeeDisconnectAndFrozenRouteIntegration` in `tests/test_usb_midi_pending_release.cpp`.
+
+**Tests passed:** Focused command `c++ -std=c++17 -Wall -Wextra -Werror -I. tests/test_usb_midi_pending_release.cpp src/midi/usb_midi_output.cpp -o /tmp/gp-0935-midi-lifecycle-test && /tmp/gp-0935-midi-lifecycle-test`; `git diff --check`. SDL preflight at `a11b601b` covered Melody length/note boundaries, STEPS switching, Song generation, FORM entry and slot-capacity refusal without partial mutation.
+
+**Tests failed / pending:** An accidental full-suite invocation was terminated before completion because its output/exit status could not be captured; it is not counted. Rerun the full host suite with a saved log. Exact candidate SDL Golden Path, final FS1B firmware build, resource delta, deterministic package and `.35` artifact SHA validation remain pending. SDL used dummy audio; no physical Cardputer, keyboard, audio, USB MIDI, DIN or SEQTRAK behavior was tested.
+
+**Memory delta:** No production source changed in this in-progress trace; no new final-candidate memory measurement has been made.
+
+**Firmware size delta:** Not measured for `.35`; the focused change is host-test-only.
+
+**Known risks:** The host trace does not model the Cardputer dispatcher task or actual USB enumeration. Live route rebinding remains deliberately unavailable during playback and stopped edits apply on next startup. The candidate must rerun all acceptance lanes at its exact clean artifact-producing SHA.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `IN PROGRESS`; no hardware handoff yet.

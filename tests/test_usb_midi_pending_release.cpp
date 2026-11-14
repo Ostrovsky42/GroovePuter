@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <vector>
 
+#include "src/input/musical_event_router.h"
+#include "src/midi/midi_pattern_startup_routes.h"
 #include "src/midi/tee_midi_transport.h"
 #include "src/midi/usb_midi_output.h"
 
@@ -306,6 +308,103 @@ void testIdleCadenceSendsNothing() {
     assert(usb.log.empty());
 }
 
+// A profile publication after startup must not change the active route. If
+// USB drops while DIN remains available, the last owner's NoteOff reaches DIN;
+// USB must clear its stale note before it receives any post-reconnect notes.
+// The trace also crosses a section-like NoteOff/NoteOn boundary and closes all
+// note ownership before teardown.
+void testRouterTeeDisconnectAndFrozenRouteIntegration() {
+    GroovePuterMidi::MidiOutputRouteProjection patternRoutes{};
+    patternRoutes.patternSynthA = {true, 7};
+    patternRoutes.patternSynthB = {true, 8};
+    GroovePuterMidi::MidiPerformanceRouteProjection performanceRoutes{};
+    performanceRoutes.complete = true;
+    performanceRoutes.enabled = true;
+    performanceRoutes.synthA = {true, 7};
+    performanceRoutes.synthB = {true, 8};
+    performanceRoutes.dx = {true, 9};
+    performanceRoutes.receiverModeControl =
+        GroovePuterMidi::MidiReceiverModeControl::None;
+    GroovePuterMidi::midiPatternStartupRouteRuntime().publish(
+        patternRoutes, performanceRoutes);
+
+    ScriptedTransport usb;
+    ScriptedTransport din;
+    GroovePuterMidi::TeeMidiTransport tee(usb, din);
+    tee.setSecondaryEnabled(true);
+    UsbMidiOutput output(tee);
+    MusicalEventRouter router;
+    assert(router.addSink(output));
+    assert(output.begin());
+    output.pollConnection();
+
+    router.route(event(MusicalEventType::NoteOn, 60,
+                       MusicalEventSource::PatternPlayer));
+    router.route(event(MusicalEventType::NoteOn, 60,
+                       MusicalEventSource::PerformanceKeyboard));
+    assert(output.wireOwnerCount(7, 60) == 2);
+    assert(usb.log.size() == 1 && usb.log[0].status == 0x90 &&
+           usb.log[0].channel == 7 && usb.log[0].note == 60);
+    assert(din.log.size() == 1 && din.log[0].status == 0x90 &&
+           din.log[0].channel == 7 && din.log[0].note == 60);
+
+    // Simulate a newly selected profile being published for the next output
+    // session. The running output retains the channel it captured at begin().
+    patternRoutes.patternSynthA.channel = 0;
+    performanceRoutes.synthA.channel = 0;
+    GroovePuterMidi::midiPatternStartupRouteRuntime().publish(
+        patternRoutes, performanceRoutes);
+    assert(output.channelFor(MusicalEventSource::PatternPlayer,
+                             MusicalEventTarget::SynthA) == 7);
+
+    usb.mountedFlag = false;
+    output.pollConnection();
+    assert(output.wireOwnerCount(7, 60) == 2);
+
+    router.route(event(MusicalEventType::NoteOff, 60,
+                       MusicalEventSource::PatternPlayer));
+    assert(output.wireOwnerCount(7, 60) == 1);
+    assert(usb.count(0x80, 60) == 0 && din.count(0x80, 60) == 0);
+
+    router.route(event(MusicalEventType::NoteOff, 60,
+                       MusicalEventSource::PerformanceKeyboard));
+    assert(output.wireOwnerCount(7, 60) == 0);
+    assert(usb.count(0x80, 60) == 0);
+    assert(din.count(0x80, 60) == 1);
+
+    const std::size_t usbBeforeReconnect = usb.log.size();
+    const std::size_t dinBeforeReconnect = din.log.size();
+    usb.mountedFlag = true;
+    output.pollConnection();
+    assert(usb.log.size() == usbBeforeReconnect);
+    assert(din.log.size() == dinBeforeReconnect);
+
+    router.route(event(MusicalEventType::NoteOn, 62,
+                       MusicalEventSource::PatternPlayer));
+    assert(usb.log.size() == usbBeforeReconnect + 2);
+    assert(usb.log[usbBeforeReconnect].status == 0xB0 &&
+           usb.log[usbBeforeReconnect].channel == 7 &&
+           usb.log[usbBeforeReconnect].note == 123);
+    assert(usb.log[usbBeforeReconnect + 1].status == 0x90 &&
+           usb.log[usbBeforeReconnect + 1].channel == 7 &&
+           usb.log[usbBeforeReconnect + 1].note == 62);
+    assert(din.log.size() == dinBeforeReconnect + 1);
+    assert(din.log.back().status == 0x90 && din.log.back().channel == 7 &&
+           din.log.back().note == 62);
+    assert(output.wireOwnerCount(7, 62) == 1);
+
+    // Song section boundary: release the old section note before the next one.
+    router.route(event(MusicalEventType::NoteOff, 62,
+                       MusicalEventSource::PatternPlayer));
+    router.route(event(MusicalEventType::NoteOn, 64,
+                       MusicalEventSource::PatternPlayer));
+    assert(output.wireOwnerCount(7, 62) == 0);
+    assert(output.wireOwnerCount(7, 64) == 1);
+    router.route(event(MusicalEventType::NoteOff, 64,
+                       MusicalEventSource::PatternPlayer));
+    assert(output.wireOwnerCount(7, 64) == 0);
+}
+
 }  // namespace
 
 int main() {
@@ -319,5 +418,6 @@ int main() {
     testCadenceAcrossMicrosWrap();
     testRemountAfterLongUnmountedSpellRetriesPromptly();
     testIdleCadenceSendsNothing();
+    testRouterTeeDisconnectAndFrozenRouteIntegration();
     return 0;
 }

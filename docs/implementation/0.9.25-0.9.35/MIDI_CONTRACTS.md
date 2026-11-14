@@ -30,6 +30,7 @@ The code has one `TransportClockRuntime` source selection (internal GroovePuter 
 
 - `tests/test_midi_note_ownership_table.cpp`: sparse capacity, invalid address rejection, overlap arithmetic, pruning and full-table release safety.
 - `tests/test_usb_midi_output.cpp`, `tests/test_usb_midi_pending_release.cpp`, `tests/test_usb_midi_cutoff.cpp`: output routing, same-note sharing, scoped releases, pending release retries, and controller behavior.
+- The `.35` addition in `tests/test_usb_midi_pending_release.cpp` joins `MusicalEventRouter`, `UsbMidiOutput`, and USB-primary/DIN-secondary `TeeMidiTransport`: same-pitch ownership, USB loss while DIN stays mounted, DIN-only final NoteOff, frozen startup route after a new snapshot publication, USB CC123 before the first post-reconnect NoteOn, and zero final ownership. Its focused compile/run passes. This is a deterministic host trace; it does not exercise the Cardputer dispatcher task, real USB enumeration, or physical receiver behavior.
 - `tests/test_tee_midi_transport.cpp`: identical traffic on both wires, USB backpressure, DIN-only operation, stall demotion and USB cleanup-debt recovery.
 - `tests/test_cardputer_uart_midi_transport.cpp`: NoteOff reserve/priority and deferred release retry under a saturated queue.
 - `tests/test_midi_transport_sync.cpp`, `tests/test_external_midi_clock_follower.cpp`: transport event ordering and simulated external clock following.
@@ -38,7 +39,7 @@ The code has one `TransportClockRuntime` source selection (internal GroovePuter 
 ## 0.9.26 residual audit gaps
 
 1. Live route/profile rebinding remains deferred. Current source freezes the route snapshot after startup; no runtime old-channel NoteOff/new-channel NoteOn transaction exists. If live rebinding is introduced, require a fake-transport ordering test before enabling it.
-2. Test endpoint-specific loss when both tee wires are enabled, including USB-only note ownership, DIN-only cleanup and rejoin behavior. Overall mounted/unmounted transitions alone are insufficient to prove each physical receiver's note state; the new regression covers only overall transport disconnect/reconnect.
+2. The `.35` focused trace now covers USB-primary loss/rejoin while DIN remains mounted, including shared ownership, DIN-only final release, captured-route stability and USB cleanup before resumed traffic. Still required: exercise this through the Cardputer MIDI dispatcher/queue and cover USB-only note ownership with DIN loss/rejoin; the host mock does not prove physical endpoint state.
 3. Exercise queue/table overflow through the integrated dispatcher path, not only component tests, and verify NoteOff remains deliverable after rejected NoteOn bursts.
 4. Confirm stop, project change and Song-section transition each reach the scoped ownership cleanup path and preserve unrelated owners on a shared channel.
 5. Audit route persistence migrations and old project fixtures before adding fields. The current profile projection itself documents the incomplete Custom Performance target table.
