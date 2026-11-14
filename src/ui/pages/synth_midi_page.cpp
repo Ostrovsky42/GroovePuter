@@ -10,6 +10,8 @@
 #include "../ui_theme.h"
 #include "../ui_input.h"
 #include "src/midi/cutoff_sweep.h"
+#include "src/midi/midi_device_profile_runtime.h"
+#include "src/midi/midi_performance_route_projection.h"
 
 namespace {
 constexpr int kFocusableRows = 4;   // controller, SWEEP, TARGET, TIME
@@ -58,9 +60,36 @@ void SynthMidiPage::draw(IGfx& gfx) {
   const char* synthName = voice_index_ == 0 ? "SYNTH A" : "SYNTH B";
   gfx.setTextColor(palette.voice(voice_index_));
   gfx.drawText(x, headerY, synthName);
-  const uint8_t routeChannel = voice_index_ == 0 ? GroovePuterMidi::kSynthAChannel : GroovePuterMidi::kSynthBChannel;
+  const auto& profileRuntime = GroovePuterMidi::midiDeviceProfileRuntime();
+  const GroovePuterMidi::MidiPerformanceRouteProjection routeProjection =
+      GroovePuterMidi::projectMidiPerformanceRoutes(profileRuntime.settings());
+  const GroovePuterMidi::MidiDeviceProfile profile = profileRuntime.profile();
+  const GroovePuterMidi::MidiMelodicWireRoute& profileRoute = voice_index_ == 0
+      ? routeProjection.synthA : routeProjection.synthB;
+  uint8_t routeChannel = profileRoute.channel;
+  if (!routeProjection.complete) {
+    // Custom has no persisted Performance target table. Cardputer's current
+    // UsbMidiOutput fallback still uses these established channels.
+    routeChannel = voice_index_ == 0 ? GroovePuterMidi::kSynthAChannel
+                                     : GroovePuterMidi::kSynthBChannel;
+  }
+  const char* profileLabel = "CUSTOM";
+  switch (profile) {
+    case GroovePuterMidi::MidiDeviceProfile::SeqtrakNative:
+      profileLabel = "SEQTRAK";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::GeneralMidi:
+      profileLabel = "GM";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::GenericMidi:
+      profileLabel = "GENERIC";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::Custom:
+      break;
+  }
   char route[24]{};
-  std::snprintf(route, sizeof(route), "SEQTRAK CH%02d", routeChannel + 1);
+  std::snprintf(route, sizeof(route), "%s CH%02u", profileLabel,
+                static_cast<unsigned>(routeChannel + 1u));
   gfx.setTextColor(palette.secondary);
   gfx.drawText(x + gfx.textWidth(synthName) + 10, headerY, route);
   gfx.fillRect(x, content.y + 13, width, 1, palette.grid);

@@ -20,6 +20,7 @@ mapfile -t SDL_SOURCES < <(
 "$CXX" -std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h \
   $SDL_CFLAGS $SDL_GFX_CFLAGS -O1 \
   "${SDL_SOURCES[@]}" ../tests/test_midi_perform_ui_polish.cpp \
+  ../src/midi/midi_companion_settings.cpp \
   $SDL_LIBS $SDL_GFX_LIBS -o "$BUILD/test"
 popd >/dev/null
 cd "$(mktemp -d /tmp/grooveputer-polish-test.XXXXXX)"

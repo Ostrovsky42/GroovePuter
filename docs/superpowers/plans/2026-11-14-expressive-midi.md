@@ -69,6 +69,7 @@ Expected: both exit 0; existing sweep, allowlist, dedupe, refusal and reconnect 
 - Modify: `src/ui/pages/synth_midi_page.cpp`
 - Modify: `src/ui/pages/synth_midi_page.h`
 - Modify: `tests/test_midi_perform_ui_polish.cpp`
+- Modify: `tests/run_midi_perform_ui_polish_tests.sh` (link the route-settings implementation used by the new profile test)
 
 **Interfaces:**
 - Consumes: `midiDeviceProfileRuntime().settings()` and `projectMidiPerformanceRoutes()`.

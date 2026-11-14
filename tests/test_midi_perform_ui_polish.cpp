@@ -9,6 +9,7 @@
 #include "src/input/performance_keyboard.h"
 #include "src/ui/pages/project_page.h"
 #include "src/ui/pages/perform_page.h"
+#include "src/ui/pages/synth_midi_page.h"
 #include "src/ui/ui_common.h"
 
 SerialMock Serial;
@@ -93,6 +94,37 @@ int main() {
   gfx.texts.clear(); project.draw(gfx);
   assert(gfx.has("100%"));
   gfx.bodyFits();
+
+  // Route labels must follow the applied profile instead of always describing
+  // the SEQTRAK default channels.
+  SynthMidiPage synthA(gfx, engine, AudioGuard{}, 0);
+  SynthMidiPage synthB(gfx, engine, AudioGuard{}, 1);
+  const auto checkMidiRouteLabels = [&] (
+      GroovePuterMidi::MidiDeviceProfile profile,
+      const char* synthALabel, const char* synthBLabel) {
+    GroovePuterMidi::midiDeviceProfileRuntime().initialize(
+        GroovePuterMidi::makeDefaultMidiOutputSettings(profile));
+    gfx.texts.clear();
+    synthA.draw(gfx);
+    assert(gfx.has(synthALabel));
+    gfx.bodyFits();
+    gfx.texts.clear();
+    synthB.draw(gfx);
+    assert(gfx.has(synthBLabel));
+    gfx.bodyFits();
+  };
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::SeqtrakNative,
+                       "SEQTRAK CH08", "SEQTRAK CH09");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::GeneralMidi,
+                       "GM CH01", "GM CH02");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::GenericMidi,
+                       "GENERIC CH01", "GENERIC CH02");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::Custom,
+                       "CUSTOM CH08", "CUSTOM CH09");
+  GroovePuterMidi::midiDeviceProfileRuntime().initialize(
+      GroovePuterMidi::makeDefaultMidiOutputSettings(
+          GroovePuterMidi::MidiDeviceProfile::SeqtrakNative));
+  gfx.texts.clear();
 
   MusicalEventRouter router;
   Events events;
