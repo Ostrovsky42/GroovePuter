@@ -42,9 +42,15 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Decision:** milestones 0.9.25–0.9.34 are `HOST-VALIDATED / HARDWARE-UNVERIFIED`. The 0.9.35 artifact is `READY_FOR_OWNER_HARDWARE_TEST`; only owner confirmation may change that to `HARDWARE-ACCEPTED`.
 
+### AD-007 — Performance macros are transient projections
+
+**Decision:** Macro state produces a separate fixed-capacity playback candidate from a const phrase source. It does not access Scene, storage or Undo and is not serialized. There is no implicit or explicit permanent apply operation in 0.9.28. A future materialization action, if needed, must use the existing phrase edit/commit boundary.
+
+**Evidence:** `src/performance/performance_macro_engine.h` validates into a local candidate and assigns the destination only after validation; host tests verify unchanged source, transactional rejection, deterministic seed behavior and zero heap allocations.
+
 ## Decisions still required by implementation
 
-- Whether macro values are persisted as user settings while their live performance state remains transient, and which explicit Commit operation materializes a macro result.
+- Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.28 does not commit the transient candidate.
 - How existing Song/FORM data expresses INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO without adding seven storage types.
 - SMF export format (Type 1 is preferred by the roadmap when compatible) and the exact boundary between saved composition and committed performance state.
 - Whether live MIDI profile changes can be safely rebound immediately or must be deferred to a bar/transport boundary.

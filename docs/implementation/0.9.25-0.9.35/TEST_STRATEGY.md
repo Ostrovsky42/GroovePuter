@@ -28,7 +28,7 @@ Baseline SHA: `28918d9b78e9a527ce2b5ce201a465af5126f76a`. Test results are recor
 
 - **0.9.26:** fake transport traces for overlapping same-pitch owners, route changes while held, Stop/project/Song transitions, endpoint disconnect/rejoin and integrated queue overflow.
 - **0.9.27:** profile serialization/migration, Generic fallback, incomplete Custom refusal and fake SEQTRAK ordering.
-- **0.9.28:** macro boundaries, deterministic seeds, anchor/motif preservation, reversible transient state, no Scene mutation before Commit, no allocation on real-time paths.
+- **0.9.28:** `bash tests/run_performance_macro_engine_tests.sh` checks state bounds, no-op/reversibility, seeded determinism, anchor/onset preservation, harmony fallback, transactional rejection, legal output and zero heap allocations. The full host suite includes this runner; the engine is not yet wired to live UI/playback (0.9.29).
 - **0.9.29:** SDL action sequence through Performance, macro selection/value display/reset, Play/Stop, section changes, page return and persistence.
 - **0.9.30–0.9.31:** harmonic fallback and chord transitions, motif identity, transactional Song form generation, capacity refusal, Undo and round-trip fixtures.
 - **0.9.32:** CC ranges/order/rate limit/deduplication, Stop reset and disconnect cleanup.

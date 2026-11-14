@@ -42,3 +42,7 @@ The local exact-head rebuild produced these additional fingerprints:
 - Hardware measurements: **NOT TESTED** and intentionally deferred until 0.9.35 owner acceptance.
 
 For milestone deltas, compare like-for-like configuration and toolchain, preserve the linker map/ELF report, report both absolute DRAM use and headroom against 191,488 B, and explain any change. No new numeric ceiling is introduced here; the baseline gate is the currently enforced project value.
+
+## 0.9.28 macro engine
+
+The 0.9.28 transformer is a fixed-capacity header-only host-tested domain function and is not yet referenced by the live application. Therefore it adds no firmware object, static DRAM or binary bytes at this milestone. No target-memory claim is made about the future 0.9.29 playback/UI integration; measure that integration against the FS1B baseline then.

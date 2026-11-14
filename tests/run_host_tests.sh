@@ -555,6 +555,7 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
 
 bash "${ROOT_DIR}/tests/run_midi_output_destination_tests.sh"
 bash "${ROOT_DIR}/tests/run_midi_device_profile_ui_0_9_7_tests.sh"
+bash "${ROOT_DIR}/tests/run_performance_macro_engine_tests.sh"
 
 "${CXX}" \
   -std=c++17 \

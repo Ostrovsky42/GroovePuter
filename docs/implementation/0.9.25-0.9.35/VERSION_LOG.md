@@ -63,3 +63,33 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO`
+
+## Version 0.9.28 — Musical Macros Engine
+
+**Version:** 0.9.28
+
+**Base commit:** `80b0e44eebe813dbe5cd436ae03f32aecd84e998`
+
+**Result commit:** pending
+
+**Goal:** Define a deterministic, bounded, reversible macro projection that preserves saved musical material.
+
+**Implemented:** Added the fixed four-byte `TENSION / ENERGY / SPACE / MUTATION` state and a transient transformation over fixed-capacity phrase events. Tension accents weak stepwise approaches; Energy scales velocity and increases ghost-event probability; Space shortens gates and attenuates ghost probability; Mutation applies seeded one-scale-step changes only to weak in-scale events when key context is known. Strong-beat anchors, event count, onsets and source phrase remain unchanged. Invalid input is rejected transactionally; unknown harmony skips pitch mutation. No Scene/storage/Undo owner or Commit action was added. The transformer uses caller-provided unpublished scratch and is control-side only.
+
+**Not implemented:** Live Performance UI/playback integration (0.9.29), chord-aware tension (0.9.30), and permanent macro-to-phrase materialization.
+
+**Tests added:** `tests/test_performance_macro_engine.cpp` and `tests/run_performance_macro_engine_tests.sh`, registered in `tests/run_host_tests.sh`.
+
+**Tests passed:** Final targeted macro runner exit 0 after the scratch-buffer, alias-rejection and four-byte-state changes; full `bash tests/run_host_tests.sh` exit 0, recorded in `build/host-suite-0928.exit`; `git diff --check`.
+
+**Tests failed / pending:** The initial test-first compile failed because the macro API did not exist yet, then passed after implementation. No final test failures. No SDL macro flow or firmware build was run because this domain engine is not yet connected to the application. No hardware or listening tests were run.
+
+**Memory delta:** Macro state is 4 bytes. No new static firmware state or binary delta is claimed: the engine is not referenced by the live application yet. It adds no full-phrase buffer to its own stack; the future caller must account for its scratch/output owner.
+
+**Firmware size delta:** Not measured for 0.9.28; no production firmware build was required before live integration. The last linked candidate evidence remains 0.9.27 and must not be represented as containing macros.
+
+**Known risks:** Tension is a local stepwise-approach heuristic, not chord-aware dissonance. Mutation follows project key/scale rather than a chord-specific context. Data-level tests do not establish musical quality. Caller must prepare the inactive destination off the audio callback and publish it at a safe boundary.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO`
