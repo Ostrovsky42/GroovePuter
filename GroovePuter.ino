@@ -5,6 +5,7 @@
 #include "src/ui/imu_probe.h"
 #ifdef GROOVEPUTER_TILT
 #include "src/input/tilt_axis.h"
+#include "src/input/tilt_settings_file.h"
 #endif
 #include <SD.h>
 #include <SPI.h>
@@ -1213,6 +1214,22 @@ void loop() {
     // The mode is always off after boot.
     using namespace GroovePuterTilt;
     const uint32_t tiltNow = millis();
+    {
+      // Shared settings: read the SD file once, a little after boot; write on request.
+      static bool settingsLoaded = false;
+      if (!settingsLoaded && millis() > 2000) {
+        settingsLoaded = true;
+        GroovePuterTilt::loadSettingsFile();
+      }
+      if (gSaveRequested) {
+        gSaveRequested = false;
+        GroovePuterTilt::saveSettingsFile();
+      }
+    }
+    if (gZeroRequested) {
+      gZeroRequested = false;
+      if (gController.enabled()) gController.recalibrate();
+    }
     if (gToggleRequested) {
       gToggleRequested = false;
       if (gController.enabled()) {

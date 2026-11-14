@@ -170,12 +170,13 @@ inline void formatTiltAxis(char* out, size_t size, uint8_t choice, float deg) {
     const int whole = static_cast<int>(deg >= 0.0f ? deg + 0.5f : deg - 0.5f);
     std::snprintf(out, size, "%s %+d DEG", tiltChoiceName(choice), whole);
 }
-// Sensitivity steps, full scale in degrees: 45, 30, 20, 12.
+// Sensitivity steps, full scale in degrees: 60, 45, 30, 20, 12.
 inline const char* tiltSensName(uint8_t index) {
     switch (index) {
-        case 0: return "45 DEG";
-        case 2: return "20 DEG";
-        case 3: return "12 DEG";
+        case 0: return "60 DEG";
+        case 1: return "45 DEG";
+        case 3: return "20 DEG";
+        case 4: return "12 DEG";
         default: return "30 DEG";
     }
 }
@@ -472,7 +473,7 @@ void PerformPage::adjustSelectedValue(int direction) {
                     break;
                 case ir(InRow::TiltTargetRow): case ir(InRow::TiltSensRow):
                 case ir(InRow::TiltXRow): case ir(InRow::TiltYRow): case ir(InRow::TiltZRow):
-                case ir(InRow::TiltFlickRow):
+                case ir(InRow::TiltFlickRow): case ir(InRow::TiltZeroRow):
                     cycleTiltSetting(row, direction);
                     break;
                 default:
@@ -681,19 +682,26 @@ void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
         UI::showToast(toast, 800);
         return;
     }
+    if (row == ir(InRow::TiltZeroRow)) {
+        gZeroRequested = true;
+        UI::showToast("TILT: ZERO SET HERE", 900);
+        return;
+    }
     if (row == ir(InRow::TiltFlickRow)) {
         gFlickEnabled = !gFlickEnabled;
+        gSaveRequested = true;
         UI::showToast(gFlickEnabled ? "TILT FLICK: ON" : "TILT FLICK: OFF (MENU ONLY)", 800);
         return;
     }
     if (row == ir(InRow::TiltSensRow)) {
         uint8_t index = gSensIndex;
         if (direction >= 0) {
-            index = index >= 3 ? 0 : static_cast<uint8_t>(index + 1);
+            index = index >= 4 ? 0 : static_cast<uint8_t>(index + 1);
         } else {
-            index = index == 0 ? 3 : static_cast<uint8_t>(index - 1);
+            index = index == 0 ? 4 : static_cast<uint8_t>(index - 1);
         }
         gSensIndex = index;
+        gSaveRequested = true;
         std::snprintf(toast, sizeof(toast), "TILT SENS: %s", tiltSensName(index));
         UI::showToast(toast, 800);
         return;
@@ -708,6 +716,7 @@ void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
         choice = choice == 0 ? 4 : static_cast<uint8_t>(choice - 1);
     }
     gAxisChoice[axis] = choice;
+    gSaveRequested = true;
     static const char* const kAxisName[3] = {"X", "Y", "Z"};
     std::snprintf(toast, sizeof(toast), "TILT %s: %s", kAxisName[axis], tiltChoiceName(choice));
     UI::showToast(toast, 800);
@@ -1033,6 +1042,7 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::TiltYRow): return "TILT: CONTROLLER FOR THE Y AXIS (NONE TO OFF)";
                 case ir(InRow::TiltZRow): return "TILT: CONTROLLER FOR THE GYRO TURN (NONE TO OFF)";
                 case ir(InRow::TiltFlickRow): return "TILT: A QUICK FLICK CHANGES THE TARGET (OFF: MENU ONLY)";
+                case ir(InRow::TiltZeroRow): return "TILT: PRESS TO ZERO X, Y, Z AT THIS POSE";
                 default: return "";
             }
         }
@@ -1412,6 +1422,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::TiltZRow), "TILT Z", value, true);
             drawRow(ir(InRow::TiltFlickRow), "TILT FLICK",
                     GroovePuterTilt::gFlickEnabled ? "ON" : "OFF", true);
+            drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "SET HERE", true);
 #else
             drawRow(ir(InRow::TiltTargetRow), "TILT TARGET", "N/A", false);
             drawRow(ir(InRow::TiltSensRow), "TILT SENS", "N/A", false);
@@ -1419,6 +1430,7 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::TiltYRow), "TILT Y", "N/A", false);
             drawRow(ir(InRow::TiltZRow), "TILT Z", "N/A", false);
             drawRow(ir(InRow::TiltFlickRow), "TILT FLICK", "N/A", false);
+            drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "N/A", false);
 #endif
 
             break;

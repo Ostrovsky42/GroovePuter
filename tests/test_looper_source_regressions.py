@@ -124,7 +124,7 @@ order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
 assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Helper", "ReplyBars",
                  "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf",
                  "TiltTargetRow", "TiltSensRow", "TiltXRow", "TiltYRow", "TiltZRow",
-                 "TiltFlickRow"], order
+                 "TiltFlickRow", "TiltZeroRow"], order
 loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count,", header.index("enum class PerformLoopRow"))]
 loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
 assert loop_order == ["Looper", "RecordSource", "LoopBars", "LoopChannel", "NoteLength", "HoldLayer",
