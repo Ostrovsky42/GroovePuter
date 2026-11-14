@@ -108,22 +108,23 @@ flashed, and no physical Cardputer behavior is claimed.
 ## 0.9.32 expressive MIDI
 
 The dispatcher adds a two-byte `g_cutoffAttemptedMask[2]` so each synth can
-distinguish a first controller attempt from a wrap-safe retry deadline. It
-reuses the fixed per-controller deadline table. The route label is formatted
-into a bounded stack buffer; there is no new musical-event queue or stored
-material.
+distinguish a first controller attempt from a wrap-safe retry deadline. The
+review fixes add an endpoint controller-state epoch and primary mount tracker
+to the existing Tee/USB output owners, plus a 16-byte local source-mode snapshot
+inside `EnergyCurve::apply()`. These do not add a MIDI queue or saved material.
 
 | Build | Program storage report | App-only BIN | Static DRAM | Gate headroom | Result |
 |---|---:|---:|---:|---:|---|
-| `bash scripts/build.sh --warnings all` | 1,722,218 B | 1,722,368 B | 187,620 B | 3,868 B | PASS; default FatFs profile, not SD-safe |
-| `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,746,682 B | 1,746,832 B | 187,628 B | 3,860 B | PASS; candidate-only FatFs map |
+| `bash scripts/build.sh --warnings all` | 1,722,646 B | 1,722,800 B | 187,628 B | 3,860 B | PASS; default FatFs profile, not SD-safe |
+| `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,747,110 B | 1,747,264 B | 187,636 B | 3,852 B | PASS; candidate-only FatFs map |
 
-Compared with 0.9.31, program storage grew by 1,088 B in the default profile
-and 1,080 B in FS1B. The FS1B app-only BIN grew by 1,072 B. Static DRAM grew
-by 16 B in each profile, leaving under 3.9 KiB before the provisional
-191,488-byte gate. The default linker map reports `.dram0.data` 44,732 B and
-`.dram0.bss` 142,888 B; FS1B reports 44,732 B and 142,896 B. Stack high-water
-and runtime heap were not measured.
+Compared with 0.9.31, program storage grew by 1,516 B in the default profile
+and 1,508 B in FS1B. The FS1B app-only BIN grew by 1,504 B. Static DRAM grew
+by 24 B in each profile, leaving 3,860 B and 3,852 B before the provisional
+191,488-byte gate. Relative to the pre-review .32 firmware build, review fixes
+added 428 B of program storage, 432 B to each app-only BIN, and 8 B of static
+DRAM. Both map reports show `.dram0.data` 44,732 B; `.dram0.bss` is 142,896 B
+default and 142,904 B FS1B. Stack high-water and runtime heap were not measured.
 
 Both builds use
 `m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
@@ -131,18 +132,25 @@ Only FS1B is the candidate-only FatFs software build; its map contains
 `build/cardputer-adv-dynbuffers/fatfs-dynbuffers/libfatfs.a` and excludes the
 stock FatFs archive.
 
+Post-review default firmware log: `/tmp/gp-0932-review-default-firmware.log`.
+Post-review FS1B firmware log: `/tmp/gp-0932-review-fs1b-firmware.log`.
+Both were built from the same integration worktree. The default linker map is
+compile evidence only and uses stock FatFs; use FS1B for any candidate package.
+
 Default-profile artifacts (not the SD-safe candidate):
 
-- App-only BIN: 1,722,368 B; SHA-256 `8a7941696fed8979108317158de14487cdc5c9858df6915232629428f92e1073`.
-- Merged BIN: 4,194,304 B; SHA-256 `b5de43ac8d63d77759b9e68e0d2ef28bc1d4dcea635596e9072d4e0574171433`.
-- ELF: 37,500,460 B; SHA-256 `acdd41449de4384c77fc5b21dcae2e4d931d48e32e3e6868f3a578f91e77cb5a`.
+- App-only BIN: 1,722,800 B; SHA-256 `c9ee14b18d34a52f156854f07cde492739614719b57bbc4b7abc5c4cf58f8ead`.
+- Merged BIN: 4,194,304 B; SHA-256 `f6bd479e19e4b284f5231268267f2795e9e35c4e2f0c3a8782b80c94047d69a9`.
+- ELF: 37,504,244 B; SHA-256 `a0cdb202b2ae2b87c4ef0cf7ba0d180a4aa83ead1f6af188c05a99f719488a77`.
 
 FS1B candidate artifacts:
 
-- App-only BIN: 1,746,832 B; SHA-256 `5d10ffae35937ae236f772e83203f766ea4bb4bdca523ea9e92ace156edf3d82`.
-- Merged BIN: 4,194,304 B; SHA-256 `dd9eaa5d17cab14c83322d8dffa7191fcb8dba35f030975248b49e7321658849`.
-- ELF: 37,446,652 B; SHA-256 `6d72995208f48780b7486d80d3de934df1173772cafc5686709b08aced522272`.
+- App-only BIN: 1,747,264 B; SHA-256 `a9e481eeffd3fca39faa38116993e53c4e84cf124f76e37ef4a2bb80c41d098d`.
+- Merged BIN: 4,194,304 B; SHA-256 `17201791191c09f6f04770236201c110c444768ad28c9b354c90f6739977e15d`.
+- ELF: 37,450,436 B; SHA-256 `84ad7ec0ace0c0cfd64e65f61bc9091243824280b57fb2d2138e685d9ed759e9`.
 - Link map: `build/cardputer-adv-dynbuffers/.arduino-build/GroovePuter.ino.map`; candidate FatFs present, stock FatFs absent.
+
+Post-review FS1B map check confirmed `build/cardputer-adv-dynbuffers/fatfs-dynbuffers/libfatfs.a` is linked and the toolchain stock `libfatfs.a` is absent.
 
 These are compile/link measurements only. No firmware was flashed; runtime
 heap, stack, audio timing, actual SD behavior and device behavior remain
