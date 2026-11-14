@@ -428,6 +428,10 @@ void UsbMidiOutput::pollConnection() {
     }
 
     if (mounted_ && !nextMounted) {
+        // The endpoint may keep sounding notes after our local ownership is
+        // discarded. Remember every sounding channel so reconnect can send a
+        // bounded panic cleanup before any still-pending SMF cleanup is lost.
+        pendingChannelPanics_ |= owners_.channelMask();
         abandonAllSmfNotes();
     }
     clearActiveState();
