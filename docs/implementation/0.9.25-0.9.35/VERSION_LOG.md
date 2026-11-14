@@ -213,3 +213,33 @@
 **Hardware status:** `NOT TESTED`
 
 **Decision:** `GO` for the host-validated 0.9.32 engineering milestone. Hardware remains `NOT TESTED` by design.
+
+## Version 0.9.33 — MIDI export
+
+**Version:** 0.9.33
+
+**Base commit:** `7ff9451718652033eb12f8c5d8c5180ca1866b0f` (0.9.32 route-change safety closure).
+
+**Result commit:** `3f492197d460a5e59664d0fefb3be0519902c0df`.
+
+**Goal:** Export the selected committed Song as deterministic, structurally valid SMF Type 1 without touching realtime ownership or persisting transient Performance state.
+
+**Implemented:** Added bounded SMF writer, immutable Song export snapshot/projection, pattern and Melody material traversal, role/channel projection, track metadata for omitted/non-SMF material, hidden scratch/temp file assembly, production-parser readback, deterministic unique naming and final rename only after validation. Added Project → Scenes → Export MIDI; it refuses while playback is active and tells the user transient macros are not exported. No project schema change.
+
+**Not implemented:** Performance-macro capture, audio rendering of Voice/drum FX, MIDI CC reconstruction from runtime state, asynchronous progress UI, or physical SD/device behavior verification.
+
+**Tests added:** Host writer fixture and independent parser; committed-Song projection tests for reverse order, STEPS override, Melody repetition, routing, tempo, event pairing and omission warnings; fake-storage short-write/close/readback/validation/rename failures; repeat-export byte identity; independent file parser; Project UI source contract; canonical host-suite integration.
+
+**Tests passed:** Targeted writer/domain/file-export tests, both independent parser fixtures, repeat-export/failure cleanup checks, export UI source regression, SDL application build, 240×135 SDL hint rendering check, default Cardputer firmware build, FS1B Cardputer firmware build and DRAM budget/map check; `git diff --check`. Canonical `env TMPDIR=/tmp bash tests/run_host_tests.sh` completed with exit 0 at integration HEAD `db29299fb130ad23bd5be6693f29242044e75e01`; log: `/tmp/gp-0933-stable-host-suite.log`. The run included documentation-only worktree edits; production source and `tests/` were clean.
+
+**Tests failed:** No product test failures in the stable run. An earlier rerun was invalidated after the runner file was edited while executing; it is excluded from the result. The final `.35` candidate still needs the complete suite on its exact clean SHA.
+
+**Memory delta:** Static DRAM unchanged from `.32`: default 187,628 B (3,860 B headroom); FS1B 187,636 B (3,852 B headroom) against the provisional 191,488 B gate. Runtime heap and stack high-water were not measured.
+
+**Firmware size delta:** Program storage +12,504 B default to 1,735,150 B, and +12,484 B FS1B to 1,759,594 B. App-only BIN +12,512 B default to 1,735,312 B, and +12,480 B FS1B to 1,759,744 B. Exact build SHA and artifact hashes are in `RESOURCE_BUDGET.md`.
+
+**Known risks:** UI export synchronously traverses Song/material and may block for a large Song; no real SD failure or power-loss behavior was measured. The static DRAM gate remains provisional with under 4 KiB headroom. Physical audio, keyboard, USB MIDI, SEQTRAK and musical quality remain untested.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO` for the host-validated `.33` engineering milestone. Hardware remains `NOT TESTED`; do not use this milestone's firmware as an intermediate hardware checkpoint.

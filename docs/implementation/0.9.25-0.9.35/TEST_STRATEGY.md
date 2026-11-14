@@ -33,12 +33,13 @@ Baseline SHA: `28918d9b78e9a527ce2b5ce201a465af5126f76a`. Test results are recor
 - **0.9.30–0.9.31:** harmonic fallback and chord transitions, motif identity, transactional Song form generation, capacity refusal, Undo and round-trip fixtures.
 - **0.9.32:** CC ranges/order/rate limit/deduplication, Stop reset and disconnect cleanup.
 - **0.9.32 integration risk closure:** exercise Project → MIDI profile and output-mode edits during active playback; both preview and save must be blocked, while stopped edits remain available. `bash tests/run_midi_perform_ui_polish_tests.sh` covers this UI contract.
-- **0.9.33:** parse exported SMF with an independent parser and verify tempo, channels, delta times, track endings, deterministic round-trip, overlaps and failed-write cleanup.
+- **0.9.33:** `test_smf_export_writer`, `test_midi_song_export`, `test_midi_song_export_file` and the independent Python parsers cover Type 1 structure, tempo/signature, role tracks, note projection, repeated equal pitches, deterministic repeated export, and cleanup on short-write/close/readback/validation/rename failures. Source UI regression checks playback refusal and the bounded on-screen hint. Firmware builds were run in default and FS1B profiles. Canonical full host suite completed with exit 0 at integration HEAD `db29299fb130ad23bd5be6693f29242044e75e01`; `.35` must rerun all lanes on its exact clean artifact-producing SHA.
 - **0.9.34–0.9.35:** reproducible release-profile FS1B artifact, checksums/provenance, old/new project fixtures, full SDL Golden Path and final resource delta.
 
 ## Evidence rules
 
 - Hardware status before 0.9.35 remains **NOT TESTED**.
+- A full host-suite result is attributable only to the exact source revision on which that run completed. The `.35` candidate must rerun the complete suite and other acceptance lanes at its artifact-producing SHA.
 - A passing unit test proves its function, not the whole Golden Path.
 - A firmware compile does not prove runtime or memory safety on hardware.
 - A remote CI PASS is not a local reproducibility result.

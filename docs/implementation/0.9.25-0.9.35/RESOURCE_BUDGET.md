@@ -155,3 +155,43 @@ Post-review FS1B map check confirmed `build/cardputer-adv-dynbuffers/fatfs-dynbu
 These are compile/link measurements only. No firmware was flashed; runtime
 heap, stack, audio timing, actual SD behavior and device behavior remain
 unmeasured.
+
+## 0.9.33 MIDI export
+
+**Source commit:** `3f492197d460a5e59664d0fefb3be0519902c0df`.
+
+| Build | Program storage report | App-only BIN | Static DRAM | Gate headroom | Result |
+|---|---:|---:|---:|---:|---|
+| `bash scripts/build.sh --warnings all` | 1,735,150 B | 1,735,312 B | 187,628 B | 3,860 B | PASS; default FatFs profile, not SD-safe |
+| `env TMPDIR=/tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,759,594 B | 1,759,744 B | 187,636 B | 3,852 B | PASS; candidate-only FS1B FatFs map |
+
+Compared with the 0.9.32 report, program storage grew by 12,504 B in the
+default profile and 12,484 B in FS1B. App-only BIN growth is 12,512 B and
+12,480 B respectively. Static DRAM is unchanged in both profiles. `.dram0.data`
+is 44,732 B in both; `.dram0.bss` is 142,896 B default and 142,904 B FS1B.
+Runtime heap and task stack high-water were not measured. The provisional
+191,488 B gate remains below 4 KiB away.
+
+Both builds use
+`m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
+The default build links stock FatFs and is not the SD-safe candidate. The FS1B
+map includes `build/cardputer-adv-dynbuffers/fatfs-dynbuffers/libfatfs.a` and
+excludes the toolchain stock FatFs archive.
+
+Default-profile artifacts (compile evidence only; not for the candidate):
+
+- App-only BIN: 1,735,312 B; SHA-256 `8b80898be602a219338828c4841236fc344b185d48a21362a0c1951372e8a8ba`.
+- Merged BIN: 4,194,304 B; SHA-256 `72f1692a25a622c4c6b5df2cdf27e1d564fde05df2b732a1770144d08d4ce2be`.
+- ELF: 37,950,352 B; SHA-256 `c1ef06d0ecab39b4aba3af3b40ceca1150c029f92a7372193fef4dee50e7fc5d`.
+
+FS1B artifacts:
+
+- App-only BIN: 1,759,744 B; SHA-256 `9a96a7d3d00d1303bf464e9e950ddf2897cc91d43ccd6a9167395c6740e6ec78`.
+- Merged BIN: 4,194,304 B; SHA-256 `d26359af90cc797c470a244ed5cf1e73f8e353f8f40eee70702f873b3cd84cec`.
+- ELF: 37,896,564 B; SHA-256 `60f7e91d87e92aa2269c0fb3a4c0d6992ed77318b4123323e609e6d97cd1098b`.
+- Link map: `build/cardputer-adv-dynbuffers/GroovePuter.ino.map`; candidate FatFs present, stock FatFs absent.
+
+Build logs: `/tmp/gp-0933-final-default-build.log` and
+`/tmp/gp-0933-final-fs1b-build.log`. These are exact-source compile/link
+measurements for the 0.9.33 result commit. No artifact was flashed. Runtime
+memory, physical SD behavior, audio timing and MIDI behavior remain unmeasured.

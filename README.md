@@ -56,7 +56,7 @@ The development workflow is built around a different question from ordinary rand
 
 ## Current status
 
-**v0.9.19** remains the latest published and packaged release. **0.9.20 is under release-readiness review**; it has no published image or hardware acceptance yet. See [`docs/releases/0_9_20_RELEASE.md`](docs/releases/0_9_20_RELEASE.md) for candidate evidence and open gates. It includes the 0.9.18 genre idioms, phrase ideas, DnB, GRAB, FORM and local GEN generation-control panel, plus fixes for SYNTH B, MIDI/SD watchdog and synth-engine reboots, cheaper audio rendering, and MIDI loop controls from HUB MIDI.
+**v0.9.19** remains the latest published and packaged release. The internal development line is integrating `.33` committed-Song MIDI export, `.34` productization and `.35` as the first hardware candidate. The `.33` export implementation is in place; its complete host-suite gate is still pending. No `.35` candidate has been accepted or published. See [`docs/implementation/0.9.25-0.9.35/RELEASE_READINESS.md`](docs/implementation/0.9.25-0.9.35/RELEASE_READINESS.md) for the current software-only packaging status.
 
 **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation for ownership, persistence, MIDI, generation, memory and hardware validation. For the exact v0.9.19 binary, build provenance and acceptance boundary, use its release notes.
 
@@ -70,7 +70,7 @@ GENRE -> FEEL
 
 Inside GENRE, `Tab` opens the `GEN 2/3` local panel; another `Tab` continues to FEEL. **GEN is the optional middle local panel** for generation target and phrase-shape choices. The default settings are sufficient for the First Five Minutes path, so it is discoverable without becoming mandatory beginner vocabulary.
 
-Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). The 0.9.20 candidate is not a download or installation target yet.
+Latest packaged GitHub Release: [`v0.9.19`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). Internal `.33–.35` builds are not download or installation targets.
 Earlier hardware-accepted foundation: [`v0.9.16`](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.16).
 
 ## First musical win
@@ -95,6 +95,7 @@ The default MATERIAL settings (`LENGTH 4B`, `STYLE REWORK`) make a TAKE that `D`
 6. `D` — develop it into related DEVELOPMENT / BREAK material.
 7. `Ctrl+Z` — undo the retained cycle if you do not want it.
 8. `Alt+2` — PROJECT; use the on-screen Save action.
+9. Stop playback, open PROJECT → SCENES, and choose **Export MIDI** to create an interchange copy of the committed Song.
 
 Acid and House do not grow: pick another genre on GENRE first.
 

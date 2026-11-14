@@ -1,6 +1,6 @@
-# GroovePuter 0.9.22 (unreleased) Manual
+# GroovePuter Manual — Internal 0.9.33–0.9.35 Development Line
 
-This manual describes the current user-facing GroovePuter workflow on the **0.9.22 (unreleased)** development source. The last tagged and packaged release is **v0.9.20**. **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation; see the release notes of the tagged release for its exact binary and acceptance boundary.
+This manual describes the internal 0.9.33–0.9.35 development line. It is not a published release, and the current candidate has not been accepted on Cardputer ADV hardware. The latest published package remains **v0.9.19**; **v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation.
 
 If this is your first session, do **not** start by reading the whole manual. Use [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md) first. Its first-session vocabulary is deliberately small: `Space`, `Fn+M`, `G`, `D`, `Ctrl+Z` and `Alt+H`.
 
@@ -13,6 +13,7 @@ PERFORM:  MIDI KEYBOARD -> MIDI PLAYER
 GENERATE: GENRE -> FEEL
 HUB:      OVERVIEW -> SYNTH A -> SYNTH B -> DRUMS
 SONG:     SONG -> MATERIAL -> MATERIAL BANK
+PROJECT:  save/load -> MIDI setup -> Export MIDI
 SETTINGS: PROJECT / SETUP
 ```
 
@@ -471,7 +472,23 @@ Project Save/Load lives on PROJECT. It is distinct from Synth `Alt+Enter`, which
 
 After a meaningful first session, save and reload once to confirm that the project, material descriptors and Song references return together.
 
-## 12. Help strategy
+## 12. Export MIDI
+
+Open **PROJECT → SCENES**, select **Export MIDI**, and press `Enter`. Stop playback
+before exporting. GroovePuter writes the selected committed Song and saved project
+tempo to a uniquely named Standard MIDI File in the SD card's `/midi` folder.
+
+The file contains separate conductor, Synth A, Synth B and Drums tracks. It uses the
+currently applied MIDI profile's Pattern role routes; changes marked for the next
+boot are not used. Temporary Performance macros are not committed by export.
+Conditional/probability notes are exported as always-on notes with a track marker.
+Voice audio, drum effects and internal drum automation are reported as omissions;
+they are not rendered into audio or represented as ordinary pitched MIDI events.
+
+If export fails, no final-name MIDI file is reported as successful. Keep the project
+file for editing; SMF is an interchange copy of the committed Song.
+
+## 13. Help strategy
 
 Use documentation in this order:
 
@@ -479,18 +496,24 @@ Use documentation in this order:
 2. `Alt+H` page-aware help;
 3. [`docs/user/QUICKSTART.md`](docs/user/QUICKSTART.md);
 4. [`src/ui/docs/keys.md`](src/ui/docs/keys.md) for the complete key map;
-5. this manual for workflow detail;
-6. research/architecture documents only when investigating implementation or design history.
+5. [`docs/user/MIDI_SETUP.md`](docs/user/MIDI_SETUP.md) for output profiles and export boundaries;
+6. [`docs/user/TROUBLESHOOTING.md`](docs/user/TROUBLESHOOTING.md) for common failures;
+7. this manual for workflow detail;
+8. research/architecture documents only when investigating implementation or design history.
 
 The goal is that a musician reaches a first useful result before needing levels 4-6. The GEN, FORM and GRAB controls stay optional until the musician asks for more control over target, form or captured MIDI material.
 
-## 13. Build / install boundary
+## 14. Build / install boundary
 
-This candidate has no published binary or user-oriented installer yet. Developer builds use the repository scripts and CI; the release remains blocked on a reproducible install path that a new owner can follow without setting up the development toolchain. Do not treat an arbitrary development build as a released image.
+The 0.9.35 image is being prepared as a hardware candidate. It is not a published
+binary, and its install path has not been accepted on a physical device. Do not treat
+an arbitrary development build as a released image.
 
-The last tagged source baseline and latest packaged GitHub Release is `v0.9.20`; 0.9.21 is not yet released. The earlier hardware-accepted foundation is `v0.9.16`. Exact hashes, FQBN and hardware acceptance evidence belong to the matching release notes and `docs/releases/` records.
+The latest published package is `v0.9.19`. The earlier hardware-accepted foundation
+is `v0.9.16`. Candidate firmware hashes, flash addresses and owner acceptance results
+will be recorded in `docs/implementation/0.9.25-0.9.35/` before handoff.
 
-## 14. Product boundary
+## 15. Product boundary
 
 The first-user facade is an onboarding layer, not permission to reopen the musical architecture.
 

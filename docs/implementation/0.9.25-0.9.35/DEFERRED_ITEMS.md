@@ -14,10 +14,10 @@ This list separates known unfinished work from verified baseline behavior. Items
 - **Custom Performance route table:** current persisted settings cannot fully describe A/B/DX/drum Performance routes. Custom projection fails closed; do not infer mappings from Pattern routes.
 - **Integrated route and endpoint lifecycle traces:** component tests cover ownership, pending releases, tee failover and UART queue pressure, but tests still need to prove the complete dispatcher path across route changes, per-endpoint loss/rejoin, project replacement and Song transitions.
 - **SMF v5 fixture:** source has a v5 reader, but the reviewed legacy fixtures directly cover v3 and v4 only. Add a v5 fixture before changing `.gpp` storage.
-- **Public MIDI export:** current SMF parser/player/import paths do not provide user-facing export of the current Song. This remains planned for 0.9.33.
-- **M5Launcher package path:** the existing guide is a draft and the uploader flashes an image; exact Launcher-compatible packaging has not been established.
-- **User documentation alignment:** README/navigation describe v0.9.19 and the manual says v0.9.22. Product documentation refresh belongs to 0.9.34.
-- **Release-profile measurement:** local baseline firmware was built with `CDCOnBoot=cdc`. A separate `CDCOnBoot=default` FS1B baseline is required before release-profile byte comparisons.
+- **MIDI export fidelity:** `.33` exports the committed Song as SMF, but temporary Performance macros, Voice audio, Drum FX and internal Drum automation are not rendered. Conditional/probability steps are flattened and marked. This is documented behavior, not a lossless audio/render export.
+- **M5Launcher compatibility:** the local package generator emits a separate app-only payload marked `HARDWARE_UNVERIFIED`; exact installation compatibility has not been established on a Cardputer ADV.
+- **Release profile and provenance:** the `.33` firmware evidence uses `CDCOnBoot=cdc`. A release-profile FS1B build with `CDCOnBoot=default`, source-tree cleanliness/SHA enforcement and rollback artifact instructions remain for `.34–.35`.
+- **User documentation alignment:** README, Quickstart, Manual, key map, MIDI setup and troubleshooting now describe the internal `.33–.35` line while keeping v0.9.19 identified as the latest published release. Link and content review remains part of `.34` closure.
 - **Hardware and musical acceptance:** all physical keyboard, internal audio, USB MIDI, DIN MIDI and SEQTRAK behavior remains **NOT TESTED** until the owner accepts the 0.9.35 candidate.
 
 ## 0.9.29 follow-up

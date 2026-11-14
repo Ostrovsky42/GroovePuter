@@ -8,22 +8,27 @@ The distinction matters: a document can be valuable evidence without describing 
 
 ### User
 
-- [`user/QUICKSTART.md`](user/QUICKSTART.md) — **0.9.19 First Five Minutes**: the shortest path from boot to a generated and developed take.
-- [`../MANUAL.md`](../MANUAL.md) — current 0.9.19 user workflow manual.
-- [`../src/ui/docs/keys.md`](../src/ui/docs/keys.md) — canonical current Cardputer ADV key map.
+- [`user/QUICKSTART.md`](user/QUICKSTART.md) — first-session guide for the internal `.33–.35` line; not a published release or hardware-acceptance claim.
+- [`../MANUAL.md`](../MANUAL.md) — current internal-line user workflow manual; latest published firmware remains v0.9.19.
+- [`../src/ui/docs/keys.md`](../src/ui/docs/keys.md) — canonical Cardputer ADV key map for the internal `.33–.35` development line.
+- [`user/MIDI_SETUP.md`](user/MIDI_SETUP.md) — profile boundaries, committed-Song MIDI export and what remains hardware-unverified.
+- [`user/TROUBLESHOOTING.md`](user/TROUBLESHOOTING.md) — export, SD and MIDI routing failure guidance.
+- [`implementation/0.9.25-0.9.35/HARDWARE_TEST_0_9_35.md`](implementation/0.9.25-0.9.35/HARDWARE_TEST_0_9_35.md) — planned owner acceptance checklist; no tests recorded yet.
 - [`SONG_PAGE_QUICKSTART.md`](SONG_PAGE_QUICKSTART.md) — focused Song-page editing reference.
 - [`releases/0.9.15-midi-ui-polish-2026-10-02.md`](releases/0.9.15-midi-ui-polish-2026-10-02.md) — external-keyboard / PERFORM routing and UI behavior incorporated into the accepted foundation.
 - [`releases/0.9.15-hardware-acceptance.md`](releases/0.9.15-hardware-acceptance.md) — USB Host hardware acceptance procedure and evidence.
 
-The current tagged source baseline and latest packaged GitHub Release is **v0.9.19**. It includes genre idioms, phrase ideas, DnB, GRAB, FORM and the local `GEN 2/3` generation-control panel inside GENRE, followed by reboot fixes, cheaper audio rendering and MIDI loop controls in HUB MIDI. The top-level GENERATE workflow remains `GENRE -> FEEL`: `Tab` from GENRE opens GEN, and the next `Tab` continues to FEEL.
+The latest packaged GitHub Release is **v0.9.19**. The internal development line has implemented committed-Song MIDI export in `.33`; the complete host-suite gate is still pending, and `.34` productization / `.35` candidate integration are in progress. Its current user workflow remains `GENERATE → KEEP/EDIT → DEVELOP → FORM/SONG → PERFORM → SAVE/LOAD → EXPORT`. `GEN` remains a local panel inside GENRE: `Tab` opens it, and the next `Tab` continues to FEEL.
 
-**v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation. For the exact v0.9.19 binary and acceptance boundary, use the [release notes](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19).
+**v0.9.16 — Foundation Freeze** is the earlier hardware-accepted foundation. For the exact v0.9.19 binary and acceptance boundary, use the [release notes](https://github.com/Ostrovsky42/GroovePuter/releases/tag/v0.9.19). The `.33–.35` line is unpublished and has not been hardware-accepted.
 
 `reference/EXTERNAL_MIDI_COMPATIBILITY.md` is preserved compatibility evidence from the USB-MIDI-device line. It does not replace the later USB Host keyboard acceptance evidence.
 
 ### Developer
 
 - [`PRODUCT_POSITIONING.md`](PRODUCT_POSITIONING.md) — product boundaries and priority direction.
+- [`implementation/0.9.25-0.9.35/RELEASE_READINESS.md`](implementation/0.9.25-0.9.35/RELEASE_READINESS.md) — current unpublished package pipeline, artifact boundaries and remaining candidate gates.
+- [`implementation/0.9.25-0.9.35/MIDI_EXPORT.md`](implementation/0.9.25-0.9.35/MIDI_EXPORT.md) — committed-Song SMF export contract and verification evidence.
 - [`ci/CI_ORCHESTRATION.md`](ci/CI_ORCHESTRATION.md) — ownership of the seven canonical GitHub Actions pipelines.
 - [`architecture/`](architecture/) — architectural contracts and design notes.
 - [`testing/`](testing/) — acceptance and regression procedures.

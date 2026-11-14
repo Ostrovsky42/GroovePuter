@@ -23,4 +23,10 @@ Host tests and SDL may establish software state and UI flow. They cannot establi
 
 The MACRO tab is now reachable from Performance tools and operates on the current Pattern/Phrase playback projection. SDL keyboard input changed a value in 5% steps, reset one value and all four values, started/stopped playback, advanced Song from row 4 to row 5, left Performance and returned, and saved then loaded the current Scene. A 240×135 screenshot set is stored in `evidence/implementation-0.9.29/`.
 
-This verifies the controls and software routing path only. The session macro values are not part of Scene JSON and restart at zero after a process restart. The full GENERATE → KEEP → DEVELOP → ARRANGE → PERFORM → SAVE → EXPORT Golden Path remains incomplete: there is no user-facing current-Song SMF export, and musical quality awaits owner listening at 0.9.35.
+At this 0.9.29 checkpoint, the controls and software routing path were verified only. Session macro values were not part of Scene JSON and restarted at zero after a process restart. The full Golden Path remained incomplete then: there was no user-facing current-Song SMF export, and musical quality awaited owner listening at 0.9.35.
+
+## 0.9.33 MIDI export checkpoint
+
+Project → Scenes now exposes **Export MIDI** for the selected committed Song. The action refuses while playback is active, uses the saved project tempo and current committed section/material state, and explicitly omits transient Performance macros. The resulting Type 1 SMF uses separate conductor, Synth A, Synth B and Drums tracks. Voice/audio content and drum-only effects or automation are identified as omissions where present.
+
+Focused host coverage checks projection, section order/reverse, STEPS override, Melody repetition, drum routing, overlapping note lifetimes, repeated deterministic export, temporary-file cleanup on injected failures, and independent parsing of emitted fixtures. The SDL build passes and the export help line fits the 240×135 SDL viewport. The complete canonical host suite now passes, but the whole GENERATE → KEEP → DEVELOP → ARRANGE → PERFORM → SAVE → LOAD → EXPORT workflow has not passed as one end-to-end scenario. Hardware and musical listening remain pending owner acceptance at 0.9.35.
