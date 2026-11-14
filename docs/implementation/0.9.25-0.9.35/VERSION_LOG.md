@@ -16,3 +16,20 @@
 **Known risks:** Provisional DRAM exception with only 3,876 B headroom; unfinished release-profile build fingerprint; route lifecycle test gaps; user-facing documentation is stale; no physical audio/MIDI acceptance.  
 **Hardware status:** `NOT TESTED`  
 **Decision:** `GO`
+
+## Version 0.9.26 — MIDI Routing & Note Safety
+
+**Version:** 0.9.26
+**Base commit:** `ef5b19a96ed665c8ca33a984b86c3aad9a011624`
+**Result commit:** `197ff2a8a92cecc886f019a9dc206dcd59c446b8`
+**Goal:** Prevent locally forgotten USB MIDI notes from remaining stuck at a receiver after the whole MIDI transport disconnects and reconnects.
+**Implemented:** On the overall mounted-to-unmounted transition, capture the active ownership table's channel mask before clearing local note state. On reconnect, send the existing bounded CC123 channel cleanup for those channels. Added a fake transport regression covering a PatternPlayer note on channel 7 and proving unrelated channels receive no cleanup. Runtime route snapshots remain frozen after startup; profile changes do not silently rebind active lanes.
+**Not implemented:** Per-endpoint Tee loss/rejoin traces, integrated dispatcher overflow traces, and a live route-rebind transaction remain open. This change covers overall transport loss; it does not claim endpoint-specific USB cleanup when DIN keeps the Tee transport mounted.
+**Tests added:** `tests/test_usb_midi_disconnect_cleanup.cpp`, registered in `tests/run_host_tests.sh`. The regression failed before the production fix and passed after it.
+**Tests passed:** Targeted disconnect regression; complete `bash tests/run_host_tests.sh` (exit 0); Cardputer ADV FS1B build with `--warnings all`; FS1B map proof; `git diff --check`.
+**Tests failed:** None in the final run.
+**Memory delta:** Global DRAM 0 B versus baseline: 187,612 B / 191,488 B, 3,876 B headroom.
+**Firmware size delta:** Arduino program report +64 B (1,742,130 B versus 1,742,066 B baseline); app-only BIN +64 B (1,742,288 B versus 1,742,224 B baseline). App BIN SHA-256: `9bc8336e836456b9a7cb24c2c1a08ec9f515ecb5e911859d7e048d4bc0fb26cb`.
+**Known risks:** Recovery uses channel-level CC123 because the disconnected receiver's note state is unknown; another sender sharing that channel may also be silenced. Per-endpoint Tee loss/rejoin remains unaudited. Host and firmware build evidence do not establish device behavior.
+**Hardware status:** `NOT TESTED`
+**Decision:** `GO`

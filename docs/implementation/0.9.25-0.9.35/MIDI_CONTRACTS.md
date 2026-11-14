@@ -18,7 +18,8 @@ This records current source behavior for the 0.9.25 audit. Source review is not 
 - When SMF overlaps a note already owned by Pattern/Performance, it joins the existing wire note without duplicating NoteOn. Scoped SMF release subtracts SMF owners and leaves other wire owners sounding. Repeated SMF-only NoteOn retriggers with NoteOff first.
 - Failed NoteOff writes remain represented as pending releases. The dispatcher retries on a bounded 5–20 ms backoff. UART transport separately reserves queue capacity for release traffic, records deferred NoteOffs and retries them before ordinary traffic.
 - Stop/panic paths release notes by source/target and can request scoped channel cleanup. `All Notes Off` is a recovery tool, not the normal per-note ownership mechanism. `TeeMidiTransport` tracks USB cleanup debt when DIN accepted cleanup while USB was stalled; before USB regains authority it sends channel CC123 cleanup.
-- On overall transport disconnect, SMF ownership is abandoned with pending channel cleanup retained, then active in-memory state is reset. With DIN enabled, USB unplug alone does not mean overall transport disconnect; tee failover remains active. USB MIDI mounted state checks TinyUSB's MIDI interface state, not only the CDC composite state.
+- On overall transport disconnect, the output snapshots every currently owned channel into its bounded pending-panic mask before abandoning SMF ownership and clearing active state. After reconnect, it sends one channel-level CC123 for each captured channel. This closes the full-transport-loss stuck-note gap for generated and SMF notes in the host fake-transport regression. With DIN enabled, USB unplug alone does not mean overall transport disconnect; tee failover remains active. USB MIDI mounted state checks TinyUSB's MIDI interface state, not only the CDC composite state.
+- Runtime pattern/performance routing is still a startup snapshot. Profile edits do not rebind live lanes, so a held note cannot be moved by an in-session route change; a live ownership-aware route transaction has not been implemented. Reboot/device lifecycle behavior remains subject to hardware acceptance.
 - USB MIDI FIFO reads/writes assert that the caller is the MIDI dispatch task. The input dispatcher tracks source/session generations; queue recovery and routing configuration changes release owned notes before discarding/re-routing sessions.
 
 ## Clock and transport
@@ -34,13 +35,13 @@ The code has one `TransportClockRuntime` source selection (internal GroovePuter 
 - `tests/test_midi_transport_sync.cpp`, `tests/test_external_midi_clock_follower.cpp`: transport event ordering and simulated external clock following.
 - The complete local result of `env TMPDIR=build/tmp-host-suite bash tests/run_host_tests.sh` is PASS (exit 0); the canonical log is `build/host-suite-home-tmp-rerun.log`. This is host evidence only.
 
-## 0.9.26 audit gaps
+## 0.9.26 residual audit gaps
 
-1. Prove output route/profile changes while held notes are active either release the old physical route before applying the new snapshot or are rejected until a safe boundary. Add a fake-transport test for exact old-channel NoteOff/new-channel NoteOn ordering.
-2. Test endpoint-specific loss when both tee wires are enabled, including USB-only note ownership, DIN-only cleanup and rejoin behavior. Overall mounted/unmounted transitions alone are insufficient to prove each physical receiver's note state.
+1. Live route/profile rebinding remains deferred. Current source freezes the route snapshot after startup; no runtime old-channel NoteOff/new-channel NoteOn transaction exists. If live rebinding is introduced, require a fake-transport ordering test before enabling it.
+2. Test endpoint-specific loss when both tee wires are enabled, including USB-only note ownership, DIN-only cleanup and rejoin behavior. Overall mounted/unmounted transitions alone are insufficient to prove each physical receiver's note state; the new regression covers only overall transport disconnect/reconnect.
 3. Exercise queue/table overflow through the integrated dispatcher path, not only component tests, and verify NoteOff remains deliverable after rejected NoteOn bursts.
 4. Confirm stop, project change and Song-section transition each reach the scoped ownership cleanup path and preserve unrelated owners on a shared channel.
 5. Audit route persistence migrations and old project fixtures before adding fields. The current profile projection itself documents the incomplete Custom Performance target table.
 - The profile enum currently lists SeqtrakNative, GeneralMidi, GenericMidi and Custom; Internal is represented through route enable/target state rather than a device profile. Define the roadmap's Internal semantics without conflating output availability with musical role.
 
-Status: source contracts documented and the 0.9.24 host suite passes locally. The 0.9.26 audit gaps above remain open; runtime claims are host-only; hardware status **NOT TESTED**.
+Status: overall transport disconnect/reconnect cleanup is covered by a fake-transport regression; runtime route rebinding remains deliberately unavailable. Residual gaps above remain open; runtime claims are host-only; hardware status **NOT TESTED**.
