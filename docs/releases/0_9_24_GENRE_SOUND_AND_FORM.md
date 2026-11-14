@@ -7,8 +7,8 @@ Status: code and host tests done for the parts listed under "Done". Device accep
 
 | Task | Commit | What |
 |---|---|---|
-| H2 | 3498a7f1 | Acid, Techno and UK garage choose their idiom variant by the G press (parity), not by salt. Neighbouring presses differ. |
-| H12 | bd1d6609 | Base feature snapshot refreshed after H2 (Acid, Techno, UK garage, House change). |
+| H2 | 3498a7f1, corrected by 47795ec1 | Acid and Techno choose their idiom variant by G-press parity. UK garage remains salt-selected: press alternation changed 92 of 204 golden bars, so the later fix restored the prior deterministic behavior. |
+| H12 | bd1d6609 | Base feature snapshot refreshed after the H1/H2 generation changes. |
 | H3 | 6487975e | FORM has seven levels in Up/Down order: SILENCE, DR, DR+A, DR+B, A+B, +B SPACE, FULL. Codes 5 (A+B) and 6 (DR+B) are new; codes 0..4 keep their meaning. |
 | H4 | 33255362 | A source longer than a section walks on through the source. |
 | H5 | edd20531 | Six genre forms of 32 bars (House, UK garage, Techno, Acid, Dub, Trip-Hop); other genres keep WAVE. |
@@ -41,4 +41,4 @@ apply mode `STYLE ONLY` / `NEW TAKE` / `NEW TAKE + TEMPO` (keys.md). *Not checke
 - [ ] FORM opens with the genre form (`FORM: <GENRE>`); Up/Down walks the seven levels in order.
 - [ ] A+B and DR+B sound as their names say; the bass comes off before a drop only with drums.
 - [ ] D on Acid or House shows `<GENRE> CAN'T GROW: SONG F FORM`.
-- [ ] Acid, Techno and UK garage alternate their variant with each G press.
+- [ ] Acid and Techno alternate their variant with each G press. UK garage remains salt-selected and is not expected to alternate on every adjacent press.

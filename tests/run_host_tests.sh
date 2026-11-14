@@ -50,7 +50,7 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_genre_defaults"
 
-# H2: Acid, Techno and UK garage variants alternate with the G press.
+# H2: Acid and Techno variants alternate with the G press; UK garage stays salt-selected.
 "${CXX}" \
   -std=c++17 \
   -Wall \
