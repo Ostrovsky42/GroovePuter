@@ -432,10 +432,11 @@ static void drawAcceptanceOverlay() {
       snprintf(line, sizeof(line), "DSP A%d:%.2f B%d:%.2f P%d",
           activeA, ampA, activeB, ampB, pcmPeak);
       g_display.drawText(0, 118, line);
-      snprintf(line, sizeof(line), "FX D%d T%d L%d Q%u DROP%u",
+      snprintf(line, sizeof(line), "FX D%d T%d L%d Q%u DROP%u/%u",
           delayOn, tapeOn, tapeMode,
           (unsigned)g_performanceKeyboard.scheduledDepth(),
-          (unsigned)g_performanceKeyboard.staleGeneratedNoteOnDrops());
+          (unsigned)g_performanceKeyboard.staleGeneratedNoteOnDrops(),
+          (unsigned)g_performanceKeyboard.staleTransportPulseDrops());
       g_display.drawText(0, 127, line);
     }
     return;

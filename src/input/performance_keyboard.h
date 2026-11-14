@@ -246,6 +246,7 @@ public:
     std::size_t scheduledHighWater() const { return scheduledHighWater_; }
     uint32_t scheduledOverflowCount() const { return scheduledOverflowCount_; }
     uint32_t staleGeneratedNoteOnDrops() const { return staleGeneratedNoteOnDrops_; }
+    uint32_t staleTransportPulseDrops() const { return staleTransportPulseDrops_; }
     void resetPerformanceDiagnostics();
     uint64_t musicalPulseOrdinal() const { return musicalPulseOrdinal_; }
     uint64_t rateEpochOrdinal() const { return rateEpochOrdinal_; }
@@ -498,6 +499,7 @@ private:
     std::size_t scheduledHighWater_{0};
     uint32_t scheduledOverflowCount_{0};
     uint32_t staleGeneratedNoteOnDrops_{0};
+    uint32_t staleTransportPulseDrops_{0};
 
     bool standalonePulseRunning_{false};
     uint32_t nextStandalonePulseMicros_{0};

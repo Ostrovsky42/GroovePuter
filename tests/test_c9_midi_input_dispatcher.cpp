@@ -744,7 +744,57 @@ void inputQueueOverflowRecoveryIsScopedToTheSourceSession() {
     assert(bridge.entries.size() == 2u && !bridge.entries.back().on);
 }
 
+void everyExternalNoteReachesADrumVoice() {
+    MusicalEventRouter router;
+    CaptureSink sink;
+    assert(router.addSink(sink));
+    MidiIoState io = readyUsbInput();
+    MidiInputQueue queue;
+    MidiInputParser parser;
+    parser.reset(InputSession{InputSource::Usb, io.usbInputGeneration()});
+    MidiInputDispatcher dispatcher(router, io);
+    MidiInputRoutingConfig config{};
+    config.enabled = true;
+    config.channelMode = MidiInputChannelMode::Omni;
+    config.target = MidiInputTarget::Drums;
+    assert(dispatcher.setConfig(config));
+
+    // The table keeps its own lanes (kick 36 -> 0, clap 39 -> 7); other notes follow the
+    // note class (48 -> 0, 60 -> 0, 72 -> 0, 62 -> 1, 71 -> 6). Nothing is dropped.
+    struct Case { uint8_t note; uint8_t lane; };
+    const Case cases[] = {{36, 0}, {39, 7}, {48, 0}, {60, 0}, {62, 1}, {71, 6}, {72, 0}};
+    for (const Case& c : cases) {
+        sink.events.clear();
+        const uint8_t on[4] = {0x09, 0x90, c.note, 100};
+        const uint8_t off[4] = {0x08, 0x80, c.note, 0};
+        const ParseResult parsedOn = parser.usbPacket(on, 100);
+        const ParseResult parsedOff = parser.usbPacket(off, 200);
+        assert(parsedOn.hasInput && queue.tryPush(parsedOn.input));
+        assert(parsedOff.hasInput && queue.tryPush(parsedOff.input));
+        assert(dispatcher.service(queue) == 2u);
+        assert(sink.events.size() == 2u);
+        assert(sink.events[0].type == MusicalEventType::NoteOn);
+        assert(sink.events[0].target == MusicalEventTarget::Drums);
+        assert(sink.events[0].channel == c.lane);
+        assert(sink.events[0].channel <= 7u);
+        assert(sink.events[1].type == MusicalEventType::NoteOff);
+    }
+    for (uint8_t note = 36; note <= 96; ++note) {
+        sink.events.clear();
+        const uint8_t on[4] = {0x09, 0x90, note, 100};
+        const uint8_t off[4] = {0x08, 0x80, note, 0};
+        const ParseResult parsedOn = parser.usbPacket(on, 300);
+        const ParseResult parsedOff = parser.usbPacket(off, 400);
+        assert(parsedOn.hasInput && queue.tryPush(parsedOn.input));
+        assert(parsedOff.hasInput && queue.tryPush(parsedOff.input));
+        dispatcher.service(queue);
+        assert(!sink.events.empty());
+        assert(sink.events[0].type == MusicalEventType::NoteOn);
+    }
+}
+
 int main() {
+    everyExternalNoteReachesADrumVoice();
     rampedButtonsOfTheOwnersKeyboardCountOncePerPress();
     modButtonIsAOneShotPressOnPerformOnly();
     pitchButtonsAreOneShotNudgesOnPerformOnly();

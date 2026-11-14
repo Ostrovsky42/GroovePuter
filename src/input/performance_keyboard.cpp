@@ -1,5 +1,7 @@
 #include "performance_keyboard.h"
 
+#include "external_drum_lane.h"
+
 #include <algorithm>
 #include <cctype>
 #include <cmath>
@@ -25,7 +27,12 @@ constexpr uint8_t kStrumOptionsMs[] = {0, 8, 16, 24, 36};
 constexpr uint8_t kGateOptions[] = {25, 50, 60, 75, 95};
 constexpr double kTransportStepEpsilon = 1.0e-6;
 constexpr double kTransportScheduleLeadPulses = 0.5;
-constexpr uint32_t kGeneratedNoteOnStaleMicros = 12000u;
+// A pulse NoteOn served later than this is shed instead of caught up. Must
+// exceed the worst loop() pass between service() calls: drawUI every 40 ms
+// (frame up to ~30 ms) plus delay(5) is ~35-45 ms. At 12 ms every pulse that
+// landed behind a long UI frame was dropped silently; 60 ms covers the pass
+// with margin yet stays below one 16th at 250 BPM (60 ms), so there is no burst.
+constexpr uint32_t kGeneratedNoteOnStaleMicros = 60000u;
 constexpr uint32_t kMinimumTransportLeadMicros = 1000u;
 
 struct PerformanceScaleDefinition {
@@ -122,6 +129,22 @@ bool noteBelongsToScale(uint8_t note,
     }
     return false;
 }
+
+// Pitch-class mask (bit n = pitch class n) of the KEY tab's ROOT and SCALE. Chromatic or
+// an unknown scale gives the full 0x0fff mask, i.e. no narrowing.
+uint16_t keyScalePitchMask(uint8_t rootPitchClass, PerformanceScale scale) {
+    const ScaleDefinitionView definition =
+        GroovePuterRhythm::scaleDefinitionFor(catalogScaleFor(scale));
+    if (definition.intervals == nullptr || definition.count == 0) return 0x0fffu;
+    uint16_t mask = 0;
+    for (uint8_t i = 0; i < definition.count; ++i) {
+        const int interval = definition.intervals[i];
+        if (interval < 0) continue;
+        mask = static_cast<uint16_t>(
+            mask | (1u << ((rootPitchClass + static_cast<unsigned>(interval)) % 12u)));
+    }
+    return mask == 0 ? static_cast<uint16_t>(0x0fffu) : mask;
+}
 }  // namespace
 
 char PerformanceKeyboard::normalizeKey(char key) {
@@ -217,16 +240,7 @@ int PerformanceKeyboard::findHeldExternal(uint8_t note) const {
 
 bool PerformanceKeyboard::drumChannelForExternalNote(uint8_t note, uint8_t& zeroBasedChannel) {
     // Same lane layout as the GM/SEQTRAK drum map used by the built-in keys, by pitch class.
-    switch (note % 12) {
-        case 0: case 1: zeroBasedChannel = 0; return true;   // kick
-        case 2: zeroBasedChannel = 1; return true;           // snare
-        case 3: case 4: zeroBasedChannel = 2; return true;   // clap
-        case 5: case 6: zeroBasedChannel = 3; return true;   // hat 1
-        case 7: case 8: case 10: zeroBasedChannel = 4; return true;  // hat 2 / open hat
-        case 9: zeroBasedChannel = 5; return true;           // perc 1
-        case 11: zeroBasedChannel = 6; return true;          // perc 2
-        default: return false;
-    }
+    return GroovePuterInput::externalDrumLaneForNote(note, zeroBasedChannel);
 }
 
 bool PerformanceKeyboard::isPitchClassHeld(uint8_t pitchClass) const {
@@ -306,6 +320,7 @@ void PerformanceKeyboard::resetPerformanceDiagnostics() {
     scheduledHighWater_ = scheduledDepth();
     scheduledOverflowCount_ = 0;
     staleGeneratedNoteOnDrops_ = 0;
+    staleTransportPulseDrops_ = 0;
 }
 
 bool PerformanceKeyboard::scheduleGenerated(MusicalEventType type,
@@ -1021,6 +1036,11 @@ bool PerformanceKeyboard::interpretLiveInput(uint8_t inputNote,
     gesture.note = inputNote;
     gesture.velocity = velocity;
     GroovePuterPerformance::PerformanceContext context = performanceContext_;
+    // No published harmony and no narrower scale in the context: the roles pull the note
+    // to the scale the player set in KEY (ROOT + SCALE). A published harmony, or an
+    // explicit scale mask supplied with the context, keeps priority.
+    if (!context.hasHarmony && context.scalePitchClasses == 0x0fffu)
+        context.scalePitchClasses = keyScalePitchMask(rootPitchClass_, scale_);
     uint8_t roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Lead);
     if (performanceRole_ == GroovePuterPerformance::PerformanceRole::Bass)
         roleMaskIndex = static_cast<uint8_t>(GroovePuterHarmony::HarmonicRole::Bass);
@@ -1378,6 +1398,7 @@ bool PerformanceKeyboard::serviceTransportPulseClock(uint32_t nowMicros) {
         std::llround(stepsUntilBoundary * static_cast<double>(sixteenthMicros)));
     const int32_t leadMicros = static_cast<int32_t>(dueMicros - nowMicros);
     if (leadMicros < -static_cast<int32_t>(kGeneratedNoteOnStaleMicros)) {
+        ++staleTransportPulseDrops_;
         nextTransportPulseProjectStep_ += activePulseSteps;
         ++rateEpochOrdinal_;
         ++musicalPulseOrdinal_;

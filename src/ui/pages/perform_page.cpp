@@ -40,6 +40,13 @@ constexpr const char* kChordPopupLabels[] = {
 static_assert(sizeof(kChordPopupLabels) / sizeof(kChordPopupLabels[0]) == kChordPopupCount,
               "chord popup labels follow the display order");
 
+// PLAY AS and LEAD STYLE shape notes only when SEND TO = PERFORM (the PERFORM keyboard
+// interprets them); a direct SYN A/SYN B/DRUMS target plays the pitches as received.
+bool inputRolesApply() {
+    return GroovePuterPlatform::cardputerMidiInputRoutingConfig().target ==
+           GroovePuterMidi::MidiInputTarget::Perform;
+}
+
 const char* roleName(GroovePuterPerformance::PerformanceRole role) {
     switch (role) {
         case GroovePuterPerformance::PerformanceRole::Raw: return "RAW";
@@ -866,13 +873,19 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::MidiIn): return "MIDI KEYBOARD IN  USB: PROJECT>MIDI";
                 case ir(InRow::ListenChannel): return "HEAR ONE MIDI CHANNEL OR ALL (OMNI)";
                 case ir(InRow::SendTo): return "WHERE MIDI NOTES GO; PERFORM=KEY TAB";
-                case ir(InRow::PlayAs): return "SHAPES NEW LIVE NOTES ONLY";
+                case ir(InRow::PlayAs):
+                    if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
+                    if (keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass &&
+                        !keyboard_.performanceHarmonyAvailable())
+                        return "NO HARMONY: USING KEY SCALE";
+                    return "SHAPES NEW LIVE NOTES ONLY";
                 case ir(InRow::LeadStyle):
+                    if (!inputRolesApply()) return "N/A: SET SEND TO TO PERFORM";
                     if (keyboard_.performanceRole() != GroovePuterPerformance::PerformanceRole::Lead)
                         return "N/A: SET PLAY AS TO LEAD";
                     if (keyboard_.leadMode() != GroovePuterPerformance::LeadMode::Raw &&
                         !keyboard_.performanceHarmonyAvailable())
-                        return "NO HARMONY: SCALE FALLBACK";
+                        return "NO HARMONY: USING KEY SCALE";
                     return "HOW LEAD NOTES FIT THE HARMONY";
                 case ir(InRow::Helper): return "MIDI REPLIES TO WHAT YOU PLAY";
                 case ir(InRow::ReplyBars): return "LENGTH OF CALL AND REPLY";
@@ -1200,8 +1213,11 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             InputUi::formatChannel(input, value, sizeof(value));
             drawRow(ir(InRow::ListenChannel), "LISTEN CH", value, true);
             drawRow(ir(InRow::SendTo), "SEND TO", InputUi::targetName(input.target), true);
-            drawRow(ir(InRow::PlayAs), "PLAY AS", roleName(keyboard_.performanceRole()), true);
-            const bool lead = keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
+            const bool rolesApply = inputRolesApply();
+            drawRow(ir(InRow::PlayAs), "PLAY AS",
+                    rolesApply ? roleName(keyboard_.performanceRole()) : "N/A", rolesApply);
+            const bool lead = rolesApply &&
+                keyboard_.performanceRole() == GroovePuterPerformance::PerformanceRole::Lead;
             drawRow(ir(InRow::LeadStyle), "LEAD STYLE", lead ? leadModeName(keyboard_.leadMode()) : "N/A", lead);
 
             // PARTNER: HELPER is the listener mode (RIFF = Mode::Loop).

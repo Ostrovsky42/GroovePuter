@@ -388,7 +388,7 @@ KEY sets the live note range, scale, velocity and target. CHORD configures voici
 
 LOOP holds the whole looper, nine rows (six visible, a scroll bar on the right): `LOOPER`, `REC`, `LOOP BARS`, `LOOP CH`, `NOTE LENGTH`, `HOLD LAYER`, `LAYER`, `MUTE LAYER`, `TO MELODY` (the last row). INPUT is one scrollable list (a scroll bar appears on the right when it is longer than the screen) with two groups, from top to bottom; the headings are not selectable:
 
-- `--- MIDI IN ---`: `MIDI IN`, `LISTEN CH`, `SEND TO`, `PLAY AS`, `LEAD STYLE`. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. These choices transform newly played live notes; they do not rewrite a Pattern or an already-playing Song.
+- `--- MIDI IN ---`: `MIDI IN`, `LISTEN CH`, `SEND TO`, `PLAY AS`, `LEAD STYLE`. RAW plays incoming pitches unchanged; BASS, LEAD and CHORD interpret new notes using the current performance context. These choices transform newly played live notes; they do not rewrite a Pattern or an already-playing Song. `PLAY AS` and `LEAD STYLE` act only while `SEND TO` is PERFORM: with SYN A, SYN B or DRUMS they read `N/A` and the hint says `N/A: SET SEND TO TO PERFORM`. Without a published harmony, BASS and LEAD (SCALE, CHORD, VOICE) pull notes to the KEY scale (ROOT and SCALE set in KEY) and the hint reads `NO HARMONY: USING KEY SCALE`; a published harmony always takes priority.
 - `--- HELPER ---`: `HELPER`, `REPLY BARS`, `REPLY CH`, `FREEZE RIFF`, `VARIATION`, `NEW RIFF IF`.
 
 ### LOOPER
