@@ -262,6 +262,56 @@ void testPatternVoiceIsUnaffectedByPhraseVoice() {
          "PATTERN voice A stopped repeating every bar");
 }
 
+void testPerformanceMacrosTransformPhrasePlaybackWithoutChangingSource() {
+  Fixture f;
+  f.silencePatterns();
+  expect(f.engine.setPhraseLength(kA, 1), "1-bar macro Phrase rejected");
+  auto& phrase = f.engine.currentPhraseBuffer(kA);
+  phrase.count = 0;
+  authorEvent(phrase, 24, 60, 24 * PhraseRuntime::kSubticksPerTick);
+  authorEvent(phrase, 48, 62, 24 * PhraseRuntime::kSubticksPerTick);
+  const auto sourceFirst = phrase.events[0];
+  f.engine.setSequencedSource(kA, MiniAcid::SequencedSource::Phrase);
+  expect(f.engine.currentSequencedSource(kA) ==
+             MiniAcid::SequencedSource::Phrase,
+         "macro integration fixture did not select Phrase");
+
+  auto& key = f.engine.sceneManager_.currentScene().generatorParams;
+  key.scaleRoot = 0;
+  key.scale = static_cast<ScaleType>(GroovePuterRhythm::kScaleMajor);
+  GroovePuterPerformance::Macros::State macros{};
+  expect(macros.set(GroovePuterPerformance::Macros::Control::Tension, 100),
+         "TENSION state rejected");
+  expect(macros.set(GroovePuterPerformance::Macros::Control::Energy, 50),
+         "ENERGY state rejected");
+  expect(macros.set(GroovePuterPerformance::Macros::Control::Space, 50),
+         "SPACE state rejected");
+  expect(f.engine.setPerformanceMacroState(macros),
+         "engine rejected valid macro state");
+
+  PhraseRuntime::RuntimeSynthEventBuffer expected{};
+  const GroovePuterPerformance::Macros::HarmonyContext harmony{
+      true, 0, GroovePuterRhythm::kScaleMajor};
+  constexpr uint32_t kSeed = 0x47504D31u;
+  expect(GroovePuterPerformance::Macros::apply(
+             phrase, macros, harmony, kSeed, expected) ==
+             GroovePuterPerformance::Macros::ApplyResult::Ready,
+         "reference Phrase macro projection failed");
+
+  const TickTrace trace = f.step(24);
+  expect(trace.noteOn[kA] == 1,
+         "Phrase macro projection did not reach the playback owner");
+  const auto& played = f.engine.patternRetrigEvent_[kA];
+  expect(played.note == expected.events[0].note &&
+             played.velocity == expected.events[0].velocity &&
+             played.durationSubticks == expected.events[0].durationSubticks,
+         "Phrase playback did not use the deterministic macro projection");
+  expect(phrase.count == 2 && phrase.events[0].note == sourceFirst.note &&
+             phrase.events[0].velocity == sourceFirst.velocity &&
+             phrase.events[0].durationSubticks == sourceFirst.durationSubticks,
+         "live Phrase macros changed the source material");
+}
+
 // An eight-bar Melody is one linear phrase across ordinary bar lines. At its
 // loop end the last gate is terminated and the first onset of the next cycle
 // is started once; no continuation leaks from bar 8 into the new cycle.
@@ -336,6 +386,7 @@ int main() {
   testTwoBarPhraseAddressing();
   testPerVoicePhraseLengthsAreIndependent();
   testPatternVoiceIsUnaffectedByPhraseVoice();
+  testPerformanceMacrosTransformPhrasePlaybackWithoutChangingSource();
   testEightBarCrossBoundaryAndLoopEndPolicy();
 
   if (g_failures != 0) {

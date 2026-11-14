@@ -46,3 +46,24 @@ For milestone deltas, compare like-for-like configuration and toolchain, preserv
 ## 0.9.28 macro engine
 
 The 0.9.28 transformer is a fixed-capacity header-only host-tested domain function and is not yet referenced by the live application. Therefore it adds no firmware object, static DRAM or binary bytes at this milestone. No target-memory claim is made about the future 0.9.29 playback/UI integration; measure that integration against the FS1B baseline then.
+
+## 0.9.29 live macro integration
+
+**Candidate base:** `efa5434562fa70303a75c5097a44f7d7e3911702` (0.9.28). The current implementation changes were built from the dirty 0.9.29 worktree before its local milestone commit.
+
+| Build | Program storage report | Static DRAM | Gate headroom | Result |
+|---|---:|---:|---:|---|
+| `bash scripts/build.sh --warnings all` | 1,720,738 B | 187,604 B | 3,884 B | PASS; default FatFs profile, not the SD-safe candidate |
+| `env TMPDIR=build/tmp-host-suite bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,745,210 B | 187,612 B | 3,876 B | PASS; FS1B candidate-only FatFs link proof |
+
+The FS1B global DRAM is unchanged from the exact local baseline: 187,612 B / 191,488 B. The macro state is packed into one 32-bit atomic member of the existing `g_miniAcidInstance`; no full Phrase buffer or new static event queue was added. The current linked symbol `_ZL18g_miniAcidInstance` is 15,952 B. Stack usage was not measured.
+
+On the same local FS1B build path, the exact-baseline program-storage report was 1,742,066 B and the app-only BIN was 1,742,224 B. The current increases are +3,144 B and +3,136 B respectively. Current FS1B artifacts:
+
+- App-only BIN: 1,745,360 B; SHA-256 `e561dcfe3d52e70725a0c93863e908f4b86f322ed4d8da8a6d357f07a1545845`.
+- ELF: 37,431,640 B; SHA-256 `bcbd9735bdbb96225af3d23cb7f834da1d730e594cc731b2f194b6f3e69750c8`.
+- Link map: `build/cardputer-adv-dynbuffers/.arduino-build/GroovePuter.ino.map`; candidate FatFs archive present and stock FatFs archive absent.
+
+The linker map and compiler report are software evidence only. They do not measure runtime free heap, stack high-water mark, audio callback time or physical-device behavior. The provisional 191,488-byte gate still has less than 4 KiB headroom and remains an explicit constraint.
+
+Target ELF disassembly check: `MiniAcid::setPerformanceMacroState()` publishes the packed word with one aligned `s32i`, and `MiniAcid::performanceMacroState()` reads it with one aligned `l32i`; each is bracketed by Xtensa `memw`. These two accessors do not call `__atomic_*` or FreeRTOS critical-section helpers in the linked ESP32-S3 firmware. This is compiler/linker evidence for coherent 32-bit publication on the target build, not a hardware timing measurement. The firmware was built from the 0.9.29 worktree before its milestone commit.

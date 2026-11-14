@@ -64,6 +64,36 @@
 
 **Decision:** `GO`
 
+## Version 0.9.29 — Performance Interaction & Small-Screen UX
+
+**Version:** 0.9.29
+
+**Base commit:** `efa5434562fa70303a75c5097a44f7d7e3911702`
+
+**Result commit:** Pending local milestone commit.
+
+**Goal:** Expose the four transient musical macros in Performance and apply them to Pattern/Phrase/Song playback through the existing playback and output owners.
+
+**Implemented:** Added a seventh MACRO tab with TENSION, ENERGY, SPACE, MUTATION, per-value reset and RESET ALL. Values are session-only. `MiniAcid` publishes them as one packed 32-bit atomic snapshot and reads one coherent state per sequencer tick. A bounded per-event transform runs before the existing `RuntimeSynthPlaybackState`; internal synthesis and Pattern MIDI use the same transformed event. Pattern next-onset search is limited to 16 events and Phrase search to 128, only when TENSION is active. Added a mock-MIDI Pattern integration test, a Phrase runtime source-preservation test, seven-tab UI coverage and a corrected Song-row characterization: the existing `applySongPositionSelection()` hard barrier releases both internal and MIDI note ownership.
+
+**Not implemented:** Macro commit/materialization, per-loop mutation, chord-aware TENSION, new MIDI CC control, or a musical-quality claim. Performance keyboard comfort and audio/MIDI behavior on Cardputer remain owner checks at 0.9.35.
+
+**Tests added:** Expanded `tests/test_performance_macro_engine.cpp`, `tests/test_midi_perform_ui_polish.cpp`, `tests/test_pattern_phrase_p0_runtime.cpp` and `tests/test_p3_phrase_relative_onset.cpp`; updated source-regression expectations for the seventh tab and existing panic behavior.
+
+**Tests passed:** `bash tests/run_performance_macro_engine_tests.sh`; `bash tests/run_midi_perform_ui_polish_tests.sh`; Performance Instrument, Looper and WaveMorph source regressions; `bash tests/run_pattern_phrase_p3_tests.sh`; full SDL app build; SDL keyboard smoke for macro values/reset, Play/Stop, Song row advance, page return, Scene Save/Load and 240×135 readability; default Cardputer ADV build and DRAM gate; FS1B build with candidate-only linker-map proof and DRAM gate; canonical host suite `env TMPDIR=/tmp/grooveputer-0929-host-tmp bash tests/run_host_tests.sh` (exit 0); `env TMPDIR=/tmp/grooveputer-0929-host-tmp bash tests/run_pattern_phrase_p2_p0_compatibility.sh` (GCC repeat, Clang parity, ASan and UBSan all PASS); target ELF disassembly confirms direct packed 32-bit load/store for macro snapshots; `git diff --check`.
+
+**Tests failed / pending:** An early full-suite invocation used a relative `TMPDIR`; a generated-melody test changed working directory and `std::filesystem::temp_directory_path()` then failed. Rerunning the unchanged suite with an absolute temporary path passed (exit 0). The P0-C test initially expected an internal note to survive Song row selection; that expectation failed on both this worktree and clean 0.9.28. `applySongPositionSelection()` already calls `hardBarrierPatternPlayback_()`, so the test was corrected to assert synchronous internal and MIDI cleanup; the complete P0 GCC/Clang/ASan/UBSan matrix now passes. No mandatory 0.9.29 host checks remain pending. SDL load logs the known nonfatal top-level `out` array warning; a separate output persistence observer captures that field, and the Scene load reports success. SDL dummy audio is not sound validation.
+
+**Memory delta:** Fixed global DRAM is unchanged from baseline: default profile 187,604 B; FS1B 187,612 B; FS1B gate headroom 3,876 B against 191,488 B. The 32-bit macro state is part of the existing global `MiniAcid` object; no global DRAM increase is reported. Stack usage was not instrumented.
+
+**Firmware size delta:** Local FS1B program storage is 1,745,210 B versus 1,742,066 B exact-baseline local build (+3,144 B). App-only BIN is 1,745,360 B versus 1,742,224 B (+3,136 B). Current FS1B BIN SHA-256: `e561dcfe3d52e70725a0c93863e908f4b86f322ed4d8da8a6d357f07a1545845`. Default-profile build reports 1,720,738 B program storage and 187,604 B globals; it is compile evidence, not the SD-safe candidate profile.
+
+**Known risks:** TENSION remains a local next-onset heuristic; MUTATION is deterministic per event and project key, not a per-loop generator. No physical keyboard, internal audio, USB MIDI or SEQTRAK validation has occurred. The baseline static-DRAM policy remains provisional with under 4 KiB headroom.
+
+**Hardware status:** `NOT TESTED`
+
+**Decision:** `GO` for the 0.9.29 engineering milestone. Hardware remains `NOT TESTED` by design.
+
 ## Version 0.9.28 — Musical Macros Engine
 
 **Version:** 0.9.28

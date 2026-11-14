@@ -116,7 +116,7 @@ int main() {
   auto send = [&](UIEvent e) { perform.handleEvent(e); };
   for (int i = 0; i < 5; ++i) send(key('\t'));
   gfx.texts.clear(); perform.drawContent(gfx);
-  assert(gfx.has("[INPUT]"));
+  assert(gfx.has("INPUT"));
   gfx.bodyFits();
   // PERFORM edits the same persistent input configuration as PROJECT.
   send(scan(GROOVEPUTER_RIGHT));
@@ -134,9 +134,35 @@ int main() {
   assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
   // INPUT has no TARGET row (variant A): the target lives in KEY (row 4).
   send(key('\t'));  // INPUT -> LOOP (0.9.23 T14)
-  send(key('\t'));  // LOOP -> KEY
+  send(key('\t'));  // LOOP -> MACRO
+  send(key('\t'));  // MACRO -> KEY
   gfx.texts.clear(); perform.drawContent(gfx);
-  assert(gfx.has("[KEY]"));
+  assert(gfx.has("KEY"));
+  send(key('\b'));  // KEY -> MACRO
+  gfx.texts.clear(); perform.drawContent(gfx);
+  assert(gfx.has("MACRO"));
+  assert(gfx.has("TEMP / PATTERN, PHRASE, SONG"));
+  assert(gfx.has("TENSION"));
+  assert(gfx.has("RESET ALL"));
+  gfx.bodyFits();
+  send(scan(GROOVEPUTER_RIGHT));  // TENSION +5%
+  assert(engine.performanceMacroState().tension == 5);
+  send(scan(GROOVEPUTER_DOWN));  // ENERGY
+  send(scan(GROOVEPUTER_RIGHT));
+  assert(engine.performanceMacroState().energy == 5);
+  send(key('\n'));              // reset only ENERGY
+  assert(engine.performanceMacroState().energy == 0);
+  send(scan(GROOVEPUTER_UP));    // TENSION
+  send(key('\n'));              // reset only TENSION
+  assert(engine.performanceMacroState().tension == 0);
+  for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));
+  send(key('\n'));              // RESET ALL
+  assert(engine.performanceMacroState().valid());
+  assert(engine.performanceMacroState().tension == 0 &&
+         engine.performanceMacroState().energy == 0 &&
+         engine.performanceMacroState().space == 0 &&
+         engine.performanceMacroState().mutation == 0);
+  send(key('\t'));              // MACRO -> KEY
   for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));  // ROOT -> TARGET
   assert(keyboard.externalNoteOn(60, 100));
   events.notes.clear();

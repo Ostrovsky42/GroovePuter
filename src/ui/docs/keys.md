@@ -161,14 +161,21 @@ notes (`LOOP: NO ROOM TO REPEAT`).
 
 ### PERFORMANCE TOOLS
 
-Contextual layer: a fixed tab bar `[KEY] CHORD ARP RHYTHM INPUT LOOP` (six tabs), one parameter per
-row, and a hint line at the bottom that says what `Left/Right` and `Enter` do
-for the selected row. Each context remembers its own selected row. Output
-target and MONO/POLY receiver mode are rows in KEY.
+Contextual layer: a fixed tab bar `KEY CHORD ARP RHYTHM INPUT LOOP MACRO` (seven
+tabs), one parameter per row, and a hint line at the bottom that says what
+`Left/Right` and `Enter` do for the selected row. Each context remembers its
+own selected row where continuity storage allows it. Output target and
+MONO/POLY receiver mode are rows in KEY.
+
+The MACRO tab controls temporary TENSION, ENERGY, SPACE, and MUTATION values
+for sequenced Pattern, Phrase, and Song material. `Left/Right` changes a value
+by 5%; `Enter` resets that value to zero. The final `RESET ALL` row restores
+all four controls to neutral. These values are session-only and do not change
+the saved Scene or Phrase.
 
 | Key | Action |
 |---|---|
-| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM -> INPUT -> LOOP) |
+| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM -> INPUT -> LOOP -> MACRO) |
 | `Up` / `Down` | Select parameter row |
 | `Left` / `Right` | Decrease / increase selected value |
 | `Enter` | Toggle or secondary action for the row; `CHORD MODE` opens a list |

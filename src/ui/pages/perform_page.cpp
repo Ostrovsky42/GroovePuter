@@ -25,11 +25,25 @@
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",
+    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO",
 };
-constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]", "[LOOP]",
+constexpr GroovePuterPerformance::Macros::Control kMacroControls[] = {
+    GroovePuterPerformance::Macros::Control::Tension,
+    GroovePuterPerformance::Macros::Control::Energy,
+    GroovePuterPerformance::Macros::Control::Space,
+    GroovePuterPerformance::Macros::Control::Mutation,
 };
+
+uint8_t macroValue(const GroovePuterPerformance::Macros::State& state,
+                   GroovePuterPerformance::Macros::Control control) {
+    switch (control) {
+        case GroovePuterPerformance::Macros::Control::Tension: return state.tension;
+        case GroovePuterPerformance::Macros::Control::Energy: return state.energy;
+        case GroovePuterPerformance::Macros::Control::Space: return state.space;
+        case GroovePuterPerformance::Macros::Control::Mutation: return state.mutation;
+    }
+    return 0;
+}
 // Same order as the keyboard's chord cycle; labels follow it one to one.
 constexpr const PerformanceChordMode* kChordPopupModes = PerformanceKeyboard::kChordDisplayOrder;
 constexpr std::size_t kChordPopupCount = PerformanceKeyboard::kChordDisplayCount;
@@ -240,6 +254,7 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Input: return kInputRowCount;
         // The looper: nine rows, six visible, scrolling (TO MELODY is the last).
         case PerformanceToolContext::Loop: return kLoopRowCount;
+        case PerformanceToolContext::Macro: return 5;
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -460,6 +475,19 @@ void PerformPage::adjustSelectedValue(int direction) {
                     break;
             }
             return;
+        case PerformanceToolContext::Macro: {
+            if (row >= 4) return;
+            auto state = miniAcid_.performanceMacroState();
+            const auto control = kMacroControls[row];
+            int next = static_cast<int>(macroValue(state, control)) +
+                       (direction > 0 ? 5 : -5);
+            if (next < 0) next = 0;
+            if (next > GroovePuterPerformance::Macros::kValueMax)
+                next = GroovePuterPerformance::Macros::kValueMax;
+            state.set(control, static_cast<uint8_t>(next));
+            miniAcid_.setPerformanceMacroState(state);
+            return;
+        }
         case PerformanceToolContext::Count:
             return;
     }
@@ -559,6 +587,24 @@ void PerformPage::toggleSelectedValue() {
                 adjustSelectedValue(1);
             }
             return;
+        case PerformanceToolContext::Macro: {
+            auto state = miniAcid_.performanceMacroState();
+            if (row < 4) {
+                state.set(kMacroControls[row], 0);
+                miniAcid_.setPerformanceMacroState(state);
+                static constexpr const char* names[] = {
+                    "TENSION", "ENERGY", "SPACE", "MUTATION"};
+                std::snprintf(toast, sizeof(toast), "%s: 0%%", names[row]);
+            } else if (row == 4) {
+                miniAcid_.setPerformanceMacroState(
+                    GroovePuterPerformance::Macros::State{});
+                std::snprintf(toast, sizeof(toast), "MACROS: NEUTRAL");
+            } else {
+                return;
+            }
+            UI::showToast(toast, 850);
+            return;
+        }
         case PerformanceToolContext::Count:
             return;
     }
@@ -915,6 +961,11 @@ const char* PerformPage::selectedRowHint() const {
                 default: return "";
             }
 
+        case PerformanceToolContext::Macro:
+            if (row < 4) return "ARROWS +/-5%  ENTER RESET VALUE";
+            if (row == 4) return "ENTER: RESET ALL FOUR MACROS";
+            return "";
+
         case PerformanceToolContext::Count:
             break;
     }
@@ -969,10 +1020,9 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 }
 
 void PerformPage::drawToolTabs(IGfx& gfx, int y) {
-    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [INPUT] [LOOP]" (len + 2 cells each: six
-    // tabs of len + 3 would be 264 px wide, the screen is 240). The bracket cell to the
-    // left of each label is always reserved, so labels never shift when the
-    // active context changes.
+    // Compact fixed-width labels keep all seven contexts visible on the
+    // Cardputer width. The active tab uses a filled chip instead of brackets,
+    // so its label never shifts when the selection changes.
     const UI::ThemePalette palette = UI::themePalette();
     const int charW = gfx.measureText("M");
     const int cellH = Layout::LINE_HEIGHT - 1;
@@ -982,15 +1032,15 @@ void PerformPage::drawToolTabs(IGfx& gfx, int y) {
         const int len = static_cast<int>(std::strlen(name));
         const bool active = i == static_cast<int>(selectedContext_);
         if (active) {
-            gfx.fillRect(x - 1, y - 1, (len + 2) * charW + 2, cellH,
+            gfx.fillRect(x - 1, y - 1, len * charW + 2, cellH,
                          MusicVisuals::accentForStyle());
             gfx.setTextColor(palette.invert);
-            gfx.drawText(x, y, kToolContextActiveNames[i]);
+            gfx.drawText(x, y, name);
         } else {
             gfx.setTextColor(palette.secondary);
-            gfx.drawText(x + charW, y, name);
+            gfx.drawText(x, y, name);
         }
-        x += (len + 2) * charW;
+        x += (len + 1) * charW;
     }
 
 }
@@ -1015,8 +1065,13 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     // row is always visible.
     const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
     const bool loopContext = selectedContext_ == PerformanceToolContext::Loop;
-    auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
-    const uint8_t totalLines = inputContext ? kInputLineCount : (loopContext ? kLoopLineCount : kVisibleRows);
+    const bool macroContext = selectedContext_ == PerformanceToolContext::Macro;
+    auto lineOf = [&](uint8_t row) -> uint8_t {
+        if (inputContext) return inputLine(row);
+        return macroContext ? static_cast<uint8_t>(row + 1u) : row;
+    };
+    const uint8_t totalLines = inputContext ? kInputLineCount
+        : (loopContext ? kLoopLineCount : (macroContext ? 6u : kVisibleRows));
     const uint8_t selectedLine = lineOf(selected);
     const uint8_t firstVisibleRow = selectedLine >= kVisibleRows
         ? static_cast<uint8_t>(selectedLine - kVisibleRows + 1u) : 0u;
@@ -1034,6 +1089,8 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(1 + static_cast<int>(line - firstVisibleRow)),
                      heading);
     };
+
+    if (macroContext) drawHeading(0, "TEMP / PATTERN, PHRASE, SONG");
 
     auto drawRow = [&](uint8_t row, const char* label, const char* rowValue,
                        bool available) {
@@ -1277,6 +1334,19 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             std::snprintf(value, sizeof(value), "SYN %c",
                           static_cast<char>('A' + exportVoiceNow()));
             drawRow(lr(LoopRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
+            break;
+        }
+
+        case PerformanceToolContext::Macro: {
+            const auto state = miniAcid_.performanceMacroState();
+            static constexpr const char* labels[] = {
+                "TENSION", "ENERGY", "SPACE", "MUTATION"};
+            for (uint8_t row = 0; row < 4; ++row) {
+                std::snprintf(value, sizeof(value), "%u%%",
+                    static_cast<unsigned>(macroValue(state, kMacroControls[row])));
+                drawRow(row, labels[row], value, true);
+            }
+            drawRow(4, "RESET ALL", "ENTER", true);
             break;
         }
 

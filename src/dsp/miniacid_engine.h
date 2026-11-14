@@ -50,6 +50,7 @@ struct SongHarmonicParticipant;
 #include "pattern_drum_event_tap.h"
 #include "../phrase/runtime_pattern_event_bank.h"
 #include "../phrase/runtime_synth_playback.h"
+#include "../performance/performance_macro_engine.h"
 #include "tube_distortion.h"
 #include "perf_stats.h"
 #if GROOVEPUTER_ENABLE_TAPE
@@ -185,6 +186,11 @@ public:
   uint32_t liveInputEpoch() const { return liveInputEpoch_; }
 
   void setBpm(float bpm);
+  // Session-only performance controls. A validated 4-byte publication keeps
+  // all four macro values coherent for the sequencer without touching Scene.
+  bool setPerformanceMacroState(
+      const GroovePuterPerformance::Macros::State& state);
+  GroovePuterPerformance::Macros::State performanceMacroState() const;
   void setExternalClockBpm(float bpm);
   // Resyncs the effective render tempo back to the durable project tempo.
   // Call exactly once when clock ownership returns from external follow:
@@ -862,17 +868,29 @@ public:
   void generateAudioBuffer(int16_t *buffer, size_t numSamples);
 
 private:
+  struct MacroPlaybackContext {
+    GroovePuterPerformance::Macros::State state{};
+    GroovePuterPerformance::Macros::HarmonyContext harmony{};
+    uint32_t seed = 0;
+  };
+
   void updateTickIncrement();
   void advanceTick();
   void processSequencerEvents(uint32_t absoluteTick);
   void triggerSynthStep_(int synthIdx,
                          const PhraseRuntime::RuntimeSynthEvent& event,
                          uint32_t absoluteStartSubtick,
-                         bool chordVoice = false);
+                         bool chordVoice = false,
+                         const MacroPlaybackContext* macroContext = nullptr,
+                         uint16_t eventIndex = 0,
+                         const PhraseRuntime::RuntimeSynthEvent* nextEvent = nullptr,
+                         uint16_t nextEventIndex = 0,
+                         uint16_t lengthTicks = PhraseRuntime::kTicksPerBar);
   // Melody onsets of one tick. A Melody with overlapping notes starts every
   // note of the tick as a chord voice; any other keeps the one-note path.
   void triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
-                            uint32_t absoluteStartSubtick);
+                            uint32_t absoluteStartSubtick,
+                            const MacroPlaybackContext* macroContext = nullptr);
   // Phrase onsets are addressed in phrase-relative time. Keeping the modulo in
   // one place leaves room for a per-voice cycle origin later without touching
   // the sequencer scan.
@@ -1026,6 +1044,7 @@ private:
   // Note the internal synth plays while a chord sounds, or -1.
   int16_t chordInternalNote_[NUM_303_VOICES] = {-1, -1};
   std::atomic<uint8_t> patternOwnedMask_{0};
+  std::atomic<uint32_t> performanceMacroStatePacked_{0};
   uint32_t liveInputEpoch_ = 0;
 
   // P3: Bounded Phrase Source, owned per synth voice.

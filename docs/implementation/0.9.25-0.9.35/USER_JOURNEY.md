@@ -18,3 +18,9 @@ Baseline: `28918d9b78e9a527ce2b5ce201a465af5126f76a`. This is an implementation 
 ## Verification boundary
 
 Host tests and SDL may establish software state and UI flow. They cannot establish physical Cardputer keyboard ergonomics, internal audio quality, USB Host/MIDI endpoint behavior, electrical role/VBUS behavior, SEQTRAK compatibility, or physical timing. Record those only in `HARDWARE_TEST_0_9_35.md` after owner testing.
+
+## 0.9.29 Performance checkpoint
+
+The MACRO tab is now reachable from Performance tools and operates on the current Pattern/Phrase playback projection. SDL keyboard input changed a value in 5% steps, reset one value and all four values, started/stopped playback, advanced Song from row 4 to row 5, left Performance and returned, and saved then loaded the current Scene. A 240×135 screenshot set is stored in `evidence/implementation-0.9.29/`.
+
+This verifies the controls and software routing path only. The session macro values are not part of Scene JSON and restart at zero after a process restart. The full GENERATE → KEEP → DEVELOP → ARRANGE → PERFORM → SAVE → EXPORT Golden Path remains incomplete: there is no user-facing current-Song SMF export, and musical quality awaits owner listening at 0.9.35.

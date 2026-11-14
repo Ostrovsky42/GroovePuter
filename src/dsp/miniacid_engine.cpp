@@ -912,6 +912,20 @@ void MiniAcid::setBpm(float bpm) {
   delay3032.setBpm(bpmValue);
 }
 
+bool MiniAcid::setPerformanceMacroState(
+    const GroovePuterPerformance::Macros::State& state) {
+  if (!state.valid()) return false;
+  performanceMacroStatePacked_.store(
+      GroovePuterPerformance::Macros::packState(state),
+      std::memory_order_release);
+  return true;
+}
+
+GroovePuterPerformance::Macros::State MiniAcid::performanceMacroState() const {
+  return GroovePuterPerformance::Macros::unpackState(
+      performanceMacroStatePacked_.load(std::memory_order_acquire));
+}
+
 void MiniAcid::setExternalClockBpm(float bpm) {
   bpmValue = bpm;
   if (bpmValue < 5.0f) bpmValue = 5.0f;
@@ -3047,6 +3061,39 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
       activePatternRuntimeEvents(0);
   const PhraseRuntime::RuntimePatternEventBuffer& synthBEvents =
       activePatternRuntimeEvents(1);
+  MacroPlaybackContext macroContext{};
+  macroContext.state = performanceMacroState();
+  macroContext.seed = 0x47504D31u;
+  if (macroContext.state.mutation != 0) {
+    const auto& macroKey = sceneManager_.currentScene().generatorParams;
+    macroContext.harmony.known =
+        macroKey.scaleRoot >= 0 && macroKey.scaleRoot < 12 &&
+        static_cast<uint8_t>(macroKey.scale) <
+            GroovePuterRhythm::kScaleTypeCount;
+    macroContext.harmony.root = static_cast<uint8_t>(macroKey.scaleRoot);
+    macroContext.harmony.scale = static_cast<uint8_t>(macroKey.scale);
+  }
+  const bool macrosActive = macroContext.state.tension != 0 ||
+      macroContext.state.energy != 0 || macroContext.state.space != 0 ||
+      macroContext.state.mutation != 0;
+
+  auto nextPatternEvent = [](
+      const PhraseRuntime::RuntimePatternEventBuffer& events,
+      uint16_t eventIndex, uint16_t& nextIndex)
+      -> const PhraseRuntime::RuntimeSynthEvent* {
+    if (eventIndex >= events.count) return nullptr;
+    const auto& event = events.events[eventIndex];
+    const PhraseRuntime::RuntimeSynthEvent* next = nullptr;
+    for (uint16_t i = 0; i < events.count; ++i) {
+      const auto& candidate = events.events[i];
+      if (candidate.startTick <= event.startTick) continue;
+      if (next == nullptr || candidate.startTick < next->startTick) {
+        next = &candidate;
+        nextIndex = i;
+      }
+    }
+    return next;
+  };
   (void)auditionDrums_();  // validate context before suppressing synth onsets
   const uint32_t auditionSession =
       GroovePuterRhythm::QuantizedGenerationDetail::g_auditionSession.load(std::memory_order_acquire);
@@ -3072,24 +3119,38 @@ void MiniAcid::processSequencerEvents(uint32_t absoluteTick) {
     } else if (activeMaterial_[0].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        triggerPhraseOnsets_(0, absoluteTick, absoluteStartSubtick);
+        triggerPhraseOnsets_(0, absoluteTick, absoluteStartSubtick,
+                             macrosActive ? &macroContext : nullptr);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventA =
                    synthAEvents.eventForSourceStep(static_cast<uint8_t>(s));
                eventA != nullptr && eventA->startTick == barTick) {
-      triggerSynthStep_(0, *eventA, absoluteStartSubtick);
+      const uint16_t eventIndex = static_cast<uint16_t>(eventA - synthAEvents.events);
+      uint16_t nextIndex = 0;
+      const auto* nextEvent = macrosActive && macroContext.state.tension != 0
+          ? nextPatternEvent(synthAEvents, eventIndex, nextIndex) : nullptr;
+      triggerSynthStep_(0, *eventA, absoluteStartSubtick, false,
+                        macrosActive ? &macroContext : nullptr, eventIndex,
+                        nextEvent, nextIndex);
     }
     if (auditionSolo || (songMode_ && songVoiceState_[1] == SongVoiceState::Awaiting)) {
       // Deliberately silent while Song waits for the requested material.
     } else if (activeMaterial_[1].kind ==
                GroovePuterMaterial::MaterialKind::Melody) {
       if (s == nominalStep) {
-        triggerPhraseOnsets_(1, absoluteTick, absoluteStartSubtick);
+        triggerPhraseOnsets_(1, absoluteTick, absoluteStartSubtick,
+                             macrosActive ? &macroContext : nullptr);
       }
     } else if (const PhraseRuntime::RuntimeSynthEvent* eventB =
                    synthBEvents.eventForSourceStep(static_cast<uint8_t>(s));
                eventB != nullptr && eventB->startTick == barTick) {
-      triggerSynthStep_(1, *eventB, absoluteStartSubtick);
+      const uint16_t eventIndex = static_cast<uint16_t>(eventB - synthBEvents.events);
+      uint16_t nextIndex = 0;
+      const auto* nextEvent = macrosActive && macroContext.state.tension != 0
+          ? nextPatternEvent(synthBEvents, eventIndex, nextIndex) : nullptr;
+      triggerSynthStep_(1, *eventB, absoluteStartSubtick, false,
+                        macrosActive ? &macroContext : nullptr, eventIndex,
+                        nextEvent, nextIndex);
     }
 
     const DrumPatternSet* pendingDrums = auditionDrums_();
@@ -5073,23 +5134,40 @@ const PhraseRuntime::RuntimeSynthEvent* MiniAcid::phraseEventAt_(
 }
 
 void MiniAcid::triggerPhraseOnsets_(int voiceIndex, uint32_t absoluteTick,
-                                    uint32_t absoluteStartSubtick) {
+                                    uint32_t absoluteStartSubtick,
+                                    const MacroPlaybackContext* macroContext) {
   const auto* phrase = readableWorkingMelody_(voiceIndex);
   if (phrase == nullptr || phrase->lengthTicks == 0) return;
+  const uint16_t phraseTick = phraseRelativeTick_(voiceIndex, absoluteTick);
+  const PhraseRuntime::RuntimeSynthEvent* nextEvent = nullptr;
+  uint16_t nextEventIndex = 0;
+  if (macroContext != nullptr && macroContext->state.tension != 0) {
+    for (uint16_t i = 0; i < phrase->count; ++i) {
+      const auto& candidate = phrase->events[i];
+      if (candidate.startTick <= phraseTick) continue;
+      if (nextEvent == nullptr || candidate.startTick < nextEvent->startTick) {
+        nextEvent = &candidate;
+        nextEventIndex = i;
+      }
+    }
+  }
   if (!RuntimePhraseEdit::hasOverlappingNotes(*phrase)) {
     if (const PhraseRuntime::RuntimeSynthEvent* event =
             phraseEventAt_(voiceIndex, absoluteTick)) {
-      triggerSynthStep_(voiceIndex, *event, absoluteStartSubtick);
+      const uint16_t eventIndex = static_cast<uint16_t>(event - phrase->events);
+      triggerSynthStep_(voiceIndex, *event, absoluteStartSubtick, false,
+                        macroContext, eventIndex, nextEvent, nextEventIndex,
+                        phrase->lengthTicks);
     }
     return;
   }
   // A chord Melody: every note starting on this tick, in event order, so the
   // ghost/probability draws stay deterministic.
-  const uint16_t phraseTick = phraseRelativeTick_(voiceIndex, absoluteTick);
   for (uint16_t i = 0; i < phrase->count; ++i) {
     if (phrase->events[i].startTick == phraseTick) {
       triggerSynthStep_(voiceIndex, phrase->events[i], absoluteStartSubtick,
-                        true);
+                        true, macroContext, i, nextEvent, nextEventIndex,
+                        phrase->lengthTicks);
     }
   }
 }
@@ -5098,7 +5176,12 @@ void MiniAcid::triggerSynthStep_(
     int synthIdx,
     const PhraseRuntime::RuntimeSynthEvent& event,
     uint32_t absoluteStartSubtick,
-    bool chordVoice) {
+    bool chordVoice,
+    const MacroPlaybackContext* macroContext,
+    uint16_t eventIndex,
+    const PhraseRuntime::RuntimeSynthEvent* nextEvent,
+    uint16_t nextEventIndex,
+    uint16_t lengthTicks) {
   const int songPattern = songPatternIndexForTrack(
       synthIdx == 0 ? SongTrack::SynthA : SongTrack::SynthB);
   if (songPattern < 0) return;
@@ -5106,24 +5189,40 @@ void MiniAcid::triggerSynthStep_(
   if (synthIdx == 0 && mute303) return;
   if (synthIdx == 1 && mute303_2) return;
 
+  PhraseRuntime::RuntimeSynthEvent transformedEvent{};
+  const PhraseRuntime::RuntimeSynthEvent* playableEvent = &event;
+  if (macroContext != nullptr) {
+    const uint32_t seed = macroContext->seed ^
+        (static_cast<uint32_t>(synthIdx) * 0x9E3779B9u);
+    if (GroovePuterPerformance::Macros::transformEvent(
+            event, nextEvent, eventIndex, nextEventIndex, lengthTicks,
+            macroContext->state, macroContext->harmony, seed,
+            transformedEvent) == GroovePuterPerformance::Macros::ApplyResult::Ready) {
+      playableEvent = &transformedEvent;
+    }
+  }
+  const PhraseRuntime::RuntimeSynthEvent& playbackEvent = *playableEvent;
+
   // Preserve legacy RNG consumption exactly: ghost first, probability only
   // after ghost accepts. Projection is deterministic and never consumes RNG.
-  const bool ghost = (event.flags & PhraseRuntime::kEventGhost) != 0;
+  const bool ghost = (playbackEvent.flags & PhraseRuntime::kEventGhost) != 0;
   if (ghost && (rand() % 100 >= 80)) return;
-  if (event.probability < 100 && (rand() % 100 >= event.probability)) return;
+  if (playbackEvent.probability < 100 &&
+      (rand() % 100 >= playbackEvent.probability)) return;
 
   consumePatternPlaybackActions_(
       synthIdx,
       chordVoice
           ? patternPlaybackState_[synthIdx].acceptChordOnset(
-                event, absoluteStartSubtick)
-          : patternPlaybackState_[synthIdx].acceptOnset(event,
+                playbackEvent, absoluteStartSubtick)
+          : patternPlaybackState_[synthIdx].acceptOnset(playbackEvent,
                                                          absoluteStartSubtick));
 
   RetrigState& retrig = synthIdx == 0 ? retrigA_ : retrigB_;
   retrig.active = false;
-  patternRetrigEvent_[synthIdx] = event;
-  if (event.fx == static_cast<uint8_t>(StepFx::Retrig) && event.fxParam > 0) {
+  patternRetrigEvent_[synthIdx] = playbackEvent;
+  if (playbackEvent.fx == static_cast<uint8_t>(StepFx::Retrig) &&
+      playbackEvent.fxParam > 0) {
     // Legacy projects could persist the old 0..255 parameter range. Execution
     // follows the new bounded musician-facing contract even before the user
     // edits that step.
@@ -5139,7 +5238,7 @@ void MiniAcid::triggerSynthStep_(
     constexpr uint32_t kSubticksPerStep =
         24u * static_cast<uint32_t>(PhraseRuntime::kSubticksPerTick);
     const uint32_t gateSubticks = std::max<uint32_t>(
-        1u, std::min<uint32_t>(event.durationSubticks, kSubticksPerStep));
+        1u, std::min<uint32_t>(playbackEvent.durationSubticks, kSubticksPerStep));
     const float gateFraction =
         static_cast<float>(gateSubticks) / static_cast<float>(kSubticksPerStep);
     const int retrigSpanSamples =

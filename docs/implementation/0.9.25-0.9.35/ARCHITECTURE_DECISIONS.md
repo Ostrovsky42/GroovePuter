@@ -48,9 +48,17 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Evidence:** `src/performance/performance_macro_engine.h` validates into a local candidate and assigns the destination only after validation; host tests verify unchanged source, transactional rejection, deterministic seed behavior and zero heap allocations.
 
+### AD-008 — Live macros extend the existing playback owner
+
+**Decision:** publish all four session values through one packed 32-bit atomic snapshot. Apply a bounded per-event projection to the selected Pattern or Phrase onset immediately before `RuntimeSynthPlaybackState` accepts it. Keep internal audio and Pattern MIDI on the existing shared event and routing path. Song playback follows its selected material through the same path.
+
+**Evidence:** mock-MIDI P0 runtime characterization compares the transformed Pattern event against the fake endpoint NoteOn; the P3 phrase-relative runtime test verifies the Phrase event is transformed while its source buffer remains unchanged. Firmware and SDL builds pass. No physical listening or MIDI evidence is claimed.
+
+**Bound:** TENSION's next-onset search inspects at most 16 Pattern events or 128 Phrase events and runs only while TENSION is nonzero. The audio path does not call the batch `apply()` function or allocate a Phrase buffer.
+
 ## Decisions still required by implementation
 
-- Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.28 does not commit the transient candidate.
+- Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.29 remains transient and does not commit the playback view.
 - How existing Song/FORM data expresses INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO without adding seven storage types.
 - SMF export format (Type 1 is preferred by the roadmap when compatible) and the exact boundary between saved composition and committed performance state.
 - Whether live MIDI profile changes can be safely rebound immediately or must be deferred to a bar/transport boundary.

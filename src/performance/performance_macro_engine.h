@@ -44,6 +44,22 @@ struct State {
   }
 };
 
+constexpr uint32_t packState(const State& state) {
+  return static_cast<uint32_t>(state.tension) |
+         (static_cast<uint32_t>(state.energy) << 8u) |
+         (static_cast<uint32_t>(state.space) << 16u) |
+         (static_cast<uint32_t>(state.mutation) << 24u);
+}
+
+constexpr State unpackState(uint32_t packed) {
+  State state{};
+  state.tension = static_cast<uint8_t>(packed & 0xFFu);
+  state.energy = static_cast<uint8_t>((packed >> 8u) & 0xFFu);
+  state.space = static_cast<uint8_t>((packed >> 16u) & 0xFFu);
+  state.mutation = static_cast<uint8_t>((packed >> 24u) & 0xFFu);
+  return state;
+}
+
 // Mutation only follows the project key when the caller can establish it.
 // Unknown or ambiguous harmony leaves pitches unchanged.
 struct HarmonyContext {
@@ -81,31 +97,49 @@ inline bool isWeakOnset(uint16_t tick) {
   return (tick % kBeatTicks) != 0;
 }
 
+inline bool validEvent(const PhraseRuntime::RuntimeSynthEvent& event,
+                       uint16_t lengthTicks) {
+  if (!RuntimePhraseEdit::validLengthTicks(lengthTicks) ||
+      !RuntimePhraseEdit::validEventValues(event) ||
+      event.durationSubticks == 0 || event.startTick >= lengthTicks) {
+    return false;
+  }
+  // Runtime Pattern lifetimes can intentionally cross a bar line (for example
+  // a tied step 15). The playback event path accepts that; only the control
+  // side batch transform additionally applies RuntimePhraseEdit::validate().
+  return true;
+}
+
+inline uint8_t mutatedNote(
+    const PhraseRuntime::RuntimeSynthEvent& event, uint16_t eventIndex,
+    const State& state, const HarmonyContext& harmony, uint32_t seed) {
+  if (state.mutation == 0 || !harmony.known ||
+      !isWeakOnset(event.startTick) ||
+      !ProjectKey::inScale(event.note, harmony.root, harmony.scale)) {
+    return event.note;
+  }
+
+  const uint32_t identity =
+      seed ^ (static_cast<uint32_t>(event.startTick) * 0x9E3779B9u) ^
+      (static_cast<uint32_t>(eventIndex) * 0x85EBCA6Bu);
+  const uint32_t choice = mixSeed(identity);
+  if ((choice % 100u) >= state.mutation) return event.note;
+
+  const int direction = (choice & 0x100u) != 0 ? 1 : -1;
+  const int neighbor = ProjectKey::step(
+      event.note, direction, harmony.root, harmony.scale);
+  return neighbor >= 0 && neighbor <= 127
+      ? static_cast<uint8_t>(neighbor)
+      : event.note;
+}
+
 inline void applyMutation(PhraseRuntime::RuntimeSynthEventBuffer& phrase,
                           const State& state,
                           const HarmonyContext& harmony,
                           uint32_t seed) {
-  if (state.mutation == 0 || !harmony.known) return;
-
   for (uint16_t i = 0; i < phrase.count; ++i) {
     PhraseRuntime::RuntimeSynthEvent& event = phrase.events[i];
-    if (!isWeakOnset(event.startTick) ||
-        !ProjectKey::inScale(event.note, harmony.root, harmony.scale)) {
-      continue;
-    }
-
-    const uint32_t identity =
-        seed ^ (static_cast<uint32_t>(event.startTick) * 0x9E3779B9u) ^
-        (static_cast<uint32_t>(i) * 0x85EBCA6Bu);
-    const uint32_t choice = mixSeed(identity);
-    if ((choice % 100u) >= state.mutation) continue;
-
-    const int direction = (choice & 0x100u) != 0 ? 1 : -1;
-    const int neighbor = ProjectKey::step(
-        event.note, direction, harmony.root, harmony.scale);
-    if (neighbor >= 0 && neighbor <= 127) {
-      event.note = static_cast<uint8_t>(neighbor);
-    }
+    event.note = mutatedNote(event, i, state, harmony, seed);
   }
 }
 
@@ -172,6 +206,79 @@ inline void applySpace(PhraseRuntime::RuntimeSynthEventBuffer& phrase,
 }
 
 }  // namespace detail
+
+// Transform one onset into a bounded transient playback event. The caller
+// supplies the nearest strictly later source onset (when one exists) so the
+// real-time path does not scan or allocate a Phrase-sized buffer. eventIndex
+// and nextEventIndex preserve the batch transform's deterministic identities.
+inline ApplyResult transformEvent(
+    const PhraseRuntime::RuntimeSynthEvent& source,
+    const PhraseRuntime::RuntimeSynthEvent* nextEvent,
+    uint16_t eventIndex, uint16_t nextEventIndex, uint16_t lengthTicks,
+    const State& state, const HarmonyContext& harmony, uint32_t seed,
+    PhraseRuntime::RuntimeSynthEvent& destination) {
+  if (!state.valid()) return ApplyResult::InvalidState;
+  if (!detail::validHarmony(harmony)) return ApplyResult::InvalidHarmony;
+  if (!detail::validEvent(source, lengthTicks) ||
+      (nextEvent != nullptr && !detail::validEvent(*nextEvent, lengthTicks))) {
+    return ApplyResult::InvalidSource;
+  }
+
+  PhraseRuntime::RuntimeSynthEvent candidate = source;
+  candidate.note = detail::mutatedNote(source, eventIndex, state, harmony, seed);
+
+  if (state.tension != 0 && detail::isWeakOnset(source.startTick) &&
+      nextEvent != nullptr && nextEvent->startTick > source.startTick) {
+    const uint8_t nextNote = detail::mutatedNote(
+        *nextEvent, nextEventIndex, state, harmony, seed);
+    const int interval = static_cast<int>(nextNote) - candidate.note;
+    const int absoluteInterval = interval < 0 ? -interval : interval;
+    if (absoluteInterval != 0 && absoluteInterval <= 2) {
+      const uint8_t accent = static_cast<uint8_t>(
+          (state.tension * 12u + 50u) / 100u);
+      const uint16_t velocity =
+          static_cast<uint16_t>(candidate.velocity) + accent;
+      candidate.velocity = static_cast<uint8_t>(
+          velocity > 127u ? 127u : velocity);
+    }
+  }
+
+  if (state.energy != 0) {
+    const uint16_t gainPercent = static_cast<uint16_t>(100u + state.energy / 2u);
+    const uint16_t velocity =
+        (static_cast<uint16_t>(candidate.velocity) * gainPercent + 50u) / 100u;
+    candidate.velocity = static_cast<uint8_t>(velocity > 127u ? 127u : velocity);
+    if ((candidate.flags & PhraseRuntime::kEventGhost) != 0) {
+      const uint16_t missing = static_cast<uint16_t>(100u - candidate.probability);
+      const uint16_t boost = (missing * state.energy + 50u) / 100u;
+      const uint16_t probability =
+          static_cast<uint16_t>(candidate.probability) + boost;
+      candidate.probability = static_cast<uint8_t>(
+          probability > 100u ? 100u : probability);
+    }
+  }
+
+  if (state.space != 0) {
+    const uint16_t durationPercent =
+        static_cast<uint16_t>(100u - state.space / 2u);
+    uint32_t duration =
+        (static_cast<uint32_t>(candidate.durationSubticks) * durationPercent) /
+        100u;
+    if (duration == 0) duration = 1;
+    candidate.durationSubticks = static_cast<uint16_t>(duration);
+    if ((candidate.flags & PhraseRuntime::kEventGhost) != 0) {
+      candidate.probability = static_cast<uint8_t>(
+          (static_cast<uint16_t>(candidate.probability) *
+           (100u - state.space)) / 100u);
+    }
+  }
+
+  if (!detail::validEvent(candidate, lengthTicks)) {
+    return ApplyResult::InvalidCandidate;
+  }
+  destination = candidate;
+  return ApplyResult::Ready;
+}
 
 // Produce a transient playback view into an unpublished destination buffer on
 // the control side. Source and destination must be distinct. Do not call this

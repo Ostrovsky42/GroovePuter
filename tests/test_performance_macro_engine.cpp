@@ -84,6 +84,21 @@ void testStateRangeIsFixedAndInvalidWriteIsRejected() {
   assert(state.valid());
 }
 
+void testStatePackRoundTripsAsOneAtomicSnapshotWord() {
+  Macros::State state{};
+  assert(state.set(Macros::Control::Tension, 100));
+  assert(state.set(Macros::Control::Energy, 65));
+  assert(state.set(Macros::Control::Space, 10));
+  assert(state.set(Macros::Control::Mutation, 99));
+  const uint32_t packed = Macros::packState(state);
+  const Macros::State decoded = Macros::unpackState(packed);
+  assert(decoded.valid());
+  assert(decoded.tension == state.tension);
+  assert(decoded.energy == state.energy);
+  assert(decoded.space == state.space);
+  assert(decoded.mutation == state.mutation);
+}
+
 void testTensionAccentsOnlyWeakStepwiseApproaches() {
   const Buffer source = samplePhrase();
   Macros::State state{};
@@ -211,6 +226,63 @@ void testApplyUsesNoHeapAllocations() {
   assert(trackedAllocations == 0);
 }
 
+void testEventTransformMatchesBatchViewAtEachOnset() {
+  const Buffer source = samplePhrase();
+  Macros::State state{};
+  assert(state.set(Macros::Control::Tension, 83));
+  assert(state.set(Macros::Control::Energy, 61));
+  assert(state.set(Macros::Control::Space, 37));
+  assert(state.set(Macros::Control::Mutation, 72));
+  const auto harmony = cMajor();
+  constexpr uint32_t seed = 0x31415926u;
+  Buffer batch{};
+  assert(Macros::apply(source, state, harmony, seed, batch) ==
+         Macros::ApplyResult::Ready);
+
+  for (uint16_t i = 0; i < source.count; ++i) {
+    const Event* next = nullptr;
+    uint16_t nextIndex = 0;
+    for (uint16_t j = 0; j < source.count; ++j) {
+      if (source.events[j].startTick <= source.events[i].startTick) continue;
+      if (next == nullptr || source.events[j].startTick < next->startTick) {
+        next = &source.events[j];
+        nextIndex = j;
+      }
+    }
+    Event transformed{};
+    assert(Macros::transformEvent(source.events[i], next, i, nextIndex,
+                                  source.lengthTicks, state, harmony, seed,
+                                  transformed) ==
+           Macros::ApplyResult::Ready);
+    assert(sameEvent(transformed, batch.events[i]));
+  }
+}
+
+void testEventTransformRejectsInvalidDataWithoutChangingOutput() {
+  Event source = makeEvent(24, 60, 80, 100, 0, 24);
+  Event output = makeEvent(0, 48, 64, 100, 0, 96);
+  const Event before = output;
+  source.velocity = 0;
+  assert(Macros::transformEvent(source, nullptr, 0, 0,
+                                PhraseRuntime::kTicksPerBar,
+                                Macros::State{}, cMajor(), 1, output) ==
+         Macros::ApplyResult::InvalidSource);
+  assert(sameEvent(output, before));
+}
+
+void testEventTransformKeepsValidAcrossBarPlaybackLifetimes() {
+  Event source = makeEvent(360, 60, 90, 100, 0, 800);
+  Event output{};
+  Macros::State state{};
+  assert(state.set(Macros::Control::Space, 100));
+  assert(Macros::transformEvent(source, nullptr, 0, 0,
+                                PhraseRuntime::kTicksPerBar, state,
+                                cMajor(), 1, output) ==
+         Macros::ApplyResult::Ready);
+  assert(output.startTick == 360);
+  assert(output.durationSubticks == 400);
+}
+
 }  // namespace
 
 void* operator new(std::size_t size) {
@@ -233,6 +305,7 @@ void operator delete[](void* memory, std::size_t) noexcept { std::free(memory); 
 int main() {
   testDefaultsAreExactNoOpAndDoNotMutateSource();
   testStateRangeIsFixedAndInvalidWriteIsRejected();
+  testStatePackRoundTripsAsOneAtomicSnapshotWord();
   testTensionAccentsOnlyWeakStepwiseApproaches();
   testEnergyRaisesVelocityAndOptionalEventProbabilityWithinBounds();
   testSpaceReducesOnlyGhostChanceAndShortensGatesBoundedly();
@@ -240,4 +313,7 @@ int main() {
   testUnknownHarmonyUsesConservativeMutationFallback();
   testRejectedInputDoesNotPartiallyReplaceDestination();
   testApplyUsesNoHeapAllocations();
+  testEventTransformMatchesBatchViewAtEachOnset();
+  testEventTransformRejectsInvalidDataWithoutChangingOutput();
+  testEventTransformKeepsValidAcrossBarPlaybackLifetimes();
 }

@@ -369,7 +369,73 @@ void testExact384TickBoundary() {
   std::puts("P0-B PASS: physical bar boundary is exactly 384 ticks");
 }
 
-void testSongBoundaryCleanupDivergenceForSynth(int synth) {
+void testPerformanceMacrosTransformPatternBeforeSharedPlaybackRouting() {
+  RuntimeFixture f;
+  f.engine.songMode_ = false;
+  f.engine.sceneManager_.setSongMode(false);
+  editPattern(f, 0, 0, {1, 60, 2, 62});
+  editPattern(f, 1, 0, {});
+  f.engine.set303PatternIndex(0, 0);
+  auto& scene = f.engine.sceneManager_.currentScene();
+  scene.generatorParams.scaleRoot = 0;
+  scene.generatorParams.scale = static_cast<ScaleType>(
+      GroovePuterRhythm::kScaleMajor);
+  scene.synthABanks[0].patterns[0].steps[1].velocity = 80;
+  assert(f.engine.refreshPatternRuntimeEvents(0, 0, 0));
+
+  const auto& runtime = f.engine.activePatternRuntimeEvents(0);
+  const auto* sourceEvent = runtime.eventForSourceStep(1);
+  assert(sourceEvent != nullptr);
+  const auto sourceEventBefore = *sourceEvent;
+  const uint16_t eventIndex = static_cast<uint16_t>(sourceEvent - runtime.events);
+
+  PhraseRuntime::RuntimeSynthEventBuffer source{};
+  source.lengthTicks = PhraseRuntime::kTicksPerBar;
+  source.count = runtime.count;
+  for (uint16_t i = 0; i < runtime.count; ++i) source.events[i] = runtime.events[i];
+
+  GroovePuterPerformance::Macros::State macros{};
+  assert(macros.set(GroovePuterPerformance::Macros::Control::Tension, 100));
+  assert(macros.set(GroovePuterPerformance::Macros::Control::Energy, 100));
+  assert(macros.set(GroovePuterPerformance::Macros::Control::Space, 100));
+  assert(macros.set(GroovePuterPerformance::Macros::Control::Mutation, 100));
+  assert(f.engine.setPerformanceMacroState(macros));
+  GroovePuterPerformance::Macros::HarmonyContext harmony{
+      true, 0, GroovePuterRhythm::kScaleMajor};
+  PhraseRuntime::RuntimeSynthEventBuffer expected{};
+  constexpr uint32_t kSeed = 0x47504D31u;
+  assert(GroovePuterPerformance::Macros::apply(
+             source, macros, harmony, kSeed, expected) ==
+         GroovePuterPerformance::Macros::ApplyResult::Ready);
+
+  f.engine.playing = true;
+  f.beginRender();
+  processTick(f, 24);  // step 1, a weak-beat onset with a later step-2 onset
+  f.endRender();
+  f.dispatchLikeProduction();
+
+  const auto& played = f.engine.patternRetrigEvent_[0];
+  const auto& expectedPlayed = expected.events[eventIndex];
+  assert(played.note == expectedPlayed.note);
+  assert(played.velocity == expectedPlayed.velocity);
+  assert(played.probability == expectedPlayed.probability);
+  assert(played.durationSubticks == expectedPlayed.durationSubticks);
+  assert(sourceEvent->note == sourceEventBefore.note &&
+         sourceEvent->velocity == sourceEventBefore.velocity &&
+         sourceEvent->durationSubticks == sourceEventBefore.durationSubticks);
+
+  const auto noteOn = std::find_if(
+      f.usb.packets.begin(), f.usb.packets.end(), [](const WirePacket& packet) {
+        return packet.type == WireType::NoteOn && packet.channel == 7;
+      });
+  assert(noteOn != f.usb.packets.end());
+  assert(noteOn->data1 == expectedPlayed.note);
+  assert(noteOn->data2 == expectedPlayed.velocity);
+  f.assertEndpointParity();
+  std::puts("P0-G PASS: transient macros transform one shared Pattern event before audio/MIDI routing");
+}
+
+void testSongBoundaryCleanupParityForSynth(int synth) {
   RuntimeFixture f;
   editPattern(f, synth, 0, {15, 60});
   editPattern(f, synth, 1, {4, 64});
@@ -409,12 +475,12 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
 
   assert(f.engine.currentSongPosition() == 1);
   assert(f.engine.current303PatternIndex(synth) == 1);
-  // Current 0.9.10 baseline is intentionally asymmetric: Song selection
-  // publishes PatternPlayer MIDI cleanup, but direct internal voice lifetime is
-  // not synchronously released by applySongPositionSelection().
-  assert(f.noteHeld(synth));
-  assert(f.runtimeActive(synth));
-  assert(f.runtimeDeadline(synth) == deadlineBefore);
+  // Song selection is a hard playback barrier: internal voice and the shared
+  // Pattern/Melody lifetime owner are released with the queued MIDI gate.
+  assert(!f.noteHeld(synth));
+  assert(!f.runtimeActive(synth));
+  assert(f.runtimeDeadline(synth) == 0);
+  assert(f.runtimeDeadline(synth) != deadlineBefore);
   assert(f.midi.activeGateCount(
              MusicalEventSource::PatternPlayer,
              targetForSynth(synth), 0) == 0);
@@ -423,10 +489,10 @@ void testSongBoundaryCleanupDivergenceForSynth(int synth) {
   f.assertEndpointParity();
 }
 
-void testSongBoundaryCleanupDivergence() {
-  testSongBoundaryCleanupDivergenceForSynth(0);
-  testSongBoundaryCleanupDivergenceForSynth(1);
-  std::puts("P0-C PASS: Song row @384 cleans MIDI while direct internal gate survives");
+void testSongBoundaryCleanupParity() {
+  testSongBoundaryCleanupParityForSynth(0);
+  testSongBoundaryCleanupParityForSynth(1);
+  std::puts("P0-C PASS: Song row @384 releases internal and MIDI note ownership");
 }
 
 void testLegacyTieCanExtendAnActiveGateAcrossBoundaryForSynth(int synth) {
@@ -604,7 +670,8 @@ void testNegativeMicrotimingWrapsStepZero() {
 int main() {
   testGridStepsAreSchedulerNoOp();
   testExact384TickBoundary();
-  testSongBoundaryCleanupDivergence();
+  testPerformanceMacrosTransformPatternBeforeSharedPlaybackRouting();
+  testSongBoundaryCleanupParity();
   testLegacyTieCrossingSymptom();
   testAdjacentTieIsOneContinuousPatternMidiAndInternalNote();
   testSwingPlusMicrotimingWrapsLateStep();

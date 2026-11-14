@@ -127,7 +127,7 @@ loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count
 loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
 assert loop_order == ["Looper", "RecordSource", "LoopBars", "LoopChannel", "NoteLength", "HoldLayer",
                       "Layer", "MuteLayer", "ToMelody"], loop_order
-assert 'kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",' in page
+assert 'kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO",' in page
 assert "kPartnerRowFirst = performInputRow(PerformInputRow::Helper);" in header
 assert "kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);" in header
 # PARTNER rows and handlers stay.

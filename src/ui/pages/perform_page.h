@@ -17,6 +17,7 @@ enum class PerformanceToolContext : uint8_t {
     Rhythm,
     Input,
     Loop,  // [LOOP]: the looper, nine rows (0.9.23)
+    Macro, // transient sequenced-material controls (0.9.29)
     Count,
 };
 
@@ -98,7 +99,7 @@ private:
     void captureViewContinuity(UI::UiViewContinuityState& state) const override {
         state.performToolsVisible = toolsLayerVisible_ ? 1u : 0u;
         state.performContext = static_cast<uint8_t>(selectedContext_);
-        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+        for (int i = 0; i < 6 && i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             state.performRows[i] = selectedRow_[i];
         }
     }
@@ -109,10 +110,13 @@ private:
         if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
         selectedContext_ = static_cast<PerformanceToolContext>(context);
         constexpr uint8_t kMaxRowByContext[6] = {5, 5, 5, 5, kInputRowCount - 1, kLoopRowCount - 1};
-        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+        for (int i = 0; i < 6 && i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
                 ? state.performRows[i]
                 : 0;
+        }
+        for (int i = 6; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+            selectedRow_[i] = 0;
         }
     }
 

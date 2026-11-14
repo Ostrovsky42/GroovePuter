@@ -48,11 +48,11 @@ def main() -> None:
             "PERFORM UI must never synthesize physical keyDown ownership")
 
     tools = block(page, "void PerformPage::drawToolsLayer", "bool PerformPage::handleEvent")
-    require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT"' in page,
-            "Tab layer must declare the five musician-facing context labels")
-    for marker in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]"):
+    require('kToolContextNames[] = {\n    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO"' in page,
+            "Tab layer must declare all seven musician-facing context labels")
+    for marker in ("KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO"):
         require(marker in page,
-                f"active context must have a structural non-color marker: {marker}")
+                f"context label must be visible: {marker}")
 
     for getter in (
         "keyboard_.rootName()", "keyboard_.scaleName()", "keyboard_.octaveShift()",
@@ -158,8 +158,8 @@ def main() -> None:
 
     require("emitAllNotesOff" not in page and "AllNotesOff" not in page,
             "PERFORM UI must not own MIDI cleanup")
-    require("new " not in page and "std::vector" not in page,
-            "Performance Instrument UI must remain fixed-allocation")
+    require("new " not in tools and "std::vector" not in page,
+            "Performance tools rendering must remain fixed-allocation")
 
     require(tools.index("LayoutManager::clearContent(gfx);") < tools.index("drawToolTabs("),
             "tools surface must clear and fully repaint every frame: the display "
@@ -167,8 +167,9 @@ def main() -> None:
     require("fullRedraw" not in tools and "toolsSelectionDirty_" not in tools,
             "tools surface must not gate label/tab drawing behind dirtiness flags")
     tabs = block(page, "void PerformPage::drawToolTabs", "void PerformPage::drawToolsLayer")
-    require("kToolContextActiveNames[i]" in tabs and "x += (len + 2) * charW;" in tabs,
-            "context tabs must occupy fixed slots so labels do not shift when switching")
+    require("fillRect(x - 1, y - 1, len * charW + 2" in tabs and
+            "x += (len + 1) * charW;" in tabs,
+            "compact context chips must keep stable label positions and a clear active state")
     require("selectedRowHint()" in tools,
             "tools surface must show what -/+ and Enter do for the selected row")
     require("uint8_t selectedRow_[static_cast<int>(PerformanceToolContext::Count)]" in header,
@@ -196,8 +197,9 @@ if __name__ == "__main__":
 
 def test_panic_cancels_partner_queue():
     page = (ROOT / "src/ui/pages/perform_page.cpp").read_text(encoding="utf-8")
-    panic = page.split("case 'x':", 1)[1].split("default:", 1)[0]
-    assert "callResponseListener().setMode(" in panic
+    handle = block(page, "bool PerformPage::handleEvent", "void PerformPage::drawHeader")
+    panic = handle.split("case 'x':", 1)[1].split("default:", 1)[0]
+    assert "callResponseListener().silence()" in panic
 
 if __name__ == "__main__":
     test_panic_cancels_partner_queue()

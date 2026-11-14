@@ -19,3 +19,10 @@ This list separates known unfinished work from verified baseline behavior. Items
 - **User documentation alignment:** README/navigation describe v0.9.19 and the manual says v0.9.22. Product documentation refresh belongs to 0.9.34.
 - **Release-profile measurement:** local baseline firmware was built with `CDCOnBoot=cdc`. A separate `CDCOnBoot=default` FS1B baseline is required before release-profile byte comparisons.
 - **Hardware and musical acceptance:** all physical keyboard, internal audio, USB MIDI, DIN MIDI and SEQTRAK behavior remains **NOT TESTED** until the owner accepts the 0.9.35 candidate.
+
+## 0.9.29 follow-up
+
+- **Macro listening and physical control feel:** SDL verifies readable values and actions only. Whether the four mappings sound useful and whether the Cardputer keyboard is comfortable remains pending for owner acceptance of 0.9.35.
+- **Chord-aware TENSION:** current TENSION uses a bounded next-onset interval check; chord context and harmonic resolution remain in 0.9.30.
+- **Per-loop mutation and permanent commit:** MUTATION is deterministic per source event, and live macro output does not add events or edit the Phrase. Per-loop variation and explicit materialization are not included.
+- **Phrase integration in the host suite:** the focused P3 gate covers it; the canonical host suite does not currently invoke `run_pattern_phrase_p3_tests.sh`.
