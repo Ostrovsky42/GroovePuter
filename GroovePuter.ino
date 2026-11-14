@@ -3,6 +3,9 @@
 #include "esp_heap_caps.h"
 #include <M5Cardputer.h>
 #include "src/ui/imu_probe.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
@@ -1196,6 +1199,37 @@ void loop() {
       ImuProbe::lastCostUs = cost > 65535u ? 65535u : static_cast<uint16_t>(cost);
       if (ImuProbe::lastCostUs > ImuProbe::peakCostUs) ImuProbe::peakCostUs = ImuProbe::lastCostUs;
     }
+  }
+#endif
+#ifdef GROOVEPUTER_TILT
+  {
+    // Tilt to CC offset. The mode is always off after boot, only ever on while the
+    // PERFORM page is showing, and the sensor is read only while it is on.
+    using namespace GroovePuterTilt;
+    const uint32_t tiltNow = millis();
+    const bool onPerform = g_miniDisplay &&
+        g_miniDisplay->currentPageIndex() == WorkflowPages::kPerform;
+    if (gToggleRequested) {
+      gToggleRequested = false;
+      if (gController.enabled()) {
+        gController.disable();
+        UI::showToast("TILT OFF", 700);
+      } else if (onPerform && M5.Imu.isEnabled()) {
+        gController.enable(tiltNow);
+        UI::showToast("TILT ON: ZERO = THIS POSE", 900);
+      } else {
+        UI::showToast("TILT: NO IMU", 900);
+      }
+    }
+    if (gController.enabled() && !onPerform) gController.disable();
+    if (gController.due(tiltNow) && M5.Imu.update()) {
+      const auto& d = M5.Imu.getImuData();
+      if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow)) {
+        UI::showToast("TILT OFF: NOT STEADY", 900);
+      }
+    }
+    const uint32_t tiltWord = gController.word();
+    if (tiltWord != gWord.loadRelaxed()) gWord.storeRelease(tiltWord);
   }
 #endif
   GroovePuterPlatform::serviceCardputerPerformanceConfig(

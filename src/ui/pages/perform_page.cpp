@@ -22,6 +22,9 @@
 #include "src/state/generation_shape_state.h"
 #include "synth_sequencer_page.h"
 #include "../undo_ux.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 
 namespace {
 constexpr const char* kToolContextNames[] = {
@@ -1379,6 +1382,14 @@ bool PerformPage::handleEvent(UIEvent& event) {
     }
 
     switch (event.key) {
+#ifdef GROOVEPUTER_TILT
+        case '\'':
+            // Experimental tilt control: loop() owns the sensor and the mode; the page
+            // only asks. The live surface only (the tools layer keeps its own keys).
+            if (toolsLayerVisible_) return false;
+            GroovePuterTilt::gToggleRequested = true;
+            return true;
+#endif
         case 'n':
         case 'N':
             keyboard_.toggleNoteMode();

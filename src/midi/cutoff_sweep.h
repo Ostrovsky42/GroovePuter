@@ -307,6 +307,15 @@ public:
         return n;
     }
 
+    // The level of any controller the user has set (known), whether or not it is the
+    // owner or the selected one. Read only. Used to lay an offset over a controller
+    // the voice is not currently serving (tilt); false for an unknown controller.
+    bool levelFor(uint8_t index, Level& out) const {
+        if (index >= kControllerCount || !heldKnown(index)) return false;
+        out = {index, clampForController(index, heldValue(index))};
+        return true;
+    }
+
 private:
     uint8_t heldValue(uint8_t index) const {
         return index == owner_ ? automation_.value() : held_[index];
