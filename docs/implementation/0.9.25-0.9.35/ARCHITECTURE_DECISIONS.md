@@ -66,10 +66,18 @@ Baseline: `feature/0.9.24` at `28918d9b78e9a527ce2b5ce201a465af5126f76a`. These 
 
 **Deferred boundary:** live Performance macro TENSION still receives project key/scale, not the immutable per-event Graph chord. Do not make the sequencer callback read harmony files or assemble a context from mutable Scene fields. A later implementation needs a coherent, bounded control-side publication into the existing playback owner.
 
+### AD-010 — Arrangement materializes into ordinary Song rows
+
+**Decision:** extend the existing `EnergyCurve` FORM path. Build the arrangement from a bounded source block and materialize it as ordinary editable Song rows through the existing transactional Song mutation and Undo owner. Keep section roles as musical functions expressed by bar length and energy; do not add seven persisted row types or a second arrangement engine.
+
+**Evidence:** `EnergyCurve::apply()` copies existing source rows, chooses track participation by energy, and inserts at section boundaries. `SongPage::applyForm()` commits the result through `commitSongMutation()`. The source block remains intact, inserted rows are editable in GRID, and refusal happens against staged Song state. See `INTELLIGENT_ARRANGEMENT.md`.
+
+**Boundary:** FORM offers genre curves plus transient INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO starting curves; BUILD, DROP and WAVE retain their existing keys. Editing a curve labels it CUSTOM. No role label persists after materialization, and the templates do not generate independent motif variations. Do not describe generated curves as musically accepted without listening.
+
 ## Decisions still required by implementation
 
 - Whether a later user workflow should provide an explicit macro-to-phrase materialization action; 0.9.29 remains transient and does not commit the playback view.
-- How existing Song/FORM data expresses INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO without adding seven storage types.
+- Whether the transient role contours sound musically useful and whether DEVELOPMENT/BREAK need genre-specific variants; owner listening is pending.
 - SMF export format (Type 1 is preferred by the roadmap when compatible) and the exact boundary between saved composition and committed performance state.
 - Whether live MIDI profile changes can be safely rebound immediately or must be deferred to a bar/transport boundary.
 - How the live sequencer can receive a coherent per-event Song chord context for transient macro TENSION without storage I/O or mutable cross-thread reads.

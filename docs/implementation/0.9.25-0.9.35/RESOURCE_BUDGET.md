@@ -67,3 +67,40 @@ On the same local FS1B build path, the exact-baseline program-storage report was
 The linker map and compiler report are software evidence only. They do not measure runtime free heap, stack high-water mark, audio callback time or physical-device behavior. The provisional 191,488-byte gate still has less than 4 KiB headroom and remains an explicit constraint.
 
 Target ELF disassembly check: `MiniAcid::setPerformanceMacroState()` publishes the packed word with one aligned `s32i`, and `MiniAcid::performanceMacroState()` reads it with one aligned `l32i`; each is bracketed by Xtensa `memw`. These two accessors do not call `__atomic_*` or FreeRTOS critical-section helpers in the linked ESP32-S3 firmware. This is compiler/linker evidence for coherent 32-bit publication on the target build, not a hardware timing measurement. The firmware was built from the 0.9.29 worktree before its milestone commit.
+
+## 0.9.31 FORM arrangement and role presets
+
+**Base commit:** `885ce13507e7d7f93740ee84eb5fd15ee1e64c81` (0.9.30). The implementation was built from this integration worktree after the curve validation and transient FORM role presets; no storage schema changed.
+
+| Build | Program storage report | Static DRAM | Gate headroom | Result |
+|---|---:|---:|---:|---|
+| `bash scripts/build.sh --warnings all` | 1,721,130 B | 187,604 B | 3,884 B | PASS; default FatFs, not SD-safe |
+| `env TMPDIR=/tmp/grooveputer-0931-host-tmp bash scripts/build_cardputer_dynbuffers.sh --warnings all` | 1,745,602 B | 187,612 B | 3,876 B | PASS; candidate-only FatFs link proof |
+
+Compared with the 0.9.29 records, program storage grew by 392 B in both
+profiles. The FS1B app-only BIN grew by 400 B to 1,745,760 B. Static DRAM did
+not change: default `.dram0.data`/`.bss` are 44,732 B / 142,872 B; FS1B are
+44,732 B / 142,880 B. The code adds no global event buffers. Stack high-water
+mark and runtime heap remain unmeasured.
+
+The current FS1B artifact was compiled with
+`m5stack:esp32:m5stack_cardputer:PSRAM=disabled,PartitionScheme=huge_app,USBMode=default,CDCOnBoot=cdc,UploadMode=cdc`.
+It is the candidate-only FatFs software build; the separate release workflow
+profile with `CDCOnBoot=default` has not been built here. The linker map
+contains the candidate FatFs archive and excludes the stock archive.
+
+Default-profile artifacts (not the SD-safe candidate):
+
+- App-only BIN: 1,721,280 B; SHA-256 `879a84cbb91082793db43b9a13da65d3b50cb024108acb1cc617e06485809427`.
+- Merged BIN: 4,194,304 B; SHA-256 `2f9e854ae8643f5826e0cd303f4b32e0a3efdbe909db30d7cb346a6388033dd7`.
+- ELF: 37,492,424 B; SHA-256 `4b217434eff94f6256c7d7c22b1f09cff6ff3bd8efb0dc50d320a8d56cf46bcf`.
+
+FS1B candidate artifacts:
+
+- App-only BIN: 1,745,760 B; SHA-256 `e772647df8313c47e01cca01d7f2184f5fe40139870e5f9000465e76a71fb61e`.
+- Merged BIN: 4,194,304 B; SHA-256 `65b1b7ecc95ad578205373265f438d0851842b4ef21b290fa5908202e09478d3`.
+- ELF: 37,438,616 B; SHA-256 `74b26e8668b713bd18f595a998c407b4d185b43b4a30da3f1c45cb993f64e4b8`.
+- Link map: `build/cardputer-adv-dynbuffers/.arduino-build/GroovePuter.ino.map`; candidate FatFs present, stock FatFs absent.
+
+Both build and link-map checks are host toolchain evidence. No image was
+flashed, and no physical Cardputer behavior is claimed.

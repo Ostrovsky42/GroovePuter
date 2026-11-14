@@ -7,6 +7,8 @@ owner = (ROOT / "src/ui/pages/song_page_r4_owner.inc").read_text(encoding="utf-8
 header = (ROOT / "src/ui/pages/song_page.h").read_text(encoding="utf-8")
 
 assert "int form_genre_ = -1;" in header, "SongPage must remember the genre of the loaded form"
+for field in ("form_preset_", "form_is_genre_", "form_is_custom_"):
+    assert field in header, f"SongPage must retain the transient FORM label: {field}"
 start = owner.index("if (ui_event.event_type == GROOVEPUTER_KEY_DOWN && !ui_event.alt &&")
 block = owner[start:owner.index("if (form_view_ && ui_event.event_type == GROOVEPUTER_KEY_DOWN)", start)]
 assert "form_view_ = !form_view_;" in block
@@ -16,4 +18,11 @@ assert "EnergyCurve::genreCurve(static_cast<uint8_t>(mode))" in block
 assert '"FORM: %s"' in block, "toast names the genre"
 assert "form_section_ = 0;" in block
 assert "GenreManager::generativeModeName" in block
+form = (ROOT / "src/ui/pages/song_page_form.inc").read_text(encoding="utf-8")
+assert "key >= '1' && key <= '8'" in form, "keys 4-8 expose the named role curves"
+assert "EnergyCurve::presetName(preset)" in form
+assert 'form_is_custom_ ? "CUSTOM"' in form
+assert '"%s  SRC %d-%d >%d  %uB"' in form, "the selected role remains visible after its toast"
+assert '"%s  SRC --  T:TAKE %uB HERE"' in form
+assert '"T:TAKE P:STYLE 1-8 N BS F:GRID"' in form
 print("song form genre source regressions: OK")

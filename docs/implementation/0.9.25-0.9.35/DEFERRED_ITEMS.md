@@ -30,3 +30,8 @@ This list separates known unfinished work from verified baseline behavior. Items
 
 - **Live chord-aware macro TENSION:** Graph and Legacy harmony already constrain generated material before commit, and current Song chord snapshots reject stale participants. The sequencer macro owner still receives only project key/scale. Keep TENSION on its bounded next-onset heuristic until a fixed, coherent control-side chord publication is available; do not read Song harmony storage in the sequencer callback. See `HARMONIC_FOLLOW.md`.
 - **Legacy M1-P1 expectation test:** `run_0_9_9_m1_p1_tests.sh` expects `SparseCall` and `Mirror` for the Electro profile. It fails at the exact 0.9.24 baseline because the current profile selects `AngularCell` and also differs on the next literal expectation. This test contract is not updated in 0.9.30; see the verification record.
+
+## 0.9.31 follow-up
+
+- **Arrangement listening:** INTRO, MAIN, DEVELOPMENT, BREAK, BUILD, DROP and OUTRO are bounded starting contours over existing energy levels and source rows. Their musical usefulness has not been evaluated by listening and remains pending for owner acceptance of 0.9.35.
+- **Per-section identity and motif development:** role names are transient FORM labels; materialized Song rows remain ordinary editable positions. The templates do not create independent motif variations or persist section-role metadata.
