@@ -420,6 +420,10 @@ void testPerformanceMacrosTransformPatternBeforeSharedPlaybackRouting() {
   assert(played.velocity == expectedPlayed.velocity);
   assert(played.probability == expectedPlayed.probability);
   assert(played.durationSubticks == expectedPlayed.durationSubticks);
+  assert(expectedPlayed.durationSubticks < sourceEventBefore.durationSubticks);
+  assert(f.runtimeDeadline(0) ==
+         24u * PhraseRuntime::kSubticksPerTick +
+             expectedPlayed.durationSubticks);
   assert(sourceEvent->note == sourceEventBefore.note &&
          sourceEvent->velocity == sourceEventBefore.velocity &&
          sourceEvent->durationSubticks == sourceEventBefore.durationSubticks);
@@ -431,6 +435,29 @@ void testPerformanceMacrosTransformPatternBeforeSharedPlaybackRouting() {
   assert(noteOn != f.usb.packets.end());
   assert(noteOn->data1 == expectedPlayed.note);
   assert(noteOn->data2 == expectedPlayed.velocity);
+
+  f.beginRender();
+  // processSequencerEvents handles onsets; production evaluates gate deadlines
+  // in generateAudioBuffer's per-sample loop.
+  const uint32_t macroGateDeadline = f.runtimeDeadline(0);
+  const auto beforeMacroGate = f.engine.patternPlaybackState_[0].releaseDue(
+      macroGateDeadline - 1u);
+  assert(beforeMacroGate.count == 0);
+  f.engine.consumePatternPlaybackActions_(0, beforeMacroGate);
+  const auto releaseAtMacroGate =
+      f.engine.patternPlaybackState_[0].releaseDue(macroGateDeadline);
+  assert(releaseAtMacroGate.count == 1);
+  f.engine.consumePatternPlaybackActions_(0, releaseAtMacroGate);
+  f.endRender();
+  f.dispatchLikeProduction();
+
+  const auto noteOff = std::find_if(
+      f.usb.packets.begin(), f.usb.packets.end(), [&](const WirePacket& packet) {
+        return packet.type == WireType::NoteOff && packet.channel == 7 &&
+               packet.data1 == expectedPlayed.note;
+      });
+  assert(noteOff != f.usb.packets.end());
+  assert(countWire(f.usb.packets, WireType::NoteOff, 7) == 1);
   f.assertEndpointParity();
   std::puts("P0-G PASS: transient macros transform one shared Pattern event before audio/MIDI routing");
 }
