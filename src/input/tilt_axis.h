@@ -31,12 +31,16 @@ inline float axisAngleDeg(float a, float p, float q) {
 inline float angleXDeg(float ax, float ay, float az) { return axisAngleDeg(ax, ay, az); }
 inline float angleYDeg(float ax, float ay, float az) { return axisAngleDeg(ay, ax, az); }
 
+// TILT SENS: degrees of tilt that give full scale, one per step (index 0..3).
+inline constexpr float kSensRangeDeg[4] = {45.0f, 30.0f, 20.0f, 12.0f};
+inline constexpr uint8_t kSensDefault = 1;   // 30 deg, the first experiment's value
+
 // Delta angle (degrees from the captured zero) to a CC offset -63..+63.
-// Zero inside the dead zone, continuous from its edge, saturating at kRangeDeg.
-inline int offsetForDelta(float deltaDeg) {
+// Zero inside the dead zone, continuous from its edge, saturating at rangeDeg.
+inline int offsetForDelta(float deltaDeg, float rangeDeg = kRangeDeg) {
     const float mag = deltaDeg < 0.0f ? -deltaDeg : deltaDeg;
     if (mag <= kDeadzoneDeg) return 0;
-    float r = (mag - kDeadzoneDeg) / (kRangeDeg - kDeadzoneDeg);
+    float r = (mag - kDeadzoneDeg) / (rangeDeg - kDeadzoneDeg);
     if (r > 1.0f) r = 1.0f;
     const int steps = static_cast<int>(r * static_cast<float>(kMaxOffset) + 0.5f);
     return deltaDeg < 0.0f ? -steps : steps;
@@ -49,7 +53,7 @@ public:
 
     // Feed one angle sample taken dtMs after the previous one. Returns the
     // current offset step (-63..+63).
-    int update(float angleDeg, uint32_t dtMs) {
+    int update(float angleDeg, uint32_t dtMs, float rangeDeg = kRangeDeg) {
         if (!captured_) {
             captured_ = true;
             zero_ = angleDeg;
@@ -60,7 +64,7 @@ public:
         const float dt = static_cast<float>(dtMs);
         const float alpha = dt / (kLpfTauMs + dt);
         filt_ += alpha * (angleDeg - filt_);
-        const int cand = offsetForDelta(filt_ - zero_);
+        const int cand = offsetForDelta(filt_ - zero_, rangeDeg);
         const int diff = cand - last_;
         // Hysteresis: a change of one step is ignored, except at the ends
         // (zero and full scale), which must always be reachable exactly.
@@ -73,6 +77,8 @@ public:
     bool captured() const { return captured_; }
     int offset() const { return last_; }
     float zero() const { return zero_; }
+    // Filtered angle from the captured zero, degrees (0 before the zero is captured).
+    float deltaDeg() const { return captured_ ? filt_ - zero_ : 0.0f; }
 
 private:
     float zero_ = 0.0f;
@@ -81,16 +87,75 @@ private:
     bool captured_ = false;
 };
 
-// Shared word: bit 0 active, bits 8..15 X offset (int8), bits 16..23 Y offset.
-// Written by loop(), read by the MIDI dispatcher and the header.
-inline uint32_t packOffsets(bool active, int x, int y) {
+// Which synth the offsets reach. Bit 1 = SYNTH A (voice 0), bit 2 = SYNTH B (voice 1).
+enum class TiltTarget : uint8_t { A = 1, B = 2, All = 3 };
+inline TiltTarget nextTarget(TiltTarget t) {
+    if (t == TiltTarget::A) return TiltTarget::B;
+    if (t == TiltTarget::B) return TiltTarget::All;
+    return TiltTarget::A;
+}
+inline const char* targetName(TiltTarget t) {
+    if (t == TiltTarget::A) return "A";
+    if (t == TiltTarget::B) return "B";
+    return "ALL";
+}
+
+// Shared word: bit 0 active, bits 1..2 target mask, bits 8..15 X offset (int8),
+// bits 16..23 Y offset, bits 24..31 Z offset (gyro). Written by loop(), read by the
+// MIDI dispatcher and the header.
+inline uint32_t packOffsets(bool active, int x, int y, TiltTarget target = TiltTarget::All,
+                            int z = 0) {
     if (!active) return 0u;
-    return 1u | (static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(x))) << 8u) |
-           (static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(y))) << 16u);
+    return 1u | (static_cast<uint32_t>(target) << 1u) |
+           (static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(x))) << 8u) |
+           (static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(y))) << 16u) |
+           (static_cast<uint32_t>(static_cast<uint8_t>(static_cast<int8_t>(z))) << 24u);
 }
 inline bool wordActive(uint32_t w) { return (w & 1u) != 0u; }
 inline int wordX(uint32_t w) { return static_cast<int8_t>(static_cast<uint8_t>(w >> 8u)); }
 inline int wordY(uint32_t w) { return static_cast<int8_t>(static_cast<uint8_t>(w >> 16u)); }
+inline int wordZ(uint32_t w) { return static_cast<int8_t>(static_cast<uint8_t>(w >> 24u)); }
+// True when the offsets in w reach the given voice (0 = SYNTH A, 1 = SYNTH B).
+inline bool wordTargetsVoice(uint32_t w, uint8_t voice) {
+    return wordActive(w) && (((w >> 1u) & 3u) >> voice & 1u) != 0u;
+}
+
+// Quick flick: a swing from rest to a fixed angle on either axis within a short window
+// fires once. Thresholds are in degrees, so TILT SENS does not change how easy a flick
+// is. Rest must be re-entered before the next flick. A slow hold never fires.
+inline constexpr float kFlickDeg = 25.0f;      // a deliberate flick (about the old 50 at 30 deg)
+inline constexpr float kRestDeg = 11.0f;       // back inside this counts as rest
+inline constexpr uint32_t kFlickWindowMs = 300;
+class FlickDetector {
+public:
+    void reset() { swinging_ = false; spent_ = false; }
+    // Feeds the current axis angles (degrees from zero); true on the step that completes a flick.
+    bool update(float xDeg, float yDeg, uint32_t nowMs) {
+        const float ax = xDeg < 0.0f ? -xDeg : xDeg;
+        const float ay = yDeg < 0.0f ? -yDeg : yDeg;
+        const float m = ax > ay ? ax : ay;
+        if (m <= kRestDeg) { swinging_ = false; return false; }
+        if (!swinging_) { swinging_ = true; spent_ = false; startMs_ = nowMs; }
+        if (spent_) return false;
+        const bool inWindow = static_cast<uint32_t>(nowMs - startMs_) <= kFlickWindowMs;
+        if (m >= kFlickDeg) { spent_ = true; return inWindow; }
+        if (!inWindow) spent_ = true;   // slow hold: no flick until rest again
+        return false;
+    }
+private:
+    uint32_t startMs_ = 0;
+    bool swinging_ = false;
+    bool spent_ = false;
+};
+
+// Process-wide tilt settings, set on PERFORM > INPUT and read by loop() and the dispatcher.
+// TILT SENS index into kSensRangeDeg.
+inline volatile uint8_t gSensIndex = kSensDefault;
+// Controller assigned to each axis (X, Y, Z): 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
+// Defaults: X = CUTOFF, Y = RESO, Z = none.
+inline volatile uint8_t gAxisChoice[3] = {1, 4, 0};
+// TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
+inline volatile bool gFlickEnabled = true;
 
 // Mode state: enable/disable, zero capture on enable, the |a| ~ 1 g guard.
 class TiltController {
@@ -98,11 +163,22 @@ public:
     bool enabled() const { return enabled_; }
     int offsetX() const { return x_.offset(); }
     int offsetY() const { return y_.offset(); }
+    TiltTarget target() const { return target_; }
+    void setTarget(TiltTarget t) { target_ = t; }
+    // True once after each flick that moved the target (cleared on read).
+    bool takeTargetChanged() {
+        const bool changed = targetChanged_;
+        targetChanged_ = false;
+        return changed;
+    }
 
     void enable(uint32_t nowMs) {
         enabled_ = true;
         x_.reset();
         y_.reset();
+        zAngle_ = 0.0f;
+        z_ = 0;
+        flick_.reset();
         lastMs_ = nowMs;
         badSince_ = 0;
         bad_ = false;
@@ -111,6 +187,8 @@ public:
         enabled_ = false;
         x_.reset();
         y_.reset();
+        zAngle_ = 0.0f;
+        z_ = 0;
         bad_ = false;
     }
 
@@ -121,7 +199,9 @@ public:
 
     // One accelerometer sample in g. Returns false if the mode switched itself
     // off because the device was not held steady (|a| far from 1 g for too long).
-    bool feed(float ax, float ay, float az, uint32_t nowMs) {
+    // gzDps: yaw rate about the vertical axis (gyro Z, degrees per second). It turns
+    // into an angle that leaks back to zero (kGyroLeakMs), so a long hold drifts home.
+    bool feed(float ax, float ay, float az, uint32_t nowMs, float gzDps = 0.0f) {
         if (!enabled_) return false;
         const uint32_t dt = static_cast<uint32_t>(nowMs - lastMs_);
         lastMs_ = nowMs;
@@ -136,16 +216,39 @@ public:
             return true;   // hold the last offsets while the sample is unreliable
         }
         bad_ = false;
-        x_.update(angleXDeg(ax, ay, az), dt);
-        y_.update(angleYDeg(ax, ay, az), dt);
+        const float range = kSensRangeDeg[gSensIndex < 4 ? gSensIndex : kSensDefault];
+        x_.update(angleXDeg(ax, ay, az), dt, range);
+        y_.update(angleYDeg(ax, ay, az), dt, range);
+        // Yaw: integrate the gyro, leak toward zero, then the same dead zone and scale.
+        const float dtS = static_cast<float>(dt) * 0.001f;
+        zAngle_ = zAngle_ * (1.0f - static_cast<float>(dt) / kGyroLeakMs) + gzDps * dtS;
+        z_ = static_cast<int8_t>(offsetForDelta(zAngle_, range));
+        if (gFlickEnabled && flick_.update(x_.deltaDeg(), y_.deltaDeg(), nowMs)) {
+            target_ = nextTarget(target_);
+            targetChanged_ = true;
+        }
         return true;
     }
 
-    uint32_t word() const { return packOffsets(enabled_, x_.offset(), y_.offset()); }
+    uint32_t word() const { return packOffsets(enabled_, x_.offset(), y_.offset(), target_, z_); }
+    int offsetZ() const { return z_; }
+    // Angle of an axis from its zero, degrees: 0 = X, 1 = Y, 2 = Z (gyro turn).
+    float angleDeg(uint8_t axis) const {
+        if (!enabled_) return 0.0f;
+        if (axis == 0) return x_.deltaDeg();
+        if (axis == 1) return y_.deltaDeg();
+        return zAngle_;
+    }
 
 private:
+    static constexpr float kGyroLeakMs = 3000.0f;   // turns back to zero in a few seconds
     TiltAxis x_;
     TiltAxis y_;
+    float zAngle_ = 0.0f;
+    int8_t z_ = 0;
+    FlickDetector flick_;
+    TiltTarget target_ = TiltTarget::All;   // kept across off/on
+    bool targetChanged_ = false;
     uint32_t lastMs_ = 0;
     uint32_t badSince_ = 0;
     bool enabled_ = false;

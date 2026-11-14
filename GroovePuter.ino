@@ -1203,29 +1203,33 @@ void loop() {
 #endif
 #ifdef GROOVEPUTER_TILT
   {
-    // Tilt to CC offset. The mode is always off after boot, only ever on while the
-    // PERFORM page is showing, and the sensor is read only while it is on.
+    // Tilt to CC offset. Global on/off: the apostrophe key toggles it on any page,
+    // it stays on across page changes, and the sensor is read only while it is on.
+    // The mode is always off after boot.
     using namespace GroovePuterTilt;
     const uint32_t tiltNow = millis();
-    const bool onPerform = g_miniDisplay &&
-        g_miniDisplay->currentPageIndex() == WorkflowPages::kPerform;
     if (gToggleRequested) {
       gToggleRequested = false;
       if (gController.enabled()) {
         gController.disable();
         UI::showToast("TILT OFF", 700);
-      } else if (onPerform && M5.Imu.isEnabled()) {
+      } else if (M5.Imu.isEnabled()) {
         gController.enable(tiltNow);
         UI::showToast("TILT ON: ZERO = THIS POSE", 900);
       } else {
         UI::showToast("TILT: NO IMU", 900);
       }
     }
-    if (gController.enabled() && !onPerform) gController.disable();
     if (gController.due(tiltNow) && M5.Imu.update()) {
       const auto& d = M5.Imu.getImuData();
-      if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow)) {
+      if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow, d.gyro.z)) {
         UI::showToast("TILT OFF: NOT STEADY", 900);
+      } else if (gController.takeTargetChanged()) {
+        // A quick flick moved the target; the offsets now reach only that synth.
+        static char targetToast[24];
+        std::snprintf(targetToast, sizeof(targetToast), "TILT > %s",
+                      targetName(gController.target()));
+        UI::showToast(targetToast, 700);
       }
     }
     const uint32_t tiltWord = gController.word();
@@ -1527,6 +1531,11 @@ void loop() {
         g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
         needsDraw = true;
       } else if (c == ';' || c == '\'') {
+#ifdef GROOVEPUTER_TILT
+        // Global tilt toggle: only reached when the page did not take the key, so
+        // text entry on any page still types an apostrophe.
+        if (c == '\'') GroovePuterTilt::gToggleRequested = true;
+#endif
         needsDraw = true;
       } else if (c == ' ') {
         if (GroovePuterMidi::externalClockOwnsTransport()) {

@@ -2,6 +2,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 
 #include "src/input/tilt_axis.h"
 
@@ -164,6 +165,89 @@ static void testGravityGuard() {
     CHECK(!c.feed(0, 0, 1.0f, t + 20));                   // ignored while off
 }
 
+void testTargetCycleAndMask() {
+    using namespace GroovePuterTilt;
+    CHECK(nextTarget(TiltTarget::A) == TiltTarget::B);
+    CHECK(nextTarget(TiltTarget::B) == TiltTarget::All);
+    CHECK(nextTarget(TiltTarget::All) == TiltTarget::A);
+    CHECK(std::strcmp(targetName(TiltTarget::All), "ALL") == 0);
+    const uint32_t a = packOffsets(true, 10, 20, TiltTarget::A);
+    const uint32_t b = packOffsets(true, 10, 20, TiltTarget::B);
+    const uint32_t all = packOffsets(true, 10, 20);       // default: All
+    CHECK(wordTargetsVoice(a, 0) && !wordTargetsVoice(a, 1));
+    CHECK(!wordTargetsVoice(b, 0) && wordTargetsVoice(b, 1));
+    CHECK(wordTargetsVoice(all, 0) && wordTargetsVoice(all, 1));
+    CHECK(!wordTargetsVoice(0u, 0) && !wordTargetsVoice(0u, 1));  // inactive word reaches nobody
+}
+
+void testTargetPackKeepsOffsets() {
+    using namespace GroovePuterTilt;
+    for (int t = 0; t < 3; ++t) {
+        const TiltTarget target = static_cast<TiltTarget>(t + 1);
+        const uint32_t w = packOffsets(true, -5, 60, target);
+        CHECK(wordX(w) == -5 && wordY(w) == 60);
+        CHECK(wordActive(w));
+    }
+    CHECK(packOffsets(false, 9, 9, TiltTarget::A) == 0u);
+}
+
+void testFlickFiresOnFastSwing() {
+    using namespace GroovePuterTilt;
+    FlickDetector f;
+    uint32_t t = 1000;
+    CHECK(!f.update(0, 0, t));                       // rest
+    t += 60;
+    CHECK(!f.update(18.0f, 0.0f, t));                      // swing starts, not full yet
+    t += 60;
+    CHECK(f.update(kFlickDeg, 0, t));                       // full scale within 300 ms: fires
+    t += 20;
+    CHECK(!f.update(kFlickDeg, 0, t));                      // stays held: no second flick
+    t += 20;
+    CHECK(!f.update(0, 0, t));                       // back to rest
+    t += 200;
+    CHECK(f.update(0, -kFlickDeg, t));                      // the other axis, negative: fires again
+}
+
+void testFlickIgnoresSlowHoldAndNeedsRest() {
+    using namespace GroovePuterTilt;
+    FlickDetector f;
+    uint32_t t = 5000;
+    CHECK(!f.update(0, 0, t));
+    CHECK(!f.update(20, 0, t + 20));                 // swing starts
+    t = 5000 + 20 + kFlickWindowMs + 50;
+    CHECK(!f.update(kFlickDeg, 0, t));                      // reached full scale too late: no flick
+    CHECK(!f.update(kFlickDeg, 0, t + 20));
+    CHECK(!f.update(0, 0, t + 40));                  // back to rest
+    CHECK(f.update(0, 0, t + 60) == false);
+    CHECK(f.update(kFlickDeg, 0, t + 300));                 // a new swing from rest: fires again
+}
+
+void testZGyroAndSensitivity() {
+    using namespace GroovePuterTilt;
+    // Word: Z sits in bits 24..31 and does not disturb X, Y or the target bits.
+    const uint32_t w = packOffsets(true, -5, 60, TiltTarget::B, -20);
+    CHECK(wordX(w) == -5 && wordY(w) == 60 && wordZ(w) == -20);
+    CHECK(wordTargetsVoice(w, 1) && !wordTargetsVoice(w, 0));
+    CHECK(packOffsets(false, 1, 2, TiltTarget::A, 3) == 0u);
+
+    // Sensitivity: the same delta gives a larger offset at a smaller full scale.
+    CHECK(offsetForDelta(20.0f, kSensRangeDeg[0]) < offsetForDelta(20.0f, kSensRangeDeg[3]));
+    CHECK(offsetForDelta(12.0f, kSensRangeDeg[3]) == kMaxOffset);
+
+    // Gyro: a steady 60 deg/s turn for about 0.5 s moves Z off zero, then the leak
+    // (3 s) brings it back toward zero while the device is held still.
+    TiltController c;
+    uint32_t t = 0;
+    c.enable(t);
+    for (int i = 0; i < 40; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t, 60.0f); }
+    CHECK(c.offsetZ() > 0);
+    const int peak = c.offsetZ();
+    for (int i = 0; i < 300; ++i) { t += 20; c.feed(0.0f, 0.0f, 1.0f, t, 0.0f); }
+    CHECK(c.offsetZ() < peak / 2);            // leaked back, not stuck
+    c.disable();
+    CHECK(c.offsetZ() == 0);
+}
+
 int main() {
     testAngle();
     testOffsetMap();
@@ -174,6 +258,7 @@ int main() {
     testPack();
     testController();
     testGravityGuard();
+    testZGyroAndSensitivity();
     if (g_fail) { std::printf("%d failure(s)\n", g_fail); return 1; }
     std::printf("tilt_axis: all tests passed\n");
     return 0;

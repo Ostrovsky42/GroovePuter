@@ -310,16 +310,16 @@ void testReturnShapeGoesThereAndBack() {
 void testControllerTableAndIndex() {
     using GroovePuterMidi::controllerIndex;
     using GroovePuterMidi::kControllerCount;
-    assert(kControllerCount == 7);
+    assert(kControllerCount == 8);
     assert(controllerIndex(74) == 0);       // CUTOFF is the default
-    assert(controllerIndex(73) == 1);       // ATTACK
-    assert(controllerIndex(71) == -1);      // RESO is not offered
-    assert(controllerIndex(10) == 6);       // PAN
+    assert(controllerIndex(73) == 5);       // ATTACK
+    assert(controllerIndex(71) == 3);      // RESO
+    assert(controllerIndex(10) == 7);       // PAN
     assert(controllerIndex(5) == -1);       // portamento: owned by the slide path
     assert(controllerIndex(65) == -1);
     assert(controllerIndex(27) == -1);      // arpeggiator
     assert(controllerIndex(116) == -1);     // DX only
-    assert(GroovePuterMidi::kControllers[6].minValue == 1);  // PAN starts at 1
+    assert(GroovePuterMidi::kControllers[7].minValue == 1);  // PAN starts at 1
     using GroovePuterMidi::kDurationCount;
     using GroovePuterMidi::kDurations;
     assert(kDurationCount == 6);
@@ -425,21 +425,21 @@ void testSweepKeepsRunningWhenAnotherControllerIsEdited() {
     CutoffVoice v;
     v.manual(64);                                     // CUTOFF known at 64
     assert(v.startSweep(110, playing(0.0), false, 4));
-    v.select(1);                                      // ATTACK: edited, not swept
+    v.select(5);                                      // ATTACK: edited, not swept
     v.manual(100);
     assert(v.sweeping() && v.owner() == 0);           // the sweep was not cancelled
-    assert(v.selected() == 1 && v.value() == 100 && v.known());
+    assert(v.selected() == 5 && v.value() == 100 && v.known());
     uint8_t cutoff = 0;
     uint8_t reso = 0;
     v.tick(playing(2.0));
     assert(levelsFor(v, 0, &cutoff) == 1 && cutoff > 64 && cutoff < 110);
-    assert(levelsFor(v, 1, &reso) == 1 && reso == 100);
+    assert(levelsFor(v, 5, &reso) == 1 && reso == 100);
     // The sweep reaches its target; CUTOFF's final value is still a level, so the
     // dispatcher delivers it, and ATTACK keeps its own value.
     v.tick(playing(4.0));
     assert(!v.sweeping());
     assert(levelsFor(v, 0, &cutoff) == 1 && cutoff == 110);
-    assert(levelsFor(v, 1, &reso) == 1 && reso == 100);
+    assert(levelsFor(v, 5, &reso) == 1 && reso == 100);
 }
 
 void testManualOnTheSweptControllerStillCancels() {
@@ -456,35 +456,35 @@ void testNewSweepOnAnotherControllerKeepsTheOldValue() {
     assert(v.startSweep(110, playing(0.0), false, 4));
     v.tick(playing(2.0));
     const uint8_t mid = v.value();                    // CUTOFF mid-sweep
-    v.select(1);
+    v.select(5);
     v.manual(40);                                     // ATTACK set first
     assert(v.startSweep(90, playing(2.0), false, 4)); // a sweep on ATTACK takes over
-    assert(v.sweeping() && v.owner() == 1);
+    assert(v.sweeping() && v.owner() == 5);
     v.select(0);                                      // back to CUTOFF: its value was kept
     assert(v.value() == mid && v.known());
-    assert(levelsFor(v, 1) == 1);                     // ATTACK sweeps, CUTOFF is held
+    assert(levelsFor(v, 5) == 1);                     // ATTACK sweeps, CUTOFF is held
 }
 
 void testNothingIsSentBeforeAValueIsSet() {
     CutoffVoice v;
     CutoffVoice::Level out[2];
     assert(v.levels(out) == 0);
-    v.select(1);
+    v.select(5);
     assert(v.levels(out) == 0);
     v.manual(30);
-    assert(v.levels(out) == 1 && out[0].index == 1 && out[0].value == 30);
+    assert(v.levels(out) == 1 && out[0].index == 5 && out[0].value == 30);
 }
 
 void testPublishedWordCarriesTheSweepOwner() {
     // The page shows the selected controller's value next to the owner's sweep, so
     // it must be able to tell them apart.
     GroovePuterMidi::CutoffControlChannel channel;
-    channel.publish(100, true, 2, true, 1, false, 2, 0);   // ATTACK selected, CUTOFF sweeps
-    assert(channel.controller() == 1 && channel.owner() == 0);
+    channel.publish(100, true, 2, true, 5, false, 2, 0);   // ATTACK selected, CUTOFF sweeps
+    assert(channel.controller() == 5 && channel.owner() == 0);
     assert(channel.value() == 100 && channel.sweeping() && channel.barsElapsed() == 2);
     assert(channel.durationIndex() == 2 && channel.known() && !channel.returning());
-    channel.publish(100, false, 0, true, 6, true, 3, 6);
-    assert(channel.controller() == 6 && channel.owner() == 6 && channel.durationIndex() == 3);
+    channel.publish(100, false, 0, true, 7, true, 3, 7);
+    assert(channel.controller() == 7 && channel.owner() == 7 && channel.durationIndex() == 3);
     channel.publish(70, true, 8, true, 5, false, 3);       // owner omitted: the selected one
     assert(channel.owner() == 5);
 }

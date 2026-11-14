@@ -160,15 +160,18 @@ int main() {
   static_assert(PerformPage::kPartnerRowFirst == 5 && kLast == 10,
                 "MIDI IN 0..4, PARTNER 5..10");
   static_assert(PerformPage::kLoopRowCount == 9, "the LOOP tab has nine rows");
-  static_assert(PerformPage::kInputRowCount == kLast + 1, "NEW RIFF IF is the last row");
-  for (uint8_t expected = 1; expected <= kLast; ++expected) {
+  // TILT TARGET and TILT Y follow the HELPER group; TILT Y is the last INPUT row now.
+  static_assert(PerformPage::kInputRowCount == PerformPage::kTiltRowLast + 1 &&
+                PerformPage::kTiltRowFirst == kLast + 1, "TILT follows NEW RIFF IF");
+  constexpr uint8_t kLastInputRow = PerformPage::kTiltRowLast;
+  for (uint8_t expected = 1; expected <= kLastInputRow; ++expected) {
     send(base, nav(GROOVEPUTER_DOWN));
     assert(inputRow(base) == expected);
   }
   send(base, nav(GROOVEPUTER_DOWN));
   assert(inputRow(base) == 0);
   send(base, nav(GROOVEPUTER_UP));
-  assert(inputRow(base) == kLast);
+  assert(inputRow(base) == kLastInputRow);
 
   // Every frame of the INPUT list (all scroll positions): no GENRE or LENGTH
   // label, every new label and the three group headings drawn; the old labels
@@ -534,15 +537,15 @@ int main() {
     assert(toastHas("SAVE OR DISCARD A FIRST"));  // and no armed confirmation was left behind
   }
 
-  // View continuity: the last row (19) survives a page round trip; a stale
-  // row past the list (20..22) falls back to the top.
+  // View continuity: the last NEW RIFF IF row survives a page round trip; a stale
+  // row past the list (past TILT Y) falls back to the top.
   goInput(base, kLast);
   UI::UiViewContinuityState saved = capture(base);
   PerformPage other(gfx, engine, keyboard);
   IPage& otherBase = other;
   otherBase.restoreViewContinuity(saved);
   assert(inputRow(otherBase) == kLast);
-  for (uint8_t stale = kLast + 1; stale <= kLast + 3; ++stale) {
+  for (uint8_t stale = PerformPage::kTiltRowLast + 1; stale <= PerformPage::kTiltRowLast + 3; ++stale) {
     saved.performRows[static_cast<int>(PerformanceToolContext::Input)] = stale;
     otherBase.restoreViewContinuity(saved);
     assert(inputRow(otherBase) == 0);

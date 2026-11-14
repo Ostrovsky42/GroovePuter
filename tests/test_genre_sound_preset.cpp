@@ -15,15 +15,16 @@ int main() {
         assert(n == 10);
         for (size_t i = 0; i < n; ++i) {
             assert(steps[i].voice < kVoiceCount);
-            assert(steps[i].controller < kPresetControllers);
+            assert(steps[i].controller < GroovePuterMidi::kControllerCount);
             // The value passes the controller's clamp unchanged (it is already usable).
             assert(steps[i].value == GroovePuterMidi::clampForController(steps[i].controller, steps[i].value));
             assert(steps[i].value <= 127);
         }
         // Voice A first, controllers in order CUTOFF ATTACK RELEASE REVERB DELAY.
         for (uint8_t c = 0; c < kPresetControllers; ++c) {
-            assert(steps[c].voice == 0 && steps[c].controller == c);
-            assert(steps[kPresetControllers + c].voice == 1 && steps[kPresetControllers + c].controller == c);
+            assert(steps[c].voice == 0 && steps[c].controller == GenreSound::kPresetController[c]);
+            assert(steps[kPresetControllers + c].voice == 1 &&
+                   steps[kPresetControllers + c].controller == GenreSound::kPresetController[c]);
         }
     }
     // Spot checks against the table.

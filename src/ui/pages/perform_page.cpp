@@ -136,9 +136,35 @@ constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
 
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u)
+                                + (row >= PerformPage::kTiltRowFirst ? 1u : 0u));
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
+
+// Names for the tilt rows. Choices: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
+inline const char* tiltChoiceName(uint8_t choice) {
+    switch (choice) {
+        case 1: return "CUTOFF";
+        case 2: return "REVERB";
+        case 3: return "DELAY";
+        case 4: return "RESO";
+        default: return "NONE";
+    }
+}
+// "CUTOFF -12 DEG": the controller of an axis and its current tilt angle (0 when off).
+inline void formatTiltAxis(char* out, size_t size, uint8_t choice, float deg) {
+    const int whole = static_cast<int>(deg >= 0.0f ? deg + 0.5f : deg - 0.5f);
+    std::snprintf(out, size, "%s %+d DEG", tiltChoiceName(choice), whole);
+}
+// Sensitivity steps, full scale in degrees: 45, 30, 20, 12.
+inline const char* tiltSensName(uint8_t index) {
+    switch (index) {
+        case 0: return "45 DEG";
+        case 2: return "20 DEG";
+        case 3: return "12 DEG";
+        default: return "30 DEG";
+    }
+}
 constexpr uint8_t kLoopLineCount = PerformPage::kLoopRowCount;  // no headings on the LOOP tab
 
 using PartnerMode = GroovePuterCallResponse::CallResponseListener::Mode;
@@ -429,6 +455,11 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
+                case ir(InRow::TiltTargetRow): case ir(InRow::TiltSensRow):
+                case ir(InRow::TiltXRow): case ir(InRow::TiltYRow): case ir(InRow::TiltZRow):
+                case ir(InRow::TiltFlickRow):
+                    cycleTiltSetting(row, direction);
+                    break;
                 default:
                     break;
             }
@@ -588,6 +619,56 @@ void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
             break;
         default: break;
     }
+}
+
+// TILT rows on INPUT. TARGET steps A -> B -> ALL (left steps back); Y steps REVERB, DELAY,
+// RESO. Both are session values; the flick on the sensor can also move the target.
+void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
+#ifdef GROOVEPUTER_TILT
+    using namespace GroovePuterTilt;
+    char toast[40];
+    if (row == ir(InRow::TiltTargetRow)) {
+        const int steps = direction >= 0 ? 1 : 2;   // backwards: two forward steps on three
+        for (int i = 0; i < steps; ++i) gController.setTarget(nextTarget(gController.target()));
+        std::snprintf(toast, sizeof(toast), "TILT TARGET: %s", targetName(gController.target()));
+        UI::showToast(toast, 800);
+        return;
+    }
+    if (row == ir(InRow::TiltFlickRow)) {
+        gFlickEnabled = !gFlickEnabled;
+        UI::showToast(gFlickEnabled ? "TILT FLICK: ON" : "TILT FLICK: OFF (MENU ONLY)", 800);
+        return;
+    }
+    if (row == ir(InRow::TiltSensRow)) {
+        uint8_t index = gSensIndex;
+        if (direction >= 0) {
+            index = index >= 3 ? 0 : static_cast<uint8_t>(index + 1);
+        } else {
+            index = index == 0 ? 3 : static_cast<uint8_t>(index - 1);
+        }
+        gSensIndex = index;
+        std::snprintf(toast, sizeof(toast), "TILT SENS: %s", tiltSensName(index));
+        UI::showToast(toast, 800);
+        return;
+    }
+    // X, Y, Z: NONE, CUTOFF, REVERB, DELAY, RESO (five steps, wrapping).
+    const uint8_t axis = row == ir(InRow::TiltXRow) ? 0 : (row == ir(InRow::TiltYRow) ? 1 : 2);
+    uint8_t choice = gAxisChoice[axis];
+    if (choice > 4) choice = 0;
+    if (direction >= 0) {
+        choice = choice >= 4 ? 0 : static_cast<uint8_t>(choice + 1);
+    } else {
+        choice = choice == 0 ? 4 : static_cast<uint8_t>(choice - 1);
+    }
+    gAxisChoice[axis] = choice;
+    static const char* const kAxisName[3] = {"X", "Y", "Z"};
+    std::snprintf(toast, sizeof(toast), "TILT %s: %s", kAxisName[axis], tiltChoiceName(choice));
+    UI::showToast(toast, 800);
+#else
+    (void)row;
+    (void)direction;
+    UI::showToast("TILT: NOT IN THIS BUILD", 900);
+#endif
 }
 
 // PARTNER mode row. The PARTNER and the LOOPER share one ResponsePlayer:
@@ -899,6 +980,12 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
+                case ir(InRow::TiltTargetRow): return "TILT: WHICH SYNTH THE TILT REACHES";
+                case ir(InRow::TiltSensRow): return "TILT: DEGREES OF TILT FOR FULL SCALE";
+                case ir(InRow::TiltXRow): return "TILT: CONTROLLER FOR THE X AXIS (NONE TO OFF)";
+                case ir(InRow::TiltYRow): return "TILT: CONTROLLER FOR THE Y AXIS (NONE TO OFF)";
+                case ir(InRow::TiltZRow): return "TILT: CONTROLLER FOR THE GYRO TURN (NONE TO OFF)";
+                case ir(InRow::TiltFlickRow): return "TILT: A QUICK FLICK CHANGES THE TARGET (OFF: MENU ONLY)";
                 default: return "";
             }
         }
@@ -1247,6 +1334,34 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                     riff && partner.hasLoopPhrase());
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
+
+            // TILT: the offsets the apostrophe switches on. Each axis picks its controller.
+            drawHeading(inputLine(kTiltRowFirst) - 1u, "--- TILT ---");
+#ifdef GROOVEPUTER_TILT
+            drawRow(ir(InRow::TiltTargetRow), "TILT TARGET",
+                    GroovePuterTilt::targetName(GroovePuterTilt::gController.target()), true);
+            std::snprintf(value, sizeof(value), "%s", tiltSensName(GroovePuterTilt::gSensIndex));
+            drawRow(ir(InRow::TiltSensRow), "TILT SENS", value, true);
+            // Each axis row shows its controller and the live angle from the zero.
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[0],
+                           GroovePuterTilt::gController.angleDeg(0));
+            drawRow(ir(InRow::TiltXRow), "TILT X", value, true);
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[1],
+                           GroovePuterTilt::gController.angleDeg(1));
+            drawRow(ir(InRow::TiltYRow), "TILT Y", value, true);
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[2],
+                           GroovePuterTilt::gController.angleDeg(2));
+            drawRow(ir(InRow::TiltZRow), "TILT Z", value, true);
+            drawRow(ir(InRow::TiltFlickRow), "TILT FLICK",
+                    GroovePuterTilt::gFlickEnabled ? "ON" : "OFF", true);
+#else
+            drawRow(ir(InRow::TiltTargetRow), "TILT TARGET", "N/A", false);
+            drawRow(ir(InRow::TiltSensRow), "TILT SENS", "N/A", false);
+            drawRow(ir(InRow::TiltXRow), "TILT X", "N/A", false);
+            drawRow(ir(InRow::TiltYRow), "TILT Y", "N/A", false);
+            drawRow(ir(InRow::TiltZRow), "TILT Z", "N/A", false);
+            drawRow(ir(InRow::TiltFlickRow), "TILT FLICK", "N/A", false);
+#endif
 
             break;
         }
