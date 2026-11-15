@@ -1628,6 +1628,7 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
         if (!step.send) continue;
         GroovePuterMidi::CutoffVoice::Level out{index,
             GroovePuterMidi::clampForController(index, step.value)};
+        GroovePuterMidi::gLayerWire[index] = out.value;
         if (found >= 0) {
             levels[found] = out;
         } else if (count < GroovePuterMidi::kControllerCount) {
