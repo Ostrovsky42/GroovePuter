@@ -36,6 +36,8 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // RESO (CC71) is back at the user's request; it was not audible on the SEQTRAK patch
 // under test, so check it on the device.
 inline constexpr uint8_t kControllerCount = 8;
+// The request and published words carry a 4-bit controller index: up to 16 entries.
+inline constexpr uint8_t kMaxControllerIndex = 15;
 // How a value is read on the wire. Centered controls are offsets around 64 in
 // Yamaha's data format (64 = no change); Send and Level are plain amounts.
 enum class CutoffKind : uint8_t { Centered, Send, Level };
@@ -373,8 +375,8 @@ private:
 };
 
 // UI-to-dispatcher request word. Only the UI writes requests; only the dispatcher
-// reads them. Layout: bits 0..6 value, bits 7..9 op, bits 10..12 controller index,
-// bits 13..31 sequence (non-zero, so repeated requests are distinct).
+// reads them. Layout: bits 0..6 value, bits 7..9 op, bits 10..13 controller index
+// (up to 16 controllers), bits 14..31 sequence (non-zero, so repeated requests are distinct).
 struct CutoffRequest {
     enum Op : uint8_t {
         kNone = 0,
@@ -387,14 +389,14 @@ struct CutoffRequest {
     };
 
     static uint32_t encode(Op op, uint8_t value, uint32_t sequence, uint8_t controller = 0) {
-        const uint32_t seq = (sequence & 0x7FFFFu) == 0u ? 1u : (sequence & 0x7FFFFu);
-        return (seq << 13u) | ((static_cast<uint32_t>(controller) & 0x7u) << 10u) |
+        const uint32_t seq = (sequence & 0x3FFFFu) == 0u ? 1u : (sequence & 0x3FFFFu);
+        return (seq << 14u) | ((static_cast<uint32_t>(controller) & 0xFu) << 10u) |
                ((static_cast<uint32_t>(op) & 0x7u) << 7u) | (value & 0x7Fu);
     }
     static Op op(uint32_t word) { return static_cast<Op>((word >> 7u) & 0x7u); }
     static uint8_t value(uint32_t word) { return static_cast<uint8_t>(word & 0x7Fu); }
-    static uint8_t controller(uint32_t word) { return static_cast<uint8_t>((word >> 10u) & 0x7u); }
-    static uint32_t sequence(uint32_t word) { return word >> 13u; }
+    static uint8_t controller(uint32_t word) { return static_cast<uint8_t>((word >> 10u) & 0xFu); }
+    static uint32_t sequence(uint32_t word) { return word >> 14u; }
 };
 
 // Shared, portable channel between the UI and the MIDI dispatcher for one synth.
@@ -412,8 +414,8 @@ public:
     uint32_t loadRequest() const { return request_.loadAcquire(); }
 
     // Layout: bits 0..6 value, bit 7 sweeping, bits 8..13 bars elapsed (0..32),
-    // bit 14 known, bits 15..17 selected controller index, bit 18 RETURN shape,
-    // bits 19..21 duration index, bits 22..24 sweep owner index. value and known
+    // bit 14 known, bits 15..18 selected controller index (up to 16), bit 19 RETURN
+    // shape, bits 20..22 duration index, bits 23..26 sweep owner index. value and known
     // belong to the selected controller; sweeping and bars elapsed belong to the
     // owner, which may be another controller.
     void publish(uint8_t value, bool sweeping, uint8_t barsElapsed, bool known,
@@ -424,10 +426,10 @@ public:
                                 (sweeping ? 0x80u : 0u) |
                                 (static_cast<uint32_t>(barsElapsed & 0x3Fu) << 8u) |
                                 (known ? 0x4000u : 0u) |
-                                (static_cast<uint32_t>(controller & 0x7u) << 15u) |
-                                (returning ? 0x40000u : 0u) |
-                                (static_cast<uint32_t>(durationIndex & 0x7u) << 19u) |
-                                (static_cast<uint32_t>(owner & 0x7u) << 22u));
+                                (static_cast<uint32_t>(controller & 0xFu) << 15u) |
+                                (returning ? 0x80000u : 0u) |
+                                (static_cast<uint32_t>(durationIndex & 0x7u) << 20u) |
+                                (static_cast<uint32_t>(owner & 0xFu) << 23u));
     }
 
     // Any task.
@@ -435,10 +437,10 @@ public:
     bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
     uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0x3Fu); }
     bool known() const { return (published_.loadAcquire() & 0x4000u) != 0u; }
-    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 15u) & 0x7u); }
-    bool returning() const { return (published_.loadAcquire() & 0x40000u) != 0u; }
-    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 19u) & 0x7u); }
-    uint8_t owner() const { return static_cast<uint8_t>((published_.loadAcquire() >> 22u) & 0x7u); }
+    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 15u) & 0xFu); }
+    bool returning() const { return (published_.loadAcquire() & 0x80000u) != 0u; }
+    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 20u) & 0x7u); }
+    uint8_t owner() const { return static_cast<uint8_t>((published_.loadAcquire() >> 23u) & 0xFu); }
 
 private:
     MidiRealtimeWord request_;

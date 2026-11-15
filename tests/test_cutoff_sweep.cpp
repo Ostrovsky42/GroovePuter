@@ -529,7 +529,26 @@ void testControllerMetadataKindsAndNeutral() {
     assert(clampForController(7, 0) == 1 && clampForController(7, 127) == 127);
 }
 
+void testSixteenControllersRoundTripInBothWords() {
+    using namespace GroovePuterMidi;
+    for (uint8_t index = 0; index <= kMaxControllerIndex; ++index) {
+        // Request: the index survives, and a large sequence does not leak into it.
+        const uint32_t word = CutoffRequest::encode(CutoffRequest::kManual, 99, 0x3FFFFu, index);
+        assert(CutoffRequest::controller(word) == index);
+        assert(CutoffRequest::value(word) == 99);
+        assert(CutoffRequest::op(word) == CutoffRequest::kManual);
+        assert(CutoffRequest::sequence(word) == 0x3FFFFu);
+        // Published: controller and owner both 0..15, the other fields unchanged.
+        CutoffControlChannel channel;
+        channel.publish(70, true, 9, true, index, true, 5, index);
+        assert(channel.controller() == index && channel.owner() == index);
+        assert(channel.value() == 70 && channel.sweeping() && channel.barsElapsed() == 9);
+        assert(channel.known() && channel.returning() && channel.durationIndex() == 5);
+    }
+}
+
 int main() {
+    testSixteenControllersRoundTripInBothWords();
     testControllerMetadataKindsAndNeutral();
     testManualMapsValuesAndClamps();
     testSweepStartsFromHeldValueAndEndsOnTarget();
