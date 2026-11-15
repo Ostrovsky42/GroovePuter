@@ -44,4 +44,30 @@ inline LayerStep composeLayer(CutoffKind kind, bool baseKnown, uint8_t base, uin
     return step;
 }
 
+// CC sends per service pass (all voices together). A pass that is not budgeted could
+// spend its time on CC while Note On/Off waits; the budget bounds that work, and the
+// start point rotates so every controller gets its turn.
+inline constexpr uint8_t kCcSendsPerPass = 4;
+
+class PassBudget {
+public:
+    explicit PassBudget(uint8_t limit = kCcSendsPerPass) : limit_(limit) {}
+    // True when one more send fits in this pass (and counts it).
+    bool take() {
+        if (used_ >= limit_) return false;
+        ++used_;
+        return true;
+    }
+    uint8_t used() const { return used_; }
+
+private:
+    uint8_t limit_;
+    uint8_t used_{0};
+};
+
+// The list position visited at `step` when the walk starts at `start`.
+inline uint8_t rotatedIndex(uint8_t step, uint8_t count, uint8_t start) {
+    return count == 0 ? 0 : static_cast<uint8_t>((start + step) % count);
+}
+
 }  // namespace GroovePuterMidi

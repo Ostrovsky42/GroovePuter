@@ -1548,6 +1548,7 @@ uint32_t g_cutoffNextTryMs[2][GroovePuterMidi::kControllerCount] = {};
 // One bit per controller records whether its deadline has been initialized.
 // millis() may already be past the signed half-range on first use after uptime.
 uint16_t g_cutoffAttemptedMask[2] = {0, 0};   // one bit per controller index
+uint8_t g_levelRotation[2] = {0, 0};          // where each voice's walk starts this pass
 
 void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
@@ -1643,6 +1644,23 @@ uint8_t applyTiltLevels(int voice, const GroovePuterMidi::CutoffVoice& control,
 #endif
 
 void serviceCutoffAutomation() {
+    // A new device profile resets the sweep and the attempt bookkeeping, so the next
+    // pass starts clean on the new device. Layer return bookkeeping is kept: a pending
+    // return still has to reach the wire.
+    static uint32_t profileRevision = 0;
+    static bool profileSeen = false;
+    const uint32_t revision = GroovePuterMidi::midiDeviceProfileRuntime().revision();
+    if (!profileSeen || revision != profileRevision) {
+        if (profileSeen) {
+            for (int v = 0; v < 2; ++v) {
+                GroovePuterMidi::gCutoffControl[v].request(GroovePuterMidi::CutoffRequest::kCancelSweep, 0);
+                g_cutoffAttemptedMask[v] = 0;
+            }
+        }
+        profileSeen = true;
+        profileRevision = revision;
+    }
+    GroovePuterMidi::PassBudget budget;   // CC sends for both voices in this pass
     for (int voice = 0; voice < 2; ++voice) {
         auto& channel = GroovePuterMidi::gCutoffControl[voice];
         VoiceControl& state = g_voice[voice];
@@ -1710,7 +1728,12 @@ void serviceCutoffAutomation() {
         const uint8_t levelCount = state.control.levels(levels);
 #endif
         const uint32_t nowMs = millis();
-        for (uint8_t i = 0; i < levelCount; ++i) {
+        const uint8_t rotation = g_levelRotation[voice];
+        if (levelCount > 0) {
+            g_levelRotation[voice] = static_cast<uint8_t>((rotation + 1u) % levelCount);
+        }
+        for (uint8_t step = 0; step < levelCount; ++step) {
+            const uint8_t i = GroovePuterMidi::rotatedIndex(step, levelCount, rotation);
             const uint8_t index = levels[i].index;
             const uint8_t held = levels[i].value;
             const uint16_t attemptedBit = static_cast<uint16_t>(1u << index);
@@ -1720,6 +1743,7 @@ void serviceCutoffAutomation() {
                                           GroovePuterMidi::kControllers[index].number, held) &&
                 GroovePuterMidi::cutoffSendDeadlineReached(
                     hasAttempted, nowMs, g_cutoffNextTryMs[voice][index])) {
+                if (!budget.take()) continue;   // over this pass's budget: next pass
                 emitControl(voice, index, held);
                 g_cutoffNextTryMs[voice][index] =
                     nowMs + GroovePuterMidi::kCutoffSendIntervalMs;

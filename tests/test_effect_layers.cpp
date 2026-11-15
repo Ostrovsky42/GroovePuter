@@ -41,5 +41,19 @@ int main() {
 
     // Negative offsets on a centred base go below the neutral.
     assert(composeLayer(CutoffKind::Centered, false, 0, 0, -63, false).value == 1);
+    // Budget: at most kCcSendsPerPass sends per pass, further ones are refused.
+    PassBudget budget;
+    for (uint8_t i = 0; i < kCcSendsPerPass; ++i) assert(budget.take());
+    assert(!budget.take() && budget.used() == kCcSendsPerPass);
+    PassBudget small(2);
+    assert(small.take() && small.take() && !small.take());
+
+    // Rotation: a walk from any start visits every controller once.
+    for (uint8_t start = 0; start < 8; ++start) {
+        bool seen[8] = {false, false, false, false, false, false, false, false};
+        for (uint8_t step = 0; step < 8; ++step) seen[rotatedIndex(step, 8, start)] = true;
+        for (bool v : seen) assert(v);
+    }
+    assert(rotatedIndex(0, 0, 3) == 0);
     return 0;
 }
