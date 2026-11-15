@@ -510,7 +510,27 @@ void testCutoffSendDeadlineIsFirstAttemptAndWrapSafe() {
 
 }  // namespace
 
+void testControllerMetadataKindsAndNeutral() {
+    using namespace GroovePuterMidi;
+    // Centered controls are offsets around 64; sends and volume have no neutral.
+    assert(kControllers[0].kind == CutoffKind::Centered);   // CUTOFF
+    assert(kControllers[1].kind == CutoffKind::Send);       // REVERB
+    assert(kControllers[2].kind == CutoffKind::Send);       // DELAY
+    assert(kControllers[3].kind == CutoffKind::Centered);   // RESO
+    assert(kControllers[4].kind == CutoffKind::Level);      // VOLUME
+    assert(kControllers[5].kind == CutoffKind::Centered);   // ATTACK
+    assert(kControllers[6].kind == CutoffKind::Centered);   // RELEASE
+    assert(kControllers[7].kind == CutoffKind::Centered);   // PAN
+    assert(kCenteredNeutral == 64);
+    for (int i = 0; i < kControllerCount; ++i) {
+        assert(kControllers[i].maxValue == 127);
+        assert(hasNeutral(kControllers[i].kind) == (kControllers[i].kind == CutoffKind::Centered));
+    }
+    assert(clampForController(7, 0) == 1 && clampForController(7, 127) == 127);
+}
+
 int main() {
+    testControllerMetadataKindsAndNeutral();
     testManualMapsValuesAndClamps();
     testSweepStartsFromHeldValueAndEndsOnTarget();
     testSweepIsMonotonicWithoutRepeats();

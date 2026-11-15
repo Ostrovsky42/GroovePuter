@@ -36,15 +36,31 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // RESO (CC71) is back at the user's request; it was not audible on the SEQTRAK patch
 // under test, so check it on the device.
 inline constexpr uint8_t kControllerCount = 8;
+// How a value is read on the wire. Centered controls are offsets around 64 in
+// Yamaha's data format (64 = no change); Send and Level are plain amounts.
+enum class CutoffKind : uint8_t { Centered, Send, Level };
+
 struct CutoffController {
     uint8_t number;
     const char* name;
     uint8_t minValue;  // Yamaha's usable range; PAN is 1..127
+    uint8_t maxValue;  // 127 for every controller on the synth tab
+    CutoffKind kind;
 };
 inline constexpr CutoffController kControllers[kControllerCount] = {
-    {74, "CUTOFF", 0},  {91, "REVERB", 0}, {94, "DELAY", 0},   {71, "RESO", 0},
-    {7, "VOLUME", 0},   {73, "ATTACK", 0}, {75, "RELEASE", 0}, {10, "PAN", 1},
+    {74, "CUTOFF", 0, 127, CutoffKind::Centered},
+    {91, "REVERB", 0, 127, CutoffKind::Send},
+    {94, "DELAY", 0, 127, CutoffKind::Send},
+    {71, "RESO", 0, 127, CutoffKind::Centered},
+    {7, "VOLUME", 0, 127, CutoffKind::Level},
+    {73, "ATTACK", 0, 127, CutoffKind::Centered},
+    {75, "RELEASE", 0, 127, CutoffKind::Centered},
+    {10, "PAN", 1, 127, CutoffKind::Centered},
 };
+
+// The neutral value of a Centered controller is 64; the other kinds have none.
+inline constexpr uint8_t kCenteredNeutral = 64;
+inline constexpr bool hasNeutral(CutoffKind kind) { return kind == CutoffKind::Centered; }
 
 // Sweep lengths the user can choose, in bars. Musically they divide a phrase evenly;
 // 16 and 32 bars are for long passes.
