@@ -157,9 +157,9 @@ inline volatile uint8_t gSensIndex = kSensDefault;
 // Controller assigned to each axis (X, Y, Z): 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
 // Defaults: X = CUTOFF, Y = RESO, Z = none.
 // Choices for an axis: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO, 5 ATTACK, 6 RELEASE,
-// 7 VOLUME, 8 PAN, 9 EXPRESSION, 10 EQ HI, 11 EQ LO. The numbers 0..4 are stored on the
-// SD file and must not change; new controllers only add numbers at the end.
-inline constexpr uint8_t kTiltChoiceMax = 11;
+// 7 VOLUME, 8 PAN. EXPRESSION and EQ are left out on purpose (rarely useful as a
+// tilt axis). The numbers are stored on the SD file and must not change.
+inline constexpr uint8_t kTiltChoiceMax = 8;
 inline volatile uint8_t gAxisChoice[3] = {1, 4, 0};
 // TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
 inline volatile bool gFlickEnabled = true;

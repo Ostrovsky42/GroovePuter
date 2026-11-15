@@ -283,9 +283,9 @@ void testSharedSettingsRoundTripAndBadValues() {
     CHECK(partial.sens == kSensDefault && partial.choice[0] == 1 && partial.choice[2] == 2);
     CHECK(partial.flick);
     CHECK(parseSettings("").choice[1] == 4);
-    // Choices 5..11 are new controllers; 12 is past the list and keeps the default.
-    const StoredSettings wide = parseSettings("x=11\ny=9\nz=12\n");
-    CHECK(wide.choice[0] == 11 && wide.choice[1] == 9 && wide.choice[2] == 0);
+    // Choices 5..8 are the new controllers; 9 (EXPRESSION) and above are not offered.
+    const StoredSettings wide = parseSettings("x=8\ny=9\nz=12\n");
+    CHECK(wide.choice[0] == 8 && wide.choice[1] == 4 && wide.choice[2] == 0);   // bad values keep the defaults
 }
 
 int main() {

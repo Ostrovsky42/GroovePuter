@@ -167,9 +167,6 @@ inline const char* tiltChoiceName(uint8_t choice) {
         case 6: return "RELEASE";
         case 7: return "VOLUME";
         case 8: return "PAN";
-        case 9: return "EXPR";
-        case 10: return "EQ HI";
-        case 11: return "EQ LO";
         default: return "NONE";
     }
 }
