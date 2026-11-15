@@ -155,15 +155,22 @@ int main() {
   assert(inputRow(base) == 0);
   assertDefaults(partner);  // entering INPUT changes nothing
 
-  // DOWN visits exactly the 11 rows 0..10 (headings are not rows) and wraps;
-  // UP wraps back to 10. (Before the LOOP SETUP move: 14 rows, HELPER 8..13.)
+  // Production INPUT is the compact 11-row MIDI/HELPER surface. Experimental
+  // TILT builds append seven rows, but disabled TILT has zero UI footprint.
   static_assert(PerformPage::kPartnerRowFirst == 5 && kLast == 10,
                 "MIDI IN 0..4, PARTNER 5..10");
   static_assert(PerformPage::kLoopRowCount == 9, "the LOOP tab has nine rows");
-  // TILT TARGET and TILT Y follow the HELPER group; TILT Y is the last INPUT row now.
-  static_assert(PerformPage::kInputRowCount == PerformPage::kTiltRowLast + 1 &&
-                PerformPage::kTiltRowFirst == kLast + 1, "TILT follows NEW RIFF IF");
-  constexpr uint8_t kLastInputRow = PerformPage::kTiltRowLast;
+#ifdef GROOVEPUTER_TILT
+  static_assert(PerformPage::kTiltRowFirst == kLast + 1,
+                "TILT follows NEW RIFF IF");
+  static_assert(PerformPage::kInputRowCount == 18,
+                "TILT build appends seven INPUT rows");
+#else
+  static_assert(PerformPage::kInputRowCount == 11,
+                "production INPUT ends after NEW RIFF IF");
+#endif
+  constexpr uint8_t kLastInputRow =
+      static_cast<uint8_t>(PerformPage::kInputRowCount - 1u);
   for (uint8_t expected = 1; expected <= kLastInputRow; ++expected) {
     send(base, nav(GROOVEPUTER_DOWN));
     assert(inputRow(base) == expected);
@@ -537,15 +544,17 @@ int main() {
     assert(toastHas("SAVE OR DISCARD A FIRST"));  // and no armed confirmation was left behind
   }
 
-  // View continuity: the last NEW RIFF IF row survives a page round trip; a stale
-  // row past the list (past TILT Y) falls back to the top.
+  // View continuity: the last HELPER row survives a page round trip; any row
+  // past the current build's INPUT list falls back to the top.
   goInput(base, kLast);
   UI::UiViewContinuityState saved = capture(base);
   PerformPage other(gfx, engine, keyboard);
   IPage& otherBase = other;
   otherBase.restoreViewContinuity(saved);
   assert(inputRow(otherBase) == kLast);
-  for (uint8_t stale = PerformPage::kTiltRowLast + 1; stale <= PerformPage::kTiltRowLast + 3; ++stale) {
+  for (uint8_t stale = PerformPage::kInputRowCount;
+       stale <= static_cast<uint8_t>(PerformPage::kInputRowCount + 2u);
+       ++stale) {
     saved.performRows[static_cast<int>(PerformanceToolContext::Input)] = stale;
     otherBase.restoreViewContinuity(saved);
     assert(inputRow(otherBase) == 0);
