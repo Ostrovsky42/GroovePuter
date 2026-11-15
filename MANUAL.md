@@ -251,6 +251,10 @@ The CONNECT operation may exist internally, but the current front-panel referenc
 
 These tabs own Synth TYPE, engine parameters and supported FX/sound editing. They are not separate workflow pages.
 
+### Controllers on SYNTH A / SYNTH B
+
+The MIDI page of each synth edits one controller at a time, chosen from a list: `CUTOFF`, `REVERB`, `DELAY`, `RESO`, `VOLUME`, `ATTACK`, `RELEASE`, `PAN` and `EXPR` (EXPRESSION, CC11). `EQ HI` and `EQ LO` (CC20 and CC21) appear and are sent only with the SEQTRAK device profile. `Ctrl+A` on the controller row sets the selected controller to its own neutral: 64 for the offset controls, 0 for the sends, 127 for EXPRESSION. A controller is sent only after you set it, except for the layers from TILT and CC LINK, which start from the neutral when nothing was set.
+
 ## 5. DRUMS
 
 `Tab` cycles the DRUMS sub-pages: GRID / SOUND / AUTO. SOUND (formerly "GLOBAL SETTINGS", now titled "DRUM SOUND"; SOUND means the timbre) is where the drum engine and drum effects are changed. (A SAMPLES sub-page exists only in the SDL emulator, not on the Cardputer.)
@@ -412,6 +416,31 @@ The last row of the LOOPER group. `Left/Right` picks synth A or B (default: GEN 
 With MIDI input enabled and routed to PERFORM, CC80 controls ARP and CC81 controls LATCH: values 64–127 mean ON and 0–63 mean OFF. These are absolute commands, so a repeated ON value stays ON. LATCH ON is ignored while ARP is OFF. Other CCs remain unbound unless another explicit mapping is configured.
 
 The PROJECT MIDI setup chooses the USB boot role (`COMPUTER`, `KEYBOARD`, or `OFF`), applied across the explicit reboot boundary. A connected keyboard adds physical keys and its supported velocity/controls; it is not required for the Cardputer performance workflow. KEY, CHORD, ARP and RHYTHM configuration is saved after a short quiet period and restored at startup. LOOPER and HELPER settings (and the recorded loop) are not saved between sessions; they last for the session only.
+
+### MACRO
+
+PERFORM > MACRO has four temporary macros and two rows: `CC LINK` and `RESET ALL`.
+`TENSION`, `ENERGY`, `SPACE` and `MUTATION` each run from -100% to +100%; arrows move by 5%, `Enter` resets the one under the cursor. They change the notes that play (velocity, gate length, chance, pitch within the scale) and are not saved in the project or in MIDI export.
+
+- `ENERGY` raises velocity (up to 80% of the room left below 127); negative lowers it and ghost-note chance.
+- `SPACE` shortens gates at positive values and lengthens them (legato) at negative values; beats 2 to 4 may drop out; the bar start is kept.
+- `TENSION` accents notes that lead into a close next note; negative removes the accent.
+- `MUTATION` steps some notes to a neighbour in the scale; negative steps the other way.
+
+`CC LINK` (`OFF` / `A` / `B` / `ALL`, arrows or `Enter`) sends a bounded part of the macros to the synths as CC, off by default: `TENSION` moves CUTOFF (and RESO when positive), `SPACE` moves REVERB and DELAY (SYNTH B in full, SYNTH A half on ALL), negative `ENERGY` lowers EXPRESSION toward 84. `RESET ALL` resets the four macros only, not the link.
+
+### TILT (experimental, PERFORM > INPUT)
+
+Built only with the `GROOVEPUTER_TILT` experiment. `'` (apostrophe) on PERFORM switches tilt on and off on any page; the first switch-on takes the current pose as zero. A quick flick (about 26 degrees and back within 0.3 s) cycles the target `A` / `B` / `ALL`; `TILT FLICK` turns that off so the target changes only from its row.
+
+The `--- TILT ---` group, below the HELPER group:
+- `TILT TARGET`: which synth the offsets reach (A, B or ALL).
+- `TILT SENS`: degrees of tilt for full scale (60 / 45 / 30 / 20 / 12; default 30).
+- `TILT X`, `TILT Y`, `TILT Z`: the controller each axis drives (none, CUTOFF, REVERB, DELAY, ATTACK, RELEASE, VOLUME, PAN; default X = CUTOFF, Y and Z = none). Z is the yaw of the device from the gyroscope.
+- `TILT FLICK`: flick changes the target (ON) or not (OFF).
+- `TILT ZERO`: makes the current pose the zero of X, Y and Z.
+
+Target, zero and TILT on/off are per session. `SENS`, the axis choices and `FLICK` are kept in `/grooveputer_tilt.txt` on the SD card and shared by all projects.
 
 ### Words on the screen
 
