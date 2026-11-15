@@ -213,7 +213,7 @@ int main() {
   assert(gfx.has("MACRO"));
   assert(gfx.has("TEMP / PATTERN, PHRASE, SONG"));
   assert(gfx.has("TENSION"));
-  assert(gfx.has("RESET ALL"));
+  assert(gfx.has("CC LINK"));   // row 4 is on the first screen; RESET ALL (row 5) scrolls in
   gfx.bodyFits();
   // Rows are ENERGY, SPACE, MUTATION, TENSION, RESET ALL; the cursor starts on ENERGY.
   send(scan(GROOVEPUTER_RIGHT));  // ENERGY +5%

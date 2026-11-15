@@ -12,4 +12,11 @@ mkdir -p "${BUILD}"
   -o "${BUILD}/test_performance_macro_engine"
 
 "${BUILD}/test_performance_macro_engine"
+
+"${CXX}" -std=c++17 -Wall -Wextra -Werror -Wno-c++20-extensions \
+  -I"${ROOT}" \
+  "${ROOT}/tests/test_performance_macro_cc.cpp" \
+  -o "${BUILD}/test_performance_macro_cc"
+
+"${BUILD}/test_performance_macro_cc"
 echo "Performance macro engine tests: PASS"

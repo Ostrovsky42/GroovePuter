@@ -24,16 +24,21 @@ struct LayerStep {
     bool dropPending{false};     // no base to return to: forget a pending return
 };
 
+// fallbackBase (>= 0) is the value a controller rests at when nothing was set, such
+// as EXPRESSION at 127; -1 keeps the rule above: Centered rests at 64, the rest have none.
 inline LayerStep composeLayer(CutoffKind kind, bool baseKnown, uint8_t base, uint8_t minValue,
-                              int sum, bool pending) {
+                              int sum, bool pending, int fallbackBase = -1) {
     LayerStep step{};
     if (sum == 0 && !pending) return step;
     if (!baseKnown) {
-        if (kind != CutoffKind::Centered) {
+        if (fallbackBase >= 0) {
+            base = static_cast<uint8_t>(fallbackBase);
+        } else if (kind == CutoffKind::Centered) {
+            base = kCenteredNeutral;
+        } else {
             step.dropPending = sum == 0 && pending;
             return step;
         }
-        base = kCenteredNeutral;
     }
     int value = static_cast<int>(base) + sum;
     if (value < static_cast<int>(minValue)) value = static_cast<int>(minValue);

@@ -22,6 +22,7 @@
 #include "src/state/generation_shape_state.h"
 #include "synth_sequencer_page.h"
 #include "../undo_ux.h"
+#include "src/performance/performance_macro_cc.h"
 #ifdef GROOVEPUTER_TILT
 #include "src/input/tilt_axis.h"
 #endif
@@ -284,7 +285,7 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Input: return kInputRowCount;
         // The looper: nine rows, six visible, scrolling (TO MELODY is the last).
         case PerformanceToolContext::Loop: return kLoopRowCount;
-        case PerformanceToolContext::Macro: return 5;
+        case PerformanceToolContext::Macro: return 6;   // four macros, CC LINK, RESET ALL
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -511,7 +512,18 @@ void PerformPage::adjustSelectedValue(int direction) {
             }
             return;
         case PerformanceToolContext::Macro: {
-            if (row >= 4) return;
+            if (row == 4) {
+                // CC LINK: OFF -> A -> B -> ALL (arrows step through the same cycle).
+                using namespace GroovePuterPerformance::MacroCc;
+                const Link current = static_cast<Link>(gLinkMode);
+                gLinkMode = static_cast<uint8_t>(direction > 0 ? nextLink(current)
+                                                              : nextLink(nextLink(nextLink(current))));
+                char text[32];
+                std::snprintf(text, sizeof(text), "CC LINK: %s", linkName(static_cast<Link>(gLinkMode)));
+                UI::showToast(text, 850);
+                return;
+            }
+            if (row >= 5) return;
             auto state = miniAcid_.performanceMacroState();
             const auto control = kMacroControls[row];
             int next = static_cast<int>(macroValue(state, control)) +
@@ -624,6 +636,14 @@ void PerformPage::toggleSelectedValue() {
             }
             return;
         case PerformanceToolContext::Macro: {
+            if (row == 4) {
+                using namespace GroovePuterPerformance::MacroCc;
+                gLinkMode = static_cast<uint8_t>(nextLink(static_cast<Link>(gLinkMode)));
+                char text[32];
+                std::snprintf(text, sizeof(text), "CC LINK: %s", linkName(static_cast<Link>(gLinkMode)));
+                UI::showToast(text, 850);
+                return;
+            }
             auto state = miniAcid_.performanceMacroState();
             if (row < 4) {
                 state.set(kMacroControls[row], 0);
@@ -631,7 +651,7 @@ void PerformPage::toggleSelectedValue() {
                 static constexpr const char* names[] = {
                     "TENSION", "ENERGY", "SPACE", "MUTATION"};
                 std::snprintf(toast, sizeof(toast), "%s: 0%%", names[row]);
-            } else if (row == 4) {
+            } else if (row == 5) {
                 miniAcid_.setPerformanceMacroState(
                     GroovePuterPerformance::Macros::State{});
                 std::snprintf(toast, sizeof(toast), "MACROS: NEUTRAL");
@@ -1064,7 +1084,8 @@ const char* PerformPage::selectedRowHint() const {
 
         case PerformanceToolContext::Macro:
             if (row < 4) return "ARROWS +/-5%  ENTER RESET VALUE";
-            if (row == 4) return "ENTER: RESET ALL FOUR MACROS";
+            if (row == 4) return "CC LINK: OFF/A/B/ALL - MACROS ALSO SEND CC";
+            if (row == 5) return "ENTER: RESET ALL FOUR MACROS";
             return "";
 
         case PerformanceToolContext::Count:
@@ -1477,7 +1498,10 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                     macroValue(state, kMacroControls[row]));
                 drawRow(row, labels[row], value, true);
             }
-            drawRow(4, "RESET ALL", "ENTER", true);
+            drawRow(4, "CC LINK", GroovePuterPerformance::MacroCc::linkName(
+                        static_cast<GroovePuterPerformance::MacroCc::Link>(
+                            GroovePuterPerformance::MacroCc::gLinkMode)), true);
+            drawRow(5, "RESET ALL", "ENTER", true);
             break;
         }
 

@@ -1,6 +1,7 @@
 #include "src/debug_log.h"
 #include "miniacid_engine.h"
 #include "sound_quality_presets.h"
+#include "src/performance/performance_macro_cc.h"
 #include "p0_preservation_evaluator.h"
 #include "src/dsp/musical_development.h"
 #include "src/phrase/runtime_phrase_edit.h"
@@ -915,9 +916,10 @@ void MiniAcid::setBpm(float bpm) {
 bool MiniAcid::setPerformanceMacroState(
     const GroovePuterPerformance::Macros::State& state) {
   if (!state.valid()) return false;
-  performanceMacroStatePacked_.store(
-      GroovePuterPerformance::Macros::packState(state),
-      std::memory_order_release);
+  const uint32_t packed = GroovePuterPerformance::Macros::packState(state);
+  performanceMacroStatePacked_.store(packed, std::memory_order_release);
+  // The MIDI side reads the same state for CC LINK.
+  GroovePuterPerformance::MacroCc::gPublishedMacroState.store(packed, std::memory_order_release);
   return true;
 }
 

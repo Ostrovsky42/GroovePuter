@@ -55,5 +55,10 @@ int main() {
         for (bool v : seen) assert(v);
     }
     assert(rotatedIndex(0, 0, 3) == 0);
+    // A fallback base: EXPRESSION rests at 127 when nothing was set.
+    s = composeLayer(CutoffKind::Level, false, 0, 0, -43, false, 127);
+    assert(s.send && s.value == 84);
+    s = composeLayer(CutoffKind::Level, false, 0, 0, -43, true, 127);
+    assert(s.send && s.value == 84);
     return 0;
 }
