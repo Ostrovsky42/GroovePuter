@@ -1296,3 +1296,24 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
 
   return handleEventLegacy(ui_event);
 }
+
+void PatternEditPage::setSongPositionBank(int bankIndex) {
+  const int row = mini_acid_.currentSongPosition();
+  if (row < 0) return;
+  const SongTrack track = voice_index_ == 0 ? SongTrack::SynthA : SongTrack::SynthB;
+  const bool changed = commitSongMutation([&](Song& song) {
+    const int reference = GroovePuterUndo::SongEdit::patternAt(song, row, track);
+    if (reference < 0) return;
+    const int page = songPatternPage(reference);
+    const int slot = songPatternIndexInBank(reference);
+    GroovePuterUndo::SongEdit::setPattern(
+        song, row, track, songPatternFromPageBankIndex(page, bankIndex, slot));
+  });
+  if (!changed) {
+    UI::showToast("NO PATTERN AT THIS POSITION", 900);
+    return;
+  }
+  bank_index_ = bankIndex;
+  bank_cursor_ = bankIndex;
+  UI::showToast(bankIndex == 0 ? "SONG POSITION: BANK A" : "SONG POSITION: BANK B", 900);
+}

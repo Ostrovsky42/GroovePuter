@@ -9,6 +9,18 @@
 
 namespace GroovePuterMidi {
 
+inline constexpr uint32_t kCutoffSendIntervalMs = 20;
+
+// First send is immediately eligible, including after long uptime. Once a
+// deadline is active, signed subtraction preserves correctness across millis()
+// wrap as long as the bounded interval remains below INT32_MAX.
+inline bool cutoffSendDeadlineReached(bool hasAttempted,
+                                      uint32_t nowMs,
+                                      uint32_t nextAttemptMs) {
+    return !hasAttempted ||
+           static_cast<int32_t>(nowMs - nextAttemptMs) >= 0;
+}
+
 // Zero-based MIDI channels of the two synth performance routes. They must match
 // the UsbMidiRouteConfig fields used by the dispatcher (performanceSynthAChannel,
 // performanceSynthBChannel); a host test checks that they agree.
@@ -20,17 +32,46 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // and receiver mode, owned by the Pattern slide path), CC27..29 (the arpeggiator
 // makes its own notes), CC116..119 (DX only, channel 10) and CC102..115 (assigned
 // effect parameters on the master channels).
-// RESO (CC71) is not offered: it was not audible on the SEQTRAK patch under test.
-inline constexpr uint8_t kControllerCount = 7;
+// Order is the PERFORM controller list: the tilt axes use CUTOFF (0) and RESO (3).
+// RESO (CC71) is back at the user's request; it was not audible on the SEQTRAK patch
+// under test, so check it on the device.
+inline constexpr uint8_t kControllerCount = 11;
+// The request and published words carry a 4-bit controller index: up to 16 entries.
+inline constexpr uint8_t kMaxControllerIndex = 15;
+// How a value is read on the wire. Centered controls are offsets around 64 in
+// Yamaha's data format (64 = no change); Send and Level are plain amounts.
+enum class CutoffKind : uint8_t { Centered, Send, Level };
+
 struct CutoffController {
     uint8_t number;
     const char* name;
     uint8_t minValue;  // Yamaha's usable range; PAN is 1..127
+    uint8_t maxValue;  // 127 for every controller on the synth tab
+    CutoffKind kind;
+    uint8_t neutral;   // what Ctrl+A sets: 64 for offsets, 0 for sends, 127 for EXPRESSION
+    bool vendor;       // Yamaha-only control: sent only with the SEQTRAK profile
 };
 inline constexpr CutoffController kControllers[kControllerCount] = {
-    {74, "CUTOFF", 0},  {73, "ATTACK", 0}, {75, "RELEASE", 0}, {91, "REVERB", 0},
-    {94, "DELAY", 0},   {7, "VOLUME", 0},  {10, "PAN", 1},
+    {74, "CUTOFF", 0, 127, CutoffKind::Centered, 64, false},
+    {91, "REVERB", 0, 127, CutoffKind::Send, 0, false},
+    {94, "DELAY", 0, 127, CutoffKind::Send, 0, false},
+    {71, "RESO", 0, 127, CutoffKind::Centered, 64, false},
+    {7, "VOLUME", 0, 127, CutoffKind::Level, 64, false},
+    {73, "ATTACK", 0, 127, CutoffKind::Centered, 64, false},
+    {75, "RELEASE", 0, 127, CutoffKind::Centered, 64, false},
+    {10, "PAN", 1, 127, CutoffKind::Centered, 64, false},
+    // EXPRESSION (CC11): a performance level, received on every SEQTRAK track; Yamaha's
+    // Reset All Controllers returns it to 127, so that is its neutral.
+    {11, "EXPR", 0, 127, CutoffKind::Level, 127, false},
+    // EQ HIGH / LOW (CC20 / CC21): Yamaha's documented range is 40..88 around 64; they
+    // are vendor controls, sent only with the SEQTRAK profile.
+    {20, "EQ HI", 40, 88, CutoffKind::Centered, 64, true},
+    {21, "EQ LO", 40, 88, CutoffKind::Centered, 64, true},
 };
+
+// The neutral value of a Centered controller is 64; the other kinds have none.
+inline constexpr uint8_t kCenteredNeutral = 64;
+inline constexpr bool hasNeutral(CutoffKind kind) { return kind == CutoffKind::Centered; }
 
 // Sweep lengths the user can choose, in bars. Musically they divide a phrase evenly;
 // 16 and 32 bars are for long passes.
@@ -44,8 +85,9 @@ inline constexpr uint8_t kDefaultDurationIndex = 2;   // four bars
 inline uint8_t clampForController(int index, uint8_t value) {
     if (index < 0) return value;
     const uint8_t minimum = kControllers[index].minValue;
+    const uint8_t maximum = kControllers[index].maxValue;
     if (value < minimum) return minimum;
-    return value > 127 ? 127 : value;
+    return value > maximum ? maximum : value;
 }
 
 // Index of a controller number in kControllers, or -1 when it is not allowed.
@@ -261,6 +303,21 @@ public:
     uint8_t owner() const { return owner_; }
     bool sweeping() const { return automation_.sweepActive(); }
 
+    // A default for a controller that has no value yet (TILT gives REVERB and DELAY 0,
+    // VOLUME 100 while it is on). It keeps a value that is already set, and it does not
+    // select, claim or move a running sweep.
+    void setDefault(uint8_t index, uint8_t value) {
+        if (index >= kControllerCount) return;
+        if (index == owner_) {
+            if (!automation_.known()) automation_.restore(clampForController(index, value), true);
+            return;
+        }
+        if (!known_[index]) {
+            held_[index] = clampForController(index, value);
+            known_[index] = true;
+        }
+    }
+
     // Manual edit of the selected controller. A sweep on another controller keeps going.
     void manual(uint8_t value) {
         const uint8_t v = clampForController(selected_, value);
@@ -307,6 +364,15 @@ public:
         return n;
     }
 
+    // The level of any controller the user has set (known), whether or not it is the
+    // owner or the selected one. Read only. Used to lay an offset over a controller
+    // the voice is not currently serving (tilt); false for an unknown controller.
+    bool levelFor(uint8_t index, Level& out) const {
+        if (index >= kControllerCount || !heldKnown(index)) return false;
+        out = {index, clampForController(index, heldValue(index))};
+        return true;
+    }
+
 private:
     uint8_t heldValue(uint8_t index) const {
         return index == owner_ ? automation_.value() : held_[index];
@@ -334,8 +400,8 @@ private:
 };
 
 // UI-to-dispatcher request word. Only the UI writes requests; only the dispatcher
-// reads them. Layout: bits 0..6 value, bits 7..9 op, bits 10..12 controller index,
-// bits 13..31 sequence (non-zero, so repeated requests are distinct).
+// reads them. Layout: bits 0..6 value, bits 7..9 op, bits 10..13 controller index
+// (up to 16 controllers), bits 14..31 sequence (non-zero, so repeated requests are distinct).
 struct CutoffRequest {
     enum Op : uint8_t {
         kNone = 0,
@@ -348,14 +414,14 @@ struct CutoffRequest {
     };
 
     static uint32_t encode(Op op, uint8_t value, uint32_t sequence, uint8_t controller = 0) {
-        const uint32_t seq = (sequence & 0x7FFFFu) == 0u ? 1u : (sequence & 0x7FFFFu);
-        return (seq << 13u) | ((static_cast<uint32_t>(controller) & 0x7u) << 10u) |
+        const uint32_t seq = (sequence & 0x3FFFFu) == 0u ? 1u : (sequence & 0x3FFFFu);
+        return (seq << 14u) | ((static_cast<uint32_t>(controller) & 0xFu) << 10u) |
                ((static_cast<uint32_t>(op) & 0x7u) << 7u) | (value & 0x7Fu);
     }
     static Op op(uint32_t word) { return static_cast<Op>((word >> 7u) & 0x7u); }
     static uint8_t value(uint32_t word) { return static_cast<uint8_t>(word & 0x7Fu); }
-    static uint8_t controller(uint32_t word) { return static_cast<uint8_t>((word >> 10u) & 0x7u); }
-    static uint32_t sequence(uint32_t word) { return word >> 13u; }
+    static uint8_t controller(uint32_t word) { return static_cast<uint8_t>((word >> 10u) & 0xFu); }
+    static uint32_t sequence(uint32_t word) { return word >> 14u; }
 };
 
 // Shared, portable channel between the UI and the MIDI dispatcher for one synth.
@@ -373,8 +439,8 @@ public:
     uint32_t loadRequest() const { return request_.loadAcquire(); }
 
     // Layout: bits 0..6 value, bit 7 sweeping, bits 8..13 bars elapsed (0..32),
-    // bit 14 known, bits 15..17 selected controller index, bit 18 RETURN shape,
-    // bits 19..21 duration index, bits 22..24 sweep owner index. value and known
+    // bit 14 known, bits 15..18 selected controller index (up to 16), bit 19 RETURN
+    // shape, bits 20..22 duration index, bits 23..26 sweep owner index. value and known
     // belong to the selected controller; sweeping and bars elapsed belong to the
     // owner, which may be another controller.
     void publish(uint8_t value, bool sweeping, uint8_t barsElapsed, bool known,
@@ -385,10 +451,10 @@ public:
                                 (sweeping ? 0x80u : 0u) |
                                 (static_cast<uint32_t>(barsElapsed & 0x3Fu) << 8u) |
                                 (known ? 0x4000u : 0u) |
-                                (static_cast<uint32_t>(controller & 0x7u) << 15u) |
-                                (returning ? 0x40000u : 0u) |
-                                (static_cast<uint32_t>(durationIndex & 0x7u) << 19u) |
-                                (static_cast<uint32_t>(owner & 0x7u) << 22u));
+                                (static_cast<uint32_t>(controller & 0xFu) << 15u) |
+                                (returning ? 0x80000u : 0u) |
+                                (static_cast<uint32_t>(durationIndex & 0x7u) << 20u) |
+                                (static_cast<uint32_t>(owner & 0xFu) << 23u));
     }
 
     // Any task.
@@ -396,10 +462,10 @@ public:
     bool sweeping() const { return (published_.loadAcquire() & 0x80u) != 0u; }
     uint8_t barsElapsed() const { return static_cast<uint8_t>((published_.loadAcquire() >> 8u) & 0x3Fu); }
     bool known() const { return (published_.loadAcquire() & 0x4000u) != 0u; }
-    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 15u) & 0x7u); }
-    bool returning() const { return (published_.loadAcquire() & 0x40000u) != 0u; }
-    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 19u) & 0x7u); }
-    uint8_t owner() const { return static_cast<uint8_t>((published_.loadAcquire() >> 22u) & 0x7u); }
+    uint8_t controller() const { return static_cast<uint8_t>((published_.loadAcquire() >> 15u) & 0xFu); }
+    bool returning() const { return (published_.loadAcquire() & 0x80000u) != 0u; }
+    uint8_t durationIndex() const { return static_cast<uint8_t>((published_.loadAcquire() >> 20u) & 0x7u); }
+    uint8_t owner() const { return static_cast<uint8_t>((published_.loadAcquire() >> 23u) & 0xFu); }
 
 private:
     MidiRealtimeWord request_;

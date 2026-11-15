@@ -66,6 +66,7 @@ void UsbMidiOutput::configureLanes() {
     seqtrakReceiverModeControl_ = !patternStartupRoutesBound_ ||
         startup.receiverModeControl ==
             GroovePuterMidi::MidiReceiverModeControl::SeqtrakCc26;
+    vendorControls_ = patternStartupRoutesBound_ && startup.vendorSpecificControls;
 
     for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
         patternDrumNotes_[voice] = kSeqtrakDrumNote;
@@ -416,18 +417,34 @@ bool UsbMidiOutput::begin() {
     pendingChannelPanics_ = 0;
     clearActiveState();
     begun_ = transport_.begin();
+    transportControllerStateEpoch_ = transport_.controllerStateEpoch();
     mounted_ = false;
     return begun_;
 }
 
 void UsbMidiOutput::pollConnection() {
     const bool nextMounted = begun_ && transport_.mounted();
+    const uint32_t nextControllerEpoch = begun_
+        ? transport_.controllerStateEpoch()
+        : transportControllerStateEpoch_;
+    if (nextControllerEpoch != transportControllerStateEpoch_) {
+        transportControllerStateEpoch_ = nextControllerEpoch;
+        // A tee can lose and recover its primary receiver while a secondary
+        // endpoint keeps the aggregate mounted state true. Invalidate only
+        // controller delivery knowledge here; the tee owns endpoint note
+        // cleanup debt and UsbMidiOutput retains unrelated note ownership.
+        clearCutoffKnowledge();
+    }
     if (nextMounted == mounted_) {
         if (mounted_ && answerLane_.pendingRelease) releaseAnswerLane();
         return;
     }
 
     if (mounted_ && !nextMounted) {
+        // The endpoint may keep sounding notes after our local ownership is
+        // discarded. Remember every sounding channel so reconnect can send a
+        // bounded panic cleanup before any still-pending SMF cleanup is lost.
+        pendingChannelPanics_ |= owners_.channelMask();
         abandonAllSmfNotes();
     }
     clearActiveState();
@@ -1369,9 +1386,12 @@ void UsbMidiOutput::clearActiveState() {
     owners_.clear();
     pendingPitchBendMask_ = 0;
     for (uint16_t& value : pendingPitchBends_) value = 8192u;
-    // The receiver's CC74 is unknown after a (re)connect; the next value is sent.
-    // The receiver's values are unknown after a (re)connect: every controller is
-    // re-sent by the level check once its value is known.
+    clearCutoffKnowledge();
+}
+
+void UsbMidiOutput::clearCutoffKnowledge() {
+    // Receiver controller levels are unknown after endpoint recovery. The
+    // next level check resends each value once it is known.
     for (auto& slotSent : cutoffSent_) {
         for (bool& sent : slotSent) sent = false;
     }
@@ -1631,6 +1651,8 @@ void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
     // targets. Anything else never reaches the wire through this path.
     const int index = GroovePuterMidi::controllerIndex(event.note);
     if (index < 0) return;
+    // Vendor-only controllers (EQ) reach the wire only with the SEQTRAK profile.
+    if (GroovePuterMidi::kControllers[index].vendor && !vendorControls_) return;
     int slot = -1;
     if (event.target == MusicalEventTarget::SynthA) slot = 0;
     if (event.target == MusicalEventTarget::SynthB) slot = 1;

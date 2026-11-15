@@ -1,6 +1,6 @@
-# GroovePuter 0.9.22 (unreleased) Key Map — Cardputer ADV
+# GroovePuter Key Map — Cardputer ADV
 
-This is the canonical external key reference for the 0.9.22 (unreleased) development source; the last tagged release is v0.9.20. v0.9.16 is the earlier hardware-accepted foundation. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
+This is the canonical key reference for the internal 0.9.33–0.9.35 development line. The latest published package is v0.9.19; this candidate is not hardware-accepted. `Alt+H` opens page-aware on-device help; this file is the full expert reference.
 
 ## First Five Minutes
 
@@ -19,7 +19,7 @@ These are beginner rules, not global overrides. In particular, `D` means DEVELOP
 
 `Alt+V` opens GENRE directly.
 
-For the complete first-session walkthrough see [`../../docs/user/QUICKSTART.md`](../../docs/user/QUICKSTART.md).
+For the complete first-session walkthrough see [`../../../docs/user/QUICKSTART.md`](../../../docs/user/QUICKSTART.md).
 
 ## Workflows
 
@@ -161,14 +161,21 @@ notes (`LOOP: NO ROOM TO REPEAT`).
 
 ### PERFORMANCE TOOLS
 
-Contextual layer: a fixed tab bar `[KEY] CHORD ARP RHYTHM INPUT LOOP` (six tabs), one parameter per
-row, and a hint line at the bottom that says what `Left/Right` and `Enter` do
-for the selected row. Each context remembers its own selected row. Output
-target and MONO/POLY receiver mode are rows in KEY.
+Contextual layer: a fixed tab bar `KEY CHORD ARP RHYTHM INPUT LOOP MACRO` (seven
+tabs), one parameter per row, and a hint line at the bottom that says what
+`Left/Right` and `Enter` do for the selected row. Each context remembers its
+own selected row where continuity storage allows it. Output target and
+MONO/POLY receiver mode are rows in KEY.
+
+The MACRO tab controls temporary TENSION, ENERGY, SPACE, and MUTATION values
+for sequenced Pattern, Phrase, and Song material. `Left/Right` changes a value
+by 5%; `Enter` resets that value to zero. The final `RESET ALL` row restores
+all four controls to neutral. These values are session-only and do not change
+the saved Scene or Phrase.
 
 | Key | Action |
 |---|---|
-| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM -> INPUT -> LOOP) |
+| `Tab` / `Backspace` | Next / previous context (KEY -> CHORD -> ARP -> RHYTHM -> INPUT -> LOOP -> MACRO) |
 | `Up` / `Down` | Select parameter row |
 | `Left` / `Right` | Decrease / increase selected value |
 | `Enter` | Toggle or secondary action for the row; `CHORD MODE` opens a list |
@@ -656,6 +663,18 @@ channels and therefore does not accept explicit SEQTRAK destination overrides.
 | `Esc` / `Backspace` | Close dialog/go up directory |
 | `Enter` on Save | Save under the current name (unnamed project: asks for a name) |
 | `A` on Save | Save As: type a new name |
+| `Enter` on Export MIDI | Export the selected committed Song to the SD card; playback must be stopped |
+
+In PROJECT > MIDI, `Device Profile` selects the external target (SEQTRAK, GM
+or GENERIC). `External MIDI` selects `INTERNAL` or `INT + MIDI`; the built-in
+sound remains active in both modes, and MIDI input remains independently
+configured. The selection is marked with `*` until `Enter` saves it and takes
+effect after reboot. Changing the profile does not turn external output back on.
+
+PROJECT > SCENES includes **Export MIDI**. Select it and press `Enter` while
+playback is stopped. Temporary Performance macros are omitted; conditional steps
+are flattened as always-on notes and marked in the file. Voice audio and drum-only
+effects/automation are not rendered to MIDI.
 
 MIDI import (PROJECT > Import MIDI, pick a file): the IMPORT track list shows one row
 per channel (#, NAME, CH, N notes, RANGE, per-bar strip, TARGET).

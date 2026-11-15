@@ -7,8 +7,10 @@
 #include "src/platform/cardputer_midi_settings_session.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
 #include "src/input/performance_keyboard.h"
+#include "src/ui/midi_device_profile_ui.h"
 #include "src/ui/pages/project_page.h"
 #include "src/ui/pages/perform_page.h"
+#include "src/ui/pages/synth_midi_page.h"
 #include "src/ui/ui_common.h"
 
 SerialMock Serial;
@@ -61,6 +63,7 @@ UIEvent key(char value) {
 UIEvent scan(KeyScanCode value) {
   UIEvent e{}; e.event_type = GROOVEPUTER_KEY_DOWN; e.scancode = value; return e;
 }
+namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
 
 class Events : public IMusicalEventSink {
  public:
@@ -87,12 +90,79 @@ int main() {
   assert(!gfx.has("ACTIVE"));
   gfx.bodyFits();
 
+  // Device profile and output destination are next-boot route settings. Freeze
+  // their UI edits while playback is active so no route change can be mistaken
+  // for a live rebind.
+  const auto savedProfile =
+      GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
+  const bool savedOutput =
+      GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+  engine.start();
+  ProjectPage lockedMidiProject(gfx, engine, AudioGuard{});
+  lockedMidiProject.onEnter(0);
+  auto lockedMidiSend = [&](UIEvent e) { lockedMidiProject.handleEvent(e); };
+  for (int i = 0; i < 3; ++i) lockedMidiSend(key('\t'));
+  lockedMidiSend(scan(GROOVEPUTER_DOWN));  // USB ROLE -> DEVICE PROFILE
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiDeviceProfile() == savedProfile);
+  gfx.texts.clear(); lockedMidiProject.draw(gfx);
+  assert(gfx.has("STOP TO CHANGE ROUTE"));
+  gfx.bodyFits();
+  lockedMidiSend(scan(GROOVEPUTER_DOWN));  // DEVICE PROFILE -> OUTPUT
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiOutputEnabled() == savedOutput);
+
+  engine.stop();
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiOutputEnabled() != savedOutput);
+  assert(GroovePuterPlatform::selectCardputerMidiOutputEnabledForNextBoot(savedOutput));
+  lockedMidiSend(scan(GROOVEPUTER_UP));  // OUTPUT -> DEVICE PROFILE
+  lockedMidiSend(scan(GROOVEPUTER_RIGHT));
+  lockedMidiSend(key('\n'));
+  assert(GroovePuterPlatform::pendingCardputerMidiDeviceProfile() ==
+         ProfileUi::stepSelectableProfile(savedProfile, 1));
+  assert(GroovePuterPlatform::selectCardputerMidiDeviceProfileForNextBoot(savedProfile));
+
   project.onEnter(0);
   projectSend(key('\t')); projectSend(key('\t'));
   engine.sceneManager().currentScene().led.brightness = 255;
   gfx.texts.clear(); project.draw(gfx);
   assert(gfx.has("100%"));
   gfx.bodyFits();
+
+  // Route labels must follow the applied profile instead of always describing
+  // the SEQTRAK default channels.
+  SynthMidiPage synthA(gfx, engine, AudioGuard{}, 0);
+  SynthMidiPage synthB(gfx, engine, AudioGuard{}, 1);
+  const auto checkMidiRouteLabels = [&] (
+      GroovePuterMidi::MidiDeviceProfile profile,
+      const char* synthALabel, const char* synthBLabel) {
+    GroovePuterMidi::midiDeviceProfileRuntime().initialize(
+        GroovePuterMidi::makeDefaultMidiOutputSettings(profile));
+    gfx.texts.clear();
+    synthA.draw(gfx);
+    assert(gfx.has(synthALabel));
+    gfx.bodyFits();
+    gfx.texts.clear();
+    synthB.draw(gfx);
+    assert(gfx.has(synthBLabel));
+    gfx.bodyFits();
+  };
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::SeqtrakNative,
+                       "SEQTRAK CH08", "SEQTRAK CH09");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::GeneralMidi,
+                       "GM CH01", "GM CH02");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::GenericMidi,
+                       "GENERIC CH01", "GENERIC CH02");
+  checkMidiRouteLabels(GroovePuterMidi::MidiDeviceProfile::Custom,
+                       "CUSTOM CH08", "CUSTOM CH09");
+  GroovePuterMidi::midiDeviceProfileRuntime().initialize(
+      GroovePuterMidi::makeDefaultMidiOutputSettings(
+          GroovePuterMidi::MidiDeviceProfile::SeqtrakNative));
+  gfx.texts.clear();
 
   MusicalEventRouter router;
   Events events;
@@ -116,7 +186,7 @@ int main() {
   auto send = [&](UIEvent e) { perform.handleEvent(e); };
   for (int i = 0; i < 5; ++i) send(key('\t'));
   gfx.texts.clear(); perform.drawContent(gfx);
-  assert(gfx.has("[INPUT]"));
+  assert(gfx.has("INPUT"));
   gfx.bodyFits();
   // PERFORM edits the same persistent input configuration as PROJECT.
   send(scan(GROOVEPUTER_RIGHT));
@@ -134,9 +204,45 @@ int main() {
   assert(keyboard.performanceRole() == GroovePuterPerformance::PerformanceRole::Bass);
   // INPUT has no TARGET row (variant A): the target lives in KEY (row 4).
   send(key('\t'));  // INPUT -> LOOP (0.9.23 T14)
-  send(key('\t'));  // LOOP -> KEY
+  send(key('\t'));  // LOOP -> MACRO
+  send(key('\t'));  // MACRO -> KEY
   gfx.texts.clear(); perform.drawContent(gfx);
-  assert(gfx.has("[KEY]"));
+  assert(gfx.has("KEY"));
+  send(key('\b'));  // KEY -> MACRO
+  gfx.texts.clear(); perform.drawContent(gfx);
+  assert(gfx.has("MACRO"));
+  assert(gfx.has("TEMP / PATTERN, PHRASE, SONG"));
+  assert(gfx.has("TENSION"));
+  assert(gfx.has("CC LINK"));   // row 4 is on the first screen; RESET ALL (row 5) scrolls in
+  gfx.bodyFits();
+  // Rows are ENERGY, SPACE, MUTATION, TENSION, RESET ALL; the cursor starts on ENERGY.
+  send(scan(GROOVEPUTER_RIGHT));  // ENERGY +5%
+  assert(engine.performanceMacroState().energy == 5);
+  send(scan(GROOVEPUTER_LEFT));   // back to 0
+  send(scan(GROOVEPUTER_LEFT));   // negative values are allowed: ENERGY -5%
+  assert(engine.performanceMacroState().energy == -5);
+  send(scan(GROOVEPUTER_RIGHT));  // back to 0
+  send(scan(GROOVEPUTER_RIGHT));  // +5% again
+  assert(engine.performanceMacroState().energy == 5);
+  send(key('\n'));               // reset only ENERGY
+  assert(engine.performanceMacroState().energy == 0);
+  for (int i = 0; i < 3; ++i) send(scan(GROOVEPUTER_DOWN));  // ENERGY -> TENSION
+  send(scan(GROOVEPUTER_RIGHT));  // TENSION +5%
+  assert(engine.performanceMacroState().tension == 5);
+  send(scan(GROOVEPUTER_UP));     // MUTATION: reset only that row (stays 0)
+  send(key('\n'));
+  assert(engine.performanceMacroState().mutation == 0);
+  send(scan(GROOVEPUTER_DOWN));   // TENSION
+  send(key('\n'));               // reset only TENSION
+  assert(engine.performanceMacroState().tension == 0);
+  for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));
+  send(key('\n'));               // RESET ALL
+  assert(engine.performanceMacroState().valid());
+  assert(engine.performanceMacroState().tension == 0 &&
+         engine.performanceMacroState().energy == 0 &&
+         engine.performanceMacroState().space == 0 &&
+         engine.performanceMacroState().mutation == 0);
+  send(key('\t'));              // MACRO -> KEY
   for (int i = 0; i < 4; ++i) send(scan(GROOVEPUTER_DOWN));  // ROOT -> TARGET
   assert(keyboard.externalNoteOn(60, 100));
   events.notes.clear();

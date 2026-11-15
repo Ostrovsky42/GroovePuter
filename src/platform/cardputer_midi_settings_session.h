@@ -21,7 +21,9 @@ bool setCardputerMidiInputRoutingConfig(
 GroovePuterMidi::MidiDeviceProfile pendingCardputerMidiDeviceProfile();
 bool selectCardputerMidiDeviceProfileForNextBoot(
     GroovePuterMidi::MidiDeviceProfile profile);
-bool cardputerMidiDeviceProfileRestartRequired();
+bool pendingCardputerMidiOutputEnabled();
+bool selectCardputerMidiOutputEnabledForNextBoot(bool enabled);
+bool cardputerMidiSettingsRestartRequired();
 #else
 inline GroovePuterMidi::MidiInputRoutingConfig& desktopMidiInputRoutingConfig() {
     static GroovePuterMidi::MidiInputRoutingConfig config{};
@@ -43,12 +45,15 @@ struct DesktopMidiProfileSelection {
     bool initialized{false};
     GroovePuterMidi::MidiDeviceProfile profile{
         GroovePuterMidi::MidiDeviceProfile::SeqtrakNative};
+    bool outputEnabled{true};
 };
 
 inline DesktopMidiProfileSelection& desktopMidiProfileSelection() {
     static DesktopMidiProfileSelection selection;
     if (!selection.initialized) {
         selection.profile = GroovePuterMidi::midiDeviceProfileRuntime().profile();
+        selection.outputEnabled =
+            GroovePuterMidi::midiDeviceProfileRuntime().settings().enabled;
         selection.initialized = true;
     }
     return selection;
@@ -77,9 +82,20 @@ inline bool selectCardputerMidiDeviceProfileForNextBoot(
     return true;
 }
 
-inline bool cardputerMidiDeviceProfileRestartRequired() {
-    return pendingCardputerMidiDeviceProfile() !=
-           GroovePuterMidi::midiDeviceProfileRuntime().profile();
+inline bool pendingCardputerMidiOutputEnabled() {
+    return Detail::desktopMidiProfileSelection().outputEnabled;
+}
+
+inline bool selectCardputerMidiOutputEnabledForNextBoot(bool enabled) {
+    Detail::desktopMidiProfileSelection().outputEnabled = enabled;
+    return true;
+}
+
+inline bool cardputerMidiSettingsRestartRequired() {
+    const GroovePuterMidi::MidiDeviceProfileRuntime& runtime =
+        GroovePuterMidi::midiDeviceProfileRuntime();
+    return pendingCardputerMidiDeviceProfile() != runtime.profile() ||
+           pendingCardputerMidiOutputEnabled() != runtime.settings().enabled;
 }
 #endif
 

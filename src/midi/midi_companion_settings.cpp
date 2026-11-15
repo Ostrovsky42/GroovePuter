@@ -215,6 +215,19 @@ void applyMidiDeviceProfile(MidiDeviceProfile profile,
     }
 }
 
+MidiOutputSettings composeNextBootMidiOutputSettings(
+        const MidiOutputSettings& active,
+        MidiDeviceProfile pendingProfile,
+        bool externalMidiEnabled) {
+    MidiOutputSettings candidate = active;
+    if (candidate.profile != pendingProfile) {
+        applyMidiDeviceProfile(pendingProfile, candidate);
+    }
+    candidate.enabled = externalMidiEnabled;
+    sanitizeMidiOutputSettings(candidate);
+    return candidate;
+}
+
 bool isValidMidiOutputSettings(const MidiOutputSettings& settings) {
     if (!validProfile(settings.profile) ||
         !validLiveTarget(settings.liveTarget) ||

@@ -31,6 +31,7 @@ struct MidiPatternStartupRoutes {
     std::array<DrumMidiRoute, kPerformanceDrumLaneCount> performanceDrums{};
     MidiReceiverModeControl receiverModeControl{
         MidiReceiverModeControl::SeqtrakCc26};
+    bool vendorSpecificControls{false};
 };
 
 class MidiPatternStartupRouteRuntime {
@@ -48,6 +49,7 @@ public:
         routes_.performanceDx = performance.dx;
         routes_.performanceDrums = performance.drums;
         routes_.receiverModeControl = performance.receiverModeControl;
+        routes_.vendorSpecificControls = performance.vendorSpecificControls;
         published_ = true;
         ++revision_;
     }

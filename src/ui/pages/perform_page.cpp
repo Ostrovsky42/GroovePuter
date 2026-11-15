@@ -22,14 +22,33 @@
 #include "src/state/generation_shape_state.h"
 #include "synth_sequencer_page.h"
 #include "../undo_ux.h"
+#include "src/performance/performance_macro_cc.h"
+#include "src/midi/effect_layers.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 
 namespace {
 constexpr const char* kToolContextNames[] = {
-    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP",
+    "KEY", "CHORD", "ARP", "RHYTHM", "INPUT", "LOOP", "MACRO",
 };
-constexpr const char* kToolContextActiveNames[] = {
-    "[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]", "[INPUT]", "[LOOP]",
+constexpr GroovePuterPerformance::Macros::Control kMacroControls[] = {
+    GroovePuterPerformance::Macros::Control::Energy,
+    GroovePuterPerformance::Macros::Control::Space,
+    GroovePuterPerformance::Macros::Control::Mutation,
+    GroovePuterPerformance::Macros::Control::Tension,
 };
+
+int macroValue(const GroovePuterPerformance::Macros::State& state,
+                   GroovePuterPerformance::Macros::Control control) {
+    switch (control) {
+        case GroovePuterPerformance::Macros::Control::Tension: return state.tension;
+        case GroovePuterPerformance::Macros::Control::Energy: return state.energy;
+        case GroovePuterPerformance::Macros::Control::Space: return state.space;
+        case GroovePuterPerformance::Macros::Control::Mutation: return state.mutation;
+    }
+    return 0;
+}
 // Same order as the keyboard's chord cycle; labels follow it one to one.
 constexpr const PerformanceChordMode* kChordPopupModes = PerformanceKeyboard::kChordDisplayOrder;
 constexpr std::size_t kChordPopupCount = PerformanceKeyboard::kChordDisplayCount;
@@ -133,9 +152,50 @@ constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
 
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u)
+                                + (row >= PerformPage::kTiltRowFirst ? 1u : 0u));
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
+
+// Names for the tilt rows (see kTiltChoiceMax for the numbers).
+inline const char* tiltChoiceName(uint8_t choice) {
+    switch (choice) {
+        case 1: return "CUTOFF";
+        case 2: return "REVERB";
+        case 3: return "DELAY";
+        case 5: return "ATTACK";
+        case 6: return "RELEASE";
+        case 7: return "VOLUME";
+        case 8: return "PAN";
+        default: return "NONE";
+    }
+}
+// Controller index of a tilt choice (see kTiltChoiceMax); -1 for none.
+inline int tiltChoiceIndex(uint8_t choice) {
+    static constexpr int kIndex[9] = {-1, 0, 1, 2, -1, 5, 6, 4, 7};
+    return choice <= 8 ? kIndex[choice] : -1;
+}
+// "CUTOFF -12 DEG > 84": the controller, its tilt angle, and the value on the wire.
+inline void formatTiltAxis(char* out, size_t size, uint8_t choice, float deg) {
+    const int whole = static_cast<int>(deg >= 0.0f ? deg + 0.5f : deg - 0.5f);
+    const int index = tiltChoiceIndex(choice);
+    if (index < 0) {
+        std::snprintf(out, size, "%s %+d DEG", tiltChoiceName(choice), whole);
+        return;
+    }
+    std::snprintf(out, size, "%s %+d > %u", tiltChoiceName(choice), whole,
+                  static_cast<unsigned>(GroovePuterMidi::gLayerWire[index]));
+}
+// Sensitivity steps, full scale in degrees: 60, 45, 30, 20, 12.
+inline const char* tiltSensName(uint8_t index) {
+    switch (index) {
+        case 0: return "60 DEG";
+        case 1: return "45 DEG";
+        case 3: return "20 DEG";
+        case 4: return "12 DEG";
+        default: return "30 DEG";
+    }
+}
 constexpr uint8_t kLoopLineCount = PerformPage::kLoopRowCount;  // no headings on the LOOP tab
 
 using PartnerMode = GroovePuterCallResponse::CallResponseListener::Mode;
@@ -240,6 +300,7 @@ uint8_t PerformPage::rowCountForContext() const {
         case PerformanceToolContext::Input: return kInputRowCount;
         // The looper: nine rows, six visible, scrolling (TO MELODY is the last).
         case PerformanceToolContext::Loop: return kLoopRowCount;
+        case PerformanceToolContext::Macro: return 6;   // four macros, CC LINK, RESET ALL
         case PerformanceToolContext::Count: break;
     }
     return 1;
@@ -426,6 +487,11 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
+                case ir(InRow::TiltTargetRow): case ir(InRow::TiltSensRow):
+                case ir(InRow::TiltXRow): case ir(InRow::TiltYRow): case ir(InRow::TiltZRow):
+                case ir(InRow::TiltZeroRow):
+                    cycleTiltSetting(row, direction);
+                    break;
                 default:
                     break;
             }
@@ -460,6 +526,31 @@ void PerformPage::adjustSelectedValue(int direction) {
                     break;
             }
             return;
+        case PerformanceToolContext::Macro: {
+            if (row == 4) {
+                // CC LINK: OFF -> A -> B -> ALL (arrows step through the same cycle).
+                using namespace GroovePuterPerformance::MacroCc;
+                const Link current = static_cast<Link>(gLinkMode);
+                gLinkMode = static_cast<uint8_t>(direction > 0 ? nextLink(current)
+                                                              : nextLink(nextLink(nextLink(current))));
+                char text[32];
+                std::snprintf(text, sizeof(text), "CC LINK: %s", linkName(static_cast<Link>(gLinkMode)));
+                UI::showToast(text, 850);
+                return;
+            }
+            if (row >= 5) return;
+            auto state = miniAcid_.performanceMacroState();
+            const auto control = kMacroControls[row];
+            int next = static_cast<int>(macroValue(state, control)) +
+                       (direction > 0 ? 5 : -5);
+            if (next < GroovePuterPerformance::Macros::kValueMin)
+                next = GroovePuterPerformance::Macros::kValueMin;
+            if (next > GroovePuterPerformance::Macros::kValueMax)
+                next = GroovePuterPerformance::Macros::kValueMax;
+            state.set(control, next);
+            miniAcid_.setPerformanceMacroState(state);
+            return;
+        }
         case PerformanceToolContext::Count:
             return;
     }
@@ -559,6 +650,32 @@ void PerformPage::toggleSelectedValue() {
                 adjustSelectedValue(1);
             }
             return;
+        case PerformanceToolContext::Macro: {
+            if (row == 4) {
+                using namespace GroovePuterPerformance::MacroCc;
+                gLinkMode = static_cast<uint8_t>(nextLink(static_cast<Link>(gLinkMode)));
+                char text[32];
+                std::snprintf(text, sizeof(text), "CC LINK: %s", linkName(static_cast<Link>(gLinkMode)));
+                UI::showToast(text, 850);
+                return;
+            }
+            auto state = miniAcid_.performanceMacroState();
+            if (row < 4) {
+                state.set(kMacroControls[row], 0);
+                miniAcid_.setPerformanceMacroState(state);
+                static constexpr const char* names[] = {
+                    "TENSION", "ENERGY", "SPACE", "MUTATION"};
+                std::snprintf(toast, sizeof(toast), "%s: 0%%", names[row]);
+            } else if (row == 5) {
+                miniAcid_.setPerformanceMacroState(
+                    GroovePuterPerformance::Macros::State{});
+                std::snprintf(toast, sizeof(toast), "MACROS: NEUTRAL");
+            } else {
+                return;
+            }
+            UI::showToast(toast, 850);
+            return;
+        }
         case PerformanceToolContext::Count:
             return;
     }
@@ -585,6 +702,60 @@ void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
             break;
         default: break;
     }
+}
+
+// TILT rows on INPUT. TARGET steps A -> B -> ALL (left steps back); Y steps REVERB, DELAY,
+// RESO. Both are session values; the target changes only from its own row.
+void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
+#ifdef GROOVEPUTER_TILT
+    using namespace GroovePuterTilt;
+    char toast[40];
+    if (row == ir(InRow::TiltTargetRow)) {
+        const int steps = direction >= 0 ? 1 : 2;   // backwards: two forward steps on three
+        for (int i = 0; i < steps; ++i) gController.setTarget(nextTarget(gController.target()));
+        std::snprintf(toast, sizeof(toast), "TILT TARGET: %s", targetName(gController.target()));
+        UI::showToast(toast, 800);
+        return;
+    }
+    if (row == ir(InRow::TiltZeroRow)) {
+        gZeroRequested = true;
+        UI::showToast("TILT: ZERO SET HERE", 900);
+        return;
+    }
+    if (row == ir(InRow::TiltSensRow)) {
+        uint8_t index = gSensIndex;
+        if (direction >= 0) {
+            index = index >= 4 ? 0 : static_cast<uint8_t>(index + 1);
+        } else {
+            index = index == 0 ? 4 : static_cast<uint8_t>(index - 1);
+        }
+        gSensIndex = index;
+        gSaveRequested = true;
+        std::snprintf(toast, sizeof(toast), "TILT SENS: %s", tiltSensName(index));
+        UI::showToast(toast, 800);
+        return;
+    }
+    // X, Y, Z: NONE, CUTOFF, REVERB, DELAY, ATTACK, RELEASE, VOLUME, PAN (RESO is out).
+    const uint8_t axis = row == ir(InRow::TiltXRow) ? 0 : (row == ir(InRow::TiltYRow) ? 1 : 2);
+    uint8_t choice = gAxisChoice[axis];
+    if (choice > GroovePuterTilt::kTiltChoiceMax || choice == 4) choice = 0;   // 4 = old RESO
+    if (direction >= 0) {
+        choice = choice >= GroovePuterTilt::kTiltChoiceMax ? 0 : static_cast<uint8_t>(choice + 1);
+        if (choice == 4) choice = 5;   // skip the removed RESO
+    } else {
+        choice = choice == 0 ? GroovePuterTilt::kTiltChoiceMax : static_cast<uint8_t>(choice - 1);
+        if (choice == 4) choice = 3;
+    }
+    gAxisChoice[axis] = choice;
+    gSaveRequested = true;
+    static const char* const kAxisName[3] = {"X", "Y", "Z"};
+    std::snprintf(toast, sizeof(toast), "TILT %s: %s", kAxisName[axis], tiltChoiceName(choice));
+    UI::showToast(toast, 800);
+#else
+    (void)row;
+    (void)direction;
+    UI::showToast("TILT: NOT IN THIS BUILD", 900);
+#endif
 }
 
 // PARTNER mode row. The PARTNER and the LOOPER share one ResponsePlayer:
@@ -896,6 +1067,12 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
+                case ir(InRow::TiltTargetRow): return "TILT: WHICH SYNTH THE TILT REACHES";
+                case ir(InRow::TiltSensRow): return "TILT: DEGREES OF TILT FOR FULL SCALE";
+                case ir(InRow::TiltXRow): return "TILT: CONTROLLER FOR THE X AXIS (NONE TO OFF)";
+                case ir(InRow::TiltYRow): return "TILT: CONTROLLER FOR THE Y AXIS (NONE TO OFF)";
+                case ir(InRow::TiltZRow): return "TILT: CONTROLLER FOR THE GYRO TURN (NONE TO OFF)";
+                case ir(InRow::TiltZeroRow): return "TILT: PRESS TO ZERO X, Y, Z AT THIS POSE";
                 default: return "";
             }
         }
@@ -914,6 +1091,12 @@ const char* PerformPage::selectedRowHint() const {
                 case lr(LoopRow::ToMelody): return "LOOP TO SYNTH MELODY: ENTER TWICE";
                 default: return "";
             }
+
+        case PerformanceToolContext::Macro:
+            if (row < 4) return "ARROWS +/-5%  ENTER RESET VALUE";
+            if (row == 4) return "CC LINK: OFF/A/B/ALL - MACROS ALSO SEND CC";
+            if (row == 5) return "ENTER: RESET ALL FOUR MACROS";
+            return "";
 
         case PerformanceToolContext::Count:
             break;
@@ -969,10 +1152,9 @@ bool PerformPage::handleToolKey(const UIEvent& event) {
 }
 
 void PerformPage::drawToolTabs(IGfx& gfx, int y) {
-    // Fixed slots: "[KEY] [CHORD] [ARP] [RHYTHM] [INPUT] [LOOP]" (len + 2 cells each: six
-    // tabs of len + 3 would be 264 px wide, the screen is 240). The bracket cell to the
-    // left of each label is always reserved, so labels never shift when the
-    // active context changes.
+    // Compact fixed-width labels keep all seven contexts visible on the
+    // Cardputer width. The active tab uses a filled chip instead of brackets,
+    // so its label never shifts when the selection changes.
     const UI::ThemePalette palette = UI::themePalette();
     const int charW = gfx.measureText("M");
     const int cellH = Layout::LINE_HEIGHT - 1;
@@ -982,15 +1164,15 @@ void PerformPage::drawToolTabs(IGfx& gfx, int y) {
         const int len = static_cast<int>(std::strlen(name));
         const bool active = i == static_cast<int>(selectedContext_);
         if (active) {
-            gfx.fillRect(x - 1, y - 1, (len + 2) * charW + 2, cellH,
+            gfx.fillRect(x - 1, y - 1, len * charW + 2, cellH,
                          MusicVisuals::accentForStyle());
             gfx.setTextColor(palette.invert);
-            gfx.drawText(x, y, kToolContextActiveNames[i]);
+            gfx.drawText(x, y, name);
         } else {
             gfx.setTextColor(palette.secondary);
-            gfx.drawText(x + charW, y, name);
+            gfx.drawText(x, y, name);
         }
-        x += (len + 2) * charW;
+        x += (len + 1) * charW;
     }
 
 }
@@ -1015,8 +1197,13 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
     // row is always visible.
     const bool inputContext = selectedContext_ == PerformanceToolContext::Input;
     const bool loopContext = selectedContext_ == PerformanceToolContext::Loop;
-    auto lineOf = [&](uint8_t row) -> uint8_t { return inputContext ? inputLine(row) : row; };
-    const uint8_t totalLines = inputContext ? kInputLineCount : (loopContext ? kLoopLineCount : kVisibleRows);
+    const bool macroContext = selectedContext_ == PerformanceToolContext::Macro;
+    auto lineOf = [&](uint8_t row) -> uint8_t {
+        if (inputContext) return inputLine(row);
+        return macroContext ? static_cast<uint8_t>(row + 1u) : row;
+    };
+    const uint8_t totalLines = inputContext ? kInputLineCount
+        : (loopContext ? kLoopLineCount : (macroContext ? 6u : kVisibleRows));
     const uint8_t selectedLine = lineOf(selected);
     const uint8_t firstVisibleRow = selectedLine >= kVisibleRows
         ? static_cast<uint8_t>(selectedLine - kVisibleRows + 1u) : 0u;
@@ -1034,6 +1221,8 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
         gfx.drawText(Layout::COL_1, LayoutManager::lineY(1 + static_cast<int>(line - firstVisibleRow)),
                      heading);
     };
+
+    if (macroContext) drawHeading(0, "TEMP / PATTERN, PHRASE, SONG");
 
     auto drawRow = [&](uint8_t row, const char* label, const char* rowValue,
                        bool available) {
@@ -1245,6 +1434,33 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
 
+            // TILT: the offsets the apostrophe switches on. Each axis picks its controller.
+            drawHeading(inputLine(kTiltRowFirst) - 1u, "--- TILT ---");
+#ifdef GROOVEPUTER_TILT
+            drawRow(ir(InRow::TiltTargetRow), "TILT TARGET",
+                    GroovePuterTilt::targetName(GroovePuterTilt::gController.target()), true);
+            std::snprintf(value, sizeof(value), "%s", tiltSensName(GroovePuterTilt::gSensIndex));
+            drawRow(ir(InRow::TiltSensRow), "TILT SENS", value, true);
+            // Each axis row shows its controller and the live angle from the zero.
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[0],
+                           GroovePuterTilt::gController.angleDeg(0));
+            drawRow(ir(InRow::TiltXRow), "TILT X", value, true);
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[1],
+                           GroovePuterTilt::gController.angleDeg(1));
+            drawRow(ir(InRow::TiltYRow), "TILT Y", value, true);
+            formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[2],
+                           GroovePuterTilt::gController.angleDeg(2));
+            drawRow(ir(InRow::TiltZRow), "TILT Z", value, true);
+            drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "SET HERE", true);
+#else
+            drawRow(ir(InRow::TiltTargetRow), "TILT TARGET", "N/A", false);
+            drawRow(ir(InRow::TiltSensRow), "TILT SENS", "N/A", false);
+            drawRow(ir(InRow::TiltXRow), "TILT X", "N/A", false);
+            drawRow(ir(InRow::TiltYRow), "TILT Y", "N/A", false);
+            drawRow(ir(InRow::TiltZRow), "TILT Z", "N/A", false);
+            drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "N/A", false);
+#endif
+
             break;
         }
 
@@ -1277,6 +1493,22 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             std::snprintf(value, sizeof(value), "SYN %c",
                           static_cast<char>('A' + exportVoiceNow()));
             drawRow(lr(LoopRow::ToMelody), "TO MELODY", loop.empty() ? "N/A" : value, !loop.empty());
+            break;
+        }
+
+        case PerformanceToolContext::Macro: {
+            const auto state = miniAcid_.performanceMacroState();
+            static constexpr const char* labels[] = {
+                "ENERGY", "SPACE", "MUTATION", "TENSION"};
+            for (uint8_t row = 0; row < 4; ++row) {
+                std::snprintf(value, sizeof(value), "%+d%%",
+                    macroValue(state, kMacroControls[row]));
+                drawRow(row, labels[row], value, true);
+            }
+            drawRow(4, "CC LINK", GroovePuterPerformance::MacroCc::linkName(
+                        static_cast<GroovePuterPerformance::MacroCc::Link>(
+                            GroovePuterPerformance::MacroCc::gLinkMode)), true);
+            drawRow(5, "RESET ALL", "ENTER", true);
             break;
         }
 
@@ -1379,6 +1611,14 @@ bool PerformPage::handleEvent(UIEvent& event) {
     }
 
     switch (event.key) {
+#ifdef GROOVEPUTER_TILT
+        case '\'':
+            // Experimental tilt control: loop() owns the sensor and the mode; the page
+            // only asks. The live surface only (the tools layer keeps its own keys).
+            if (toolsLayerVisible_) return false;
+            GroovePuterTilt::gToggleRequested = true;
+            return true;
+#endif
         case 'n':
         case 'N':
             keyboard_.toggleNoteMode();

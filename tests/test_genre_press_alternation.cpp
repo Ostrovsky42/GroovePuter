@@ -1,6 +1,5 @@
-// H2: the idiom variant of Acid, Techno (dub) and UK garage alternates with the G press
-// (Request::press), not with the salt. Neighbouring presses differ; the choice does not
-// depend on the salt, so one press always gets the same variant.
+// H2: Acid and Techno idiom variants alternate with the G press (Request::press), not
+// with salt. UK garage intentionally remains salt-selected to preserve golden output.
 #include <cassert>
 #include <cstdio>
 

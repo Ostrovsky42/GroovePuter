@@ -23,8 +23,10 @@
 #include "../help_dialog_frames.h"
 #include "../ui_widgets.h"
 #include "../midi_device_profile_ui.h"
+#include "../midi_output_mode_ui.h"
 #include "../midi_input_ui.h"
 #include "src/platform/cardputer_midi_settings_session.h"
+#include "src/platform/cardputer_midi_song_export.h"
 #include "src/platform/cardputer_usb_host_midi.h"
 #include "src/platform/battery_status.h"
 #include "src/platform/cardputer_usb_role_runtime.h"
@@ -35,6 +37,7 @@
 
 namespace {
 namespace ProfileUi = GroovePuterUi::MidiDeviceProfileUi;
+namespace MidiOutputModeUi = GroovePuterUi::MidiOutputModeUi;
 namespace InputUi = GroovePuterUi::MidiInputUi;
 std::string generateMemorableName() {
   static const char* adjectives[] = {
@@ -687,6 +690,7 @@ void ProjectPage::onEnter(int context) {
   main_focus_ = MainFocus::Load;
   section_ = ProjectSection::Scenes;
   midi_profile_preview_ = ProfileUi::kUnsetPreview;
+  midi_output_preview_ = 0xFF;
   usb_role_preview_ = 0xFF;
 }
 
@@ -811,6 +815,48 @@ bool ProjectPage::importMidiAtSelection() {
     closeDialog();
   } else {
     UI::showToast(importer.getErrorString(err).c_str());
+  }
+  return true;
+}
+
+bool ProjectPage::exportMidiAtSelection() {
+  if (mini_acid_.isPlaying()) {
+    UI::showToast("STOP TO EXPORT", 1200);
+    return true;
+  }
+
+  GroovePuterMidi::MidiSongExportFileResult result{};
+  if (!exportCurrentSongAsMidi(mini_acid_, result)) {
+    switch (result.error) {
+      case GroovePuterMidi::SongExportFileError::PlaybackActive:
+        UI::showToast("STOP TO EXPORT", 1200);
+        break;
+      case GroovePuterMidi::SongExportFileError::MaterialFailure:
+        UI::showToast("EXPORT: MATERIAL READ FAILED", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::ValidationFailure:
+        UI::showToast("EXPORT: MIDI VALIDATION FAILED", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::SourceChanged:
+        UI::showToast("EXPORT: SONG CHANGED; RETRY", 1600);
+        break;
+      case GroovePuterMidi::SongExportFileError::None:
+        UI::showToast("EXPORT FAILED", 1400);
+        break;
+      default:
+        UI::showToast("EXPORT: SD WRITE FAILED", 1400);
+        break;
+    }
+    return true;
+  }
+
+  const char* fileName = std::strrchr(result.path, '/');
+  fileName = fileName ? fileName + 1 : result.path;
+  char message[48]{};
+  std::snprintf(message, sizeof(message), "MIDI EXPORTED: %.32s", fileName);
+  UI::showToast(message, 2200);
+  if (result.warnings != 0) {
+    UI::showToast("MIDI NOTES FLATTENED; SEE TRACK MARKERS", 2200);
   }
   return true;
 }
@@ -1571,8 +1617,11 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (section_ == ProjectSection::Midi) {
             midi_profile_preview_ = ProfileUi::encodePreview(
                 GroovePuterPlatform::pendingCardputerMidiDeviceProfile());
+            midi_output_preview_ = static_cast<uint8_t>(
+                GroovePuterPlatform::pendingCardputerMidiOutputEnabled() ? 1 : 0);
         } else if (previousSection == ProjectSection::Midi) {
             midi_profile_preview_ = ProfileUi::kUnsetPreview;
+            midi_output_preview_ = 0xFF;
         }
         return true;
     }
@@ -1595,6 +1644,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         case GROOVEPUTER_LEFT:
         case GROOVEPUTER_RIGHT: {
             const bool right = (ui_event.scancode == GROOVEPUTER_RIGHT);
+            if (mini_acid_.isPlaying() &&
+                (main_focus_ == MainFocus::MidiDevice ||
+                 main_focus_ == MainFocus::MidiOutput)) {
+                UI::showToast("STOP TO CHANGE ROUTE", 1200);
+                return true;
+            }
             auto& led = mini_acid_.sceneManager().currentScene().led;
             if (main_focus_ == MainFocus::MidiInputEnabled ||
                 main_focus_ == MainFocus::MidiInputChannel ||
@@ -1616,6 +1671,14 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
                 const auto next = ProfileUi::stepSelectableProfile(
                     current, right ? 1 : -1);
                 midi_profile_preview_ = ProfileUi::encodePreview(next);
+                return true;
+            }
+            if (main_focus_ == MainFocus::MidiOutput) {
+                const bool pending =
+                    GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+                const bool current = midi_output_preview_ == 0xFF
+                    ? pending : midi_output_preview_ != 0;
+                midi_output_preview_ = static_cast<uint8_t>(current ? 0 : 1);
                 return true;
             }
             if (main_focus_ == MainFocus::Volume) {
@@ -1718,6 +1781,12 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
         if (main_focus_ == MainFocus::MidiInputEnabled ||
             main_focus_ == MainFocus::MidiInputChannel ||
             main_focus_ == MainFocus::MidiInputTarget) return adjustMidiInput(1);
+        if (mini_acid_.isPlaying() &&
+            (main_focus_ == MainFocus::MidiDevice ||
+             main_focus_ == MainFocus::MidiOutput)) {
+            UI::showToast("STOP TO CHANGE ROUTE", 1200);
+            return true;
+        }
         if (main_focus_ == MainFocus::LedTest) {
             LedManager::instance().testPulse(mini_acid_.sceneManager().currentScene().led);
             return true;
@@ -1738,16 +1807,35 @@ bool ProjectPage::handleEvent(UIEvent& ui_event) {
             std::snprintf(
                 toast, sizeof(toast), "MIDI %s %s",
                 ProfileUi::shortName(selected),
-                GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired()
+                GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
                     ? "SAVED - REBOOT"
                     : "ACTIVE");
             UI::showToast(toast, 1400);
+            return true;
+        }
+        if (main_focus_ == MainFocus::MidiOutput) {
+            const bool pending =
+                GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+            const bool selected = midi_output_preview_ == 0xFF
+                ? pending : midi_output_preview_ != 0;
+            if (!GroovePuterPlatform::selectCardputerMidiOutputEnabledForNextBoot(
+                    selected)) {
+                UI::showToast("MIDI output save failed", 1400);
+                return true;
+            }
+            midi_output_preview_ = static_cast<uint8_t>(selected ? 1 : 0);
+            UI::showToast(
+                GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                    ? "MIDI OUTPUT SAVED - REBOOT"
+                    : "MIDI OUTPUT ACTIVE",
+                1400);
             return true;
         }
         if (main_focus_ == MainFocus::Load) { openLoadDialog(); return true; }
         if (main_focus_ == MainFocus::SaveAs) return saveOwnName();
         if (main_focus_ == MainFocus::New) return createNewScene();
         if (main_focus_ == MainFocus::ImportMidi) { openImportMidiDialog(); return true; }
+        if (main_focus_ == MainFocus::ExportMidi) return exportMidiAtSelection();
         if (main_focus_ == MainFocus::ClearProject) { openConfirmClearDialog(); return true; }
 
         if (main_focus_ == MainFocus::VisualStyle) { UI::currentStyle = nextStyle(UI::currentStyle); return true; }
@@ -2013,6 +2101,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::SaveAs: label = "Save"; break;
       case MainFocus::New: label = "New"; break;
       case MainFocus::ImportMidi: label = "Import MIDI"; break;
+      case MainFocus::ExportMidi: label = "Export MIDI"; break;
       case MainFocus::ClearProject: label = "Clear Project"; break;
       case MainFocus::VisualStyle: label = "Theme"; break;
       case MainFocus::Volume: label = "Main Volume"; break;
@@ -2024,6 +2113,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::LedTest: label = "Test LED"; break;
       case MainFocus::UsbRole: label = "USB Role"; break;
       case MainFocus::MidiDevice: label = "Device Profile"; break;
+      case MainFocus::MidiOutput: label = "External MIDI"; break;
       case MainFocus::MidiInputEnabled: label = "MIDI Input"; break;
       case MainFocus::MidiInputChannel: label = "Input Channel"; break;
       case MainFocus::MidiInputTarget: label = "Input Route"; break;
@@ -2034,6 +2124,7 @@ void ProjectPage::draw(IGfx& gfx) {
       case MainFocus::SaveAs: std::snprintf(line, sizeof(line), "A=SAVE AS"); break;
       case MainFocus::New: line[0] = '\0'; break;
       case MainFocus::ImportMidi: line[0] = '\0'; break;
+      case MainFocus::ExportMidi: line[0] = '\0'; break;
       case MainFocus::ClearProject: line[0] = '\0'; break;
       case MainFocus::VisualStyle:
         std::snprintf(line, sizeof(line), "%s", UI::themeName(UI::currentStyle));
@@ -2085,6 +2176,16 @@ void ProjectPage::draw(IGfx& gfx) {
         const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
         std::snprintf(line, sizeof(line), "<%s>%s",
                       ProfileUi::shortName(selected), selected != pending ? "*" : "");
+        break;
+      }
+      case MainFocus::MidiOutput: {
+        const bool pending =
+            GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+        const bool selectedOutput = midi_output_preview_ == 0xFF
+            ? pending : midi_output_preview_ != 0;
+        std::snprintf(line, sizeof(line), "<%s>%s",
+                      MidiOutputModeUi::outputModeName(selectedOutput),
+                      selectedOutput != pending ? "*" : "");
         break;
       }
       case MainFocus::MidiInputEnabled: {
@@ -2139,6 +2240,11 @@ void ProjectPage::draw(IGfx& gfx) {
   char hint[64] = "[ENTER] SELECT";
   if (section_ == ProjectSection::Scenes && main_focus_ == MainFocus::SaveAs) {
     std::snprintf(hint, sizeof(hint), "ENT SAVE  A SAVE AS  TAB SECT");
+  } else if (section_ == ProjectSection::Scenes &&
+             main_focus_ == MainFocus::ExportMidi) {
+    std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+        ? "STOP BEFORE EXPORT"
+        : "EXPORT /MIDI; TEMP MACROS OMITTED");
   } else if (section_ == ProjectSection::Midi) {
     if (main_focus_ == MainFocus::UsbRole) {
       const auto pending = CardputerUsbRoleRuntime::pendingRole();
@@ -2157,8 +2263,23 @@ void ProjectPage::draw(IGfx& gfx) {
     } else if (main_focus_ == MainFocus::MidiDevice) {
       const auto pending = GroovePuterPlatform::pendingCardputerMidiDeviceProfile();
       const auto selected = ProfileUi::profileFromPreview(midi_profile_preview_, pending);
-      std::snprintf(hint, sizeof(hint), "%s", selected != pending ? "ENTER SAVE PROFILE"
-          : (GroovePuterPlatform::cardputerMidiDeviceProfileRestartRequired() ? "PROFILE: REBOOT REQUIRED" : "PROFILE ACTIVE IN COMPUTER MODE"));
+      std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+          ? "STOP TO CHANGE ROUTE"
+          : (selected != pending ? "ENTER SAVE PROFILE"
+              : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                     ? "PROFILE: REBOOT REQUIRED"
+                     : "PROFILE ACTIVE IN COMPUTER MODE")));
+    } else if (main_focus_ == MainFocus::MidiOutput) {
+      const bool pending =
+          GroovePuterPlatform::pendingCardputerMidiOutputEnabled();
+      const bool selectedOutput = midi_output_preview_ == 0xFF
+          ? pending : midi_output_preview_ != 0;
+      std::snprintf(hint, sizeof(hint), "%s", mini_acid_.isPlaying()
+                    ? "STOP TO CHANGE ROUTE"
+                    : (selectedOutput != pending ? "ENTER SAVE OUTPUT MODE"
+                        : (GroovePuterPlatform::cardputerMidiSettingsRestartRequired()
+                               ? "OUTPUT MODE: REBOOT REQUIRED"
+                               : "INTERNAL SOUND IS ALWAYS ACTIVE")));
     } else if (main_focus_ == MainFocus::MidiInputChannel) {
       std::snprintf(hint, sizeof(hint), "INPUT FILTER: OMNI OR CH1..16");
     } else {

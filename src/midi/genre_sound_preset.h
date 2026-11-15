@@ -12,13 +12,24 @@
 // CUTOFF, ATTACK, RELEASE, REVERB, DELAY. VOLUME and PAN are not part of a preset.
 //
 // stepsFor() gives the output as a plain list: voice, controller index (into
-// GroovePuterMidi::kControllers, 0..4) and the value, already clamped to the
-// controller's usable range. Voice 0 is Synth A, 1 is Synth B.
+// GroovePuterMidi::kControllers) and the value, already clamped to the controller's
+// usable range. Voice 0 is Synth A, 1 is Synth B.
 namespace GenreSound {
 
 constexpr uint8_t kVoiceCount = 2;
 constexpr uint8_t kPresetControllers = 5;  // CUTOFF ATTACK RELEASE REVERB DELAY
 constexpr uint8_t kStepsPerGenre = kVoiceCount * kPresetControllers;
+
+// Position in a preset -> index into GroovePuterMidi::kControllers. The PERFORM
+// controller order (CUTOFF, REVERB, DELAY, RESO, VOLUME, ATTACK, RELEASE, PAN) is
+// not the preset order, so the index is looked up here, never assumed.
+constexpr uint8_t kPresetController[kPresetControllers] = {0, 5, 6, 1, 2};
+static_assert(GroovePuterMidi::kControllers[0].number == 74 &&   // CUTOFF
+              GroovePuterMidi::kControllers[5].number == 73 &&   // ATTACK
+              GroovePuterMidi::kControllers[6].number == 75 &&   // RELEASE
+              GroovePuterMidi::kControllers[1].number == 91 &&   // REVERB
+              GroovePuterMidi::kControllers[2].number == 94,     // DELAY
+              "genre preset controller indices must follow kControllers");
 
 struct Step {
   uint8_t voice;       // 0 = Synth A (channel 8), 1 = Synth B (channel 9)
@@ -60,7 +71,8 @@ inline size_t stepsFor(uint8_t mode, Step* out, size_t capacity) {
     for (uint8_t voice = 0; voice < kVoiceCount; ++voice) {
         const uint8_t* values = voice == 0 ? preset->voiceA : preset->voiceB;
         for (uint8_t c = 0; c < kPresetControllers; ++c) {
-            out[n++] = Step{voice, c, GroovePuterMidi::clampForController(c, values[c])};
+            const uint8_t index = kPresetController[c];
+            out[n++] = Step{voice, index, GroovePuterMidi::clampForController(index, values[c])};
         }
     }
     return n;

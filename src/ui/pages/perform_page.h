@@ -17,6 +17,7 @@ enum class PerformanceToolContext : uint8_t {
     Rhythm,
     Input,
     Loop,  // [LOOP]: the looper, nine rows (0.9.23)
+    Macro, // transient sequenced-material controls (0.9.29)
     Count,
 };
 
@@ -41,6 +42,13 @@ enum class PerformInputRow : uint8_t {
     FreezeRiff,     // FREEZE RIFF (listener loopHold)
     Variation,      // VARIATION (listener loopEvolve)
     NewRiffIf,      // NEW RIFF IF (listener loopReplace)
+    // --- TILT (experimental: the apostrophe toggles tilt) ---
+    TiltTargetRow,  // TILT TARGET: SYNTH A / SYNTH B / ALL
+    TiltSensRow,    // TILT SENS: how much tilt gives full scale (45 / 30 / 20 / 12 deg)
+    TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / ATTACK / ...)
+    TiltYRow,       // TILT Y: the same choice for the Y axis
+    TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
+    TiltZeroRow,    // TILT ZERO: press to make the current pose the zero of X, Y and Z
     Count,
 };
 
@@ -86,10 +94,13 @@ public:
     static constexpr uint8_t kInputRowCount = performInputRow(PerformInputRow::Count);
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
+    static constexpr uint8_t kTiltRowFirst = performInputRow(PerformInputRow::TiltTargetRow);
+    static constexpr uint8_t kTiltRowLast = performInputRow(PerformInputRow::TiltZeroRow);
     static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
-    static_assert(kPartnerRowLast + 1 == kInputRowCount, "NEW RIFF IF is the last INPUT row");
+    static_assert(kPartnerRowLast + 1 == kTiltRowFirst, "TILT follows the HELPER group");
+    static_assert(kTiltRowLast + 1 == kInputRowCount, "TILT Y is the last INPUT row");
     static_assert(kLoopRowCount == 9, "the LOOP tab has nine rows");
-    static_assert(kLoopRowCount <= 16 && kInputRowCount <= 16,
+    static_assert(kLoopRowCount <= 32 && kInputRowCount <= 32,
                   "a row index fits the continuity byte per tab");
     static_assert(static_cast<uint8_t>(PerformanceToolContext::Count) <= 8,
                   "the context fits the 3-bit continuity field");
@@ -98,7 +109,7 @@ private:
     void captureViewContinuity(UI::UiViewContinuityState& state) const override {
         state.performToolsVisible = toolsLayerVisible_ ? 1u : 0u;
         state.performContext = static_cast<uint8_t>(selectedContext_);
-        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+        for (int i = 0; i < 6 && i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             state.performRows[i] = selectedRow_[i];
         }
     }
@@ -109,10 +120,13 @@ private:
         if (context >= static_cast<uint8_t>(PerformanceToolContext::Count)) context = 0;
         selectedContext_ = static_cast<PerformanceToolContext>(context);
         constexpr uint8_t kMaxRowByContext[6] = {5, 5, 5, 5, kInputRowCount - 1, kLoopRowCount - 1};
-        for (int i = 0; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+        for (int i = 0; i < 6 && i < static_cast<int>(PerformanceToolContext::Count); ++i) {
             selectedRow_[i] = state.performRows[i] <= kMaxRowByContext[i]
                 ? state.performRows[i]
                 : 0;
+        }
+        for (int i = 6; i < static_cast<int>(PerformanceToolContext::Count); ++i) {
+            selectedRow_[i] = 0;
         }
     }
 
@@ -124,6 +138,7 @@ private:
     void toggleSelectedValue();
     void cyclePartnerMode(int direction);
     void cyclePartnerSetting(uint8_t row, int direction);
+    void cycleTiltSetting(uint8_t row, int direction);
     enum class LooperSetting : uint8_t {
         RecordSource, LoopBars, LoopChannel, NoteLength, HoldLayer, Layer, MuteLayer,
     };

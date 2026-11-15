@@ -64,6 +64,19 @@ rsync -a --delete \
   --exclude 'platform_sdl/build' \
   "${PROJECT_ROOT}/" "${TEMP_ROOT}/GroovePuter/"
 
+BUILD_VERSION="${GROOVEPUTER_BUILD_VERSION:-0.0.0-dev}"
+SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse --verify HEAD)"
+SOURCE_STATE="clean"
+if [[ -n "$(git -C "${PROJECT_ROOT}" status --porcelain --untracked-files=normal)" ]]; then
+  SOURCE_STATE="dirty"
+fi
+python3 "${SCRIPT_DIR}/write_build_identity.py" \
+  --output "${TEMP_ROOT}/GroovePuter/src/build_identity_generated.h" \
+  --version "${BUILD_VERSION}" \
+  --source-sha "${SOURCE_COMMIT}" \
+  --source-state "${SOURCE_STATE}"
+echo "Build identity: version=${BUILD_VERSION} commit=${SOURCE_COMMIT} tree=${SOURCE_STATE}"
+
 # Arduino CLI may compile nested sketch sources from generated build paths.
 # Keep the staged page directory on the include search path so quoted
 # implementation fragments remain visible without compiling them separately.

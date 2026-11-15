@@ -10,12 +10,50 @@
 #include "../ui_theme.h"
 #include "../ui_input.h"
 #include "src/midi/cutoff_sweep.h"
+#include "src/midi/midi_device_profile_runtime.h"
+#include "src/midi/midi_performance_route_projection.h"
 
 namespace {
 constexpr int kFocusableRows = 4;   // controller, SWEEP, TARGET, TIME
 constexpr int kStepCoarse = 5;
 constexpr int kStepFine = 1;
-constexpr int kStandardValue = 64;  // Ctrl+A on the controller row
+constexpr int kStandardValue = 64;  // fallback when a controller index is unknown
+// Vendor-only controls (EQ) are offered only when the device profile is SEQTRAK.
+bool vendorControlsOffered() {
+  return GroovePuterMidi::midiDeviceCapabilitiesForProfile(
+             GroovePuterMidi::midiDeviceProfileRuntime().profile())
+      .vendorSpecificControls;
+}
+bool controllerOffered(int index) {
+  return index >= 0 && index < GroovePuterMidi::kControllerCount &&
+         (!GroovePuterMidi::kControllers[index].vendor || vendorControlsOffered());
+}
+int offeredCount() {
+  int count = 0;
+  for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) if (controllerOffered(i)) ++count;
+  return count;
+}
+int offeredIndex(int position) {
+  int seen = 0;
+  for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) {
+    if (!controllerOffered(i)) continue;
+    if (seen == position) return i;
+    ++seen;
+  }
+  return 0;
+}
+int offeredPosition(int index) {
+  int seen = 0;
+  for (int i = 0; i < index && i < GroovePuterMidi::kControllerCount; ++i) if (controllerOffered(i)) ++seen;
+  return seen;
+}
+
+// Ctrl+A returns the selected controller to its own neutral (64, 0 for sends, 127 for EXPR).
+int neutralFor(uint8_t controller) {
+  return controller < GroovePuterMidi::kControllerCount
+             ? GroovePuterMidi::kControllers[controller].neutral
+             : kStandardValue;
+}
 constexpr int kStandardTarget = 110;
 
 using Channel = GroovePuterMidi::CutoffControlChannel;
@@ -58,9 +96,36 @@ void SynthMidiPage::draw(IGfx& gfx) {
   const char* synthName = voice_index_ == 0 ? "SYNTH A" : "SYNTH B";
   gfx.setTextColor(palette.voice(voice_index_));
   gfx.drawText(x, headerY, synthName);
-  const uint8_t routeChannel = voice_index_ == 0 ? GroovePuterMidi::kSynthAChannel : GroovePuterMidi::kSynthBChannel;
+  const auto& profileRuntime = GroovePuterMidi::midiDeviceProfileRuntime();
+  const GroovePuterMidi::MidiPerformanceRouteProjection routeProjection =
+      GroovePuterMidi::projectMidiPerformanceRoutes(profileRuntime.settings());
+  const GroovePuterMidi::MidiDeviceProfile profile = profileRuntime.profile();
+  const GroovePuterMidi::MidiMelodicWireRoute& profileRoute = voice_index_ == 0
+      ? routeProjection.synthA : routeProjection.synthB;
+  uint8_t routeChannel = profileRoute.channel;
+  if (!routeProjection.complete) {
+    // Custom has no persisted Performance target table. Cardputer's current
+    // UsbMidiOutput fallback still uses these established channels.
+    routeChannel = voice_index_ == 0 ? GroovePuterMidi::kSynthAChannel
+                                     : GroovePuterMidi::kSynthBChannel;
+  }
+  const char* profileLabel = "CUSTOM";
+  switch (profile) {
+    case GroovePuterMidi::MidiDeviceProfile::SeqtrakNative:
+      profileLabel = "SEQTRAK";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::GeneralMidi:
+      profileLabel = "GM";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::GenericMidi:
+      profileLabel = "GENERIC";
+      break;
+    case GroovePuterMidi::MidiDeviceProfile::Custom:
+      break;
+  }
   char route[24]{};
-  std::snprintf(route, sizeof(route), "SEQTRAK CH%02d", routeChannel + 1);
+  std::snprintf(route, sizeof(route), "%s CH%02u", profileLabel,
+                static_cast<unsigned>(routeChannel + 1u));
   gfx.setTextColor(palette.secondary);
   gfx.drawText(x + gfx.textWidth(synthName) + 10, headerY, route);
   gfx.fillRect(x, content.y + 13, width, 1, palette.grid);
@@ -164,7 +229,10 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   if (popup_.isOpen()) {
     const char* names[GroovePuterMidi::kControllerCount];
-    for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) names[i] = GroovePuterMidi::kControllers[i].name;
+    int count = 0;
+    for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) {
+      if (controllerOffered(i)) names[count++] = GroovePuterMidi::kControllers[i].name;
+    }
     popup_.draw(gfx, names);
   }
 }
@@ -173,7 +241,7 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
   if (popup_.isOpen()) {
     const auto result = popup_.handleEvent(ui_event);
     if (result == UI::SelectionPopupResult::Confirmed) {
-      selectController(static_cast<uint8_t>(popup_.selectedIndex()));
+      selectController(static_cast<uint8_t>(offeredIndex(popup_.selectedIndex())));
     }
     return true;
   }
@@ -211,9 +279,10 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.ctrl && !ui_event.alt && !ui_event.meta && (key == 'a' || key == 'A')) {
     if (focus_ == 0) {
       const uint8_t controller = GroovePuterMidi::gCutoffControl[voice_index_].controller();
-      requested_ = kStandardValue;
+      const int neutral = neutralFor(controller);
+      requested_ = neutral;
       GroovePuterMidi::gCutoffControl[voice_index_].request(Request::kManual,
-          static_cast<uint8_t>(kStandardValue), controller);
+          static_cast<uint8_t>(neutral), controller);
       return true;
     }
     if (focus_ == 2) {
@@ -227,7 +296,8 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
 
 void SynthMidiPage::openControllerList() {
   const uint8_t current = GroovePuterMidi::gCutoffControl[voice_index_].controller();
-  popup_.open("CONTROLLER", GroovePuterMidi::kControllerCount, current < GroovePuterMidi::kControllerCount ? current : 0);
+  popup_.open("CONTROLLER", offeredCount(),
+              controllerOffered(current) ? offeredPosition(current) : 0);
 }
 
 void SynthMidiPage::selectController(uint8_t index) {
@@ -256,7 +326,7 @@ void SynthMidiPage::adjust(int direction, bool fine) {
     // dispatcher publishes once per pass, so two quick presses would otherwise step
     // from the same base and add only one step.
     const int base = requested_ >= 0 ? requested_
-                   : channel.known() ? channel.value() : kStandardValue;
+                   : channel.known() ? channel.value() : neutralFor(channel.controller());
     int next = base + direction * step;
     next = next < 0 ? 0 : next > 127 ? 127 : next;
     // Clamp as the dispatcher will (PAN starts at 1), or the published value never

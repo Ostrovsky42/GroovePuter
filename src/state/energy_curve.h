@@ -59,32 +59,66 @@ struct Curve {
   uint8_t count = 0;
 };
 
-enum class Preset : uint8_t { Build = 0, Drop, Wave, Count };
+inline bool validCurve(const Curve& curve) {
+  if (curve.count > kMaxSections) return false;
+  for (uint8_t i = 0; i < curve.count; ++i) {
+    const Section& section = curve.sections[i];
+    if ((section.bars != 4 && section.bars != 8) ||
+        section.energy > kMaxEnergy) {
+      return false;
+    }
+  }
+  return true;
+}
+
+// Transient FORM starting points. These names describe musical functions;
+// materialization still produces ordinary, unlabeled Song rows.
+enum class Preset : uint8_t {
+  Build = 0, Drop, Wave, Intro, Main, Development, Break, Outro, Count
+};
 
 inline const char* presetName(Preset preset) {
   switch (preset) {
     case Preset::Build: return "BUILD";
     case Preset::Drop: return "DROP";
     case Preset::Wave: return "WAVE";
+    case Preset::Intro: return "INTRO";
+    case Preset::Main: return "MAIN";
+    case Preset::Development: return "DEVELOPMENT";
+    case Preset::Break: return "BREAK";
+    case Preset::Outro: return "OUTRO";
+    case Preset::Count: break;
     default: return "?";
   }
+  return "?";
 }
 
 inline Curve presetCurve(Preset preset) {
   static constexpr uint8_t kBuild[] = {1, 2, 3, 4, 4};
   static constexpr uint8_t kDrop[] = {2, 3, 4, 1, 4};
   static constexpr uint8_t kWave[] = {2, 4, 2, 4};
-  const uint8_t* levels = kBuild;
-  uint8_t count = sizeof(kBuild);
-  if (preset == Preset::Drop) {
-    levels = kDrop;
-    count = sizeof(kDrop);
-  } else if (preset == Preset::Wave) {
-    levels = kWave;
-    count = sizeof(kWave);
+  static constexpr uint8_t kIntro[] = {1, 2, 3};
+  static constexpr uint8_t kMain[] = {4, 4};
+  static constexpr uint8_t kDevelopment[] = {2, 6, 5, 4};
+  static constexpr uint8_t kBreak[] = {4, 5, 0, 2};
+  static constexpr uint8_t kOutro[] = {4, 3, 2, 1};
+  const uint8_t* levels = kWave;
+  uint8_t count = sizeof(kWave);
+  uint8_t bars = 4;
+  switch (preset) {
+    case Preset::Build: levels = kBuild; count = sizeof(kBuild); break;
+    case Preset::Drop: levels = kDrop; count = sizeof(kDrop); break;
+    case Preset::Wave: break;
+    case Preset::Intro: levels = kIntro; count = sizeof(kIntro); break;
+    case Preset::Main: levels = kMain; count = sizeof(kMain); bars = 8; break;
+    case Preset::Development:
+      levels = kDevelopment; count = sizeof(kDevelopment); break;
+    case Preset::Break: levels = kBreak; count = sizeof(kBreak); break;
+    case Preset::Outro: levels = kOutro; count = sizeof(kOutro); break;
+    case Preset::Count: break;
   }
   Curve curve{};
-  for (uint8_t i = 0; i < count; ++i) curve.sections[i] = Section{4, levels[i]};
+  for (uint8_t i = 0; i < count; ++i) curve.sections[i] = Section{bars, levels[i]};
   curve.count = count;
   return curve;
 }
@@ -178,16 +212,24 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
                     int insertAt) {
   using GroovePuterUndo::SongEdit::insertRow;
   using GroovePuterUndo::SongEdit::setPattern;
+  using GroovePuterUndo::SongEdit::setStepsOverride;
   if (curve.count == 0) return Status::NoSections;
+  if (!validCurve(curve)) return Status::BadRange;
   const int length = song.length < 1 ? 1 : song.length;
   if (sourceCount < 1 || sourceCount > kMaxSourceRows || sourceFirst < 0 ||
       sourceFirst + sourceCount > length || insertAt < 0 || insertAt > length) {
     return Status::BadRange;
   }
   SongPosition source[kMaxSourceRows]{};
+  bool sourceStepsOverride[kMaxSourceRows][2]{};
   bool any = false;
   for (int i = 0; i < sourceCount; ++i) {
-    source[i] = song.positions[sourceFirst + i];
+    const int sourceRow = sourceFirst + i;
+    source[i] = song.positions[sourceRow];
+    for (int voice = 0; voice < 2; ++voice) {
+      sourceStepsOverride[i][voice] =
+          song.stepsOverrideAt(voice, sourceRow);
+    }
     for (int t = 0; t < SongPosition::kTrackCount; ++t) {
       if (source[i].patterns[t] >= 0) any = true;
     }
@@ -206,7 +248,8 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
       // (an 8-row TAKE over two 4-bar sections: rows 0..3, then 4..7). A source no
       // longer than the section repeats from its first row, as before.
       const uint16_t sourceBar = sourceCount > section.bars ? inserted : bar;
-      const SongPosition& from = source[sourceBar % sourceCount];
+      const uint16_t sourceIndex = sourceBar % sourceCount;
+      const SongPosition& from = source[sourceIndex];
       Voices v = voicesFor(section.energy, bar);
       const bool lastBar = bar + 1 == section.bars;
       if (lastBar && s + 1 < curve.count) {
@@ -227,6 +270,10 @@ inline Status apply(Song& song, const Curve& curve, int sourceFirst, int sourceC
       const auto put = [&](SongTrack track, bool on) {
         const int ti = GroovePuterUndo::SongEdit::trackIndex(track);
         setPattern(song, row, track, on ? from.patterns[ti] : -1);
+        if (ti >= 0 && ti < 2 && on && from.patterns[ti] >= 0) {
+          setStepsOverride(song, row, track,
+                           sourceStepsOverride[sourceIndex][ti]);
+        }
       };
       put(SongTrack::Drums, v.drums);
       put(SongTrack::SynthA, v.bass);

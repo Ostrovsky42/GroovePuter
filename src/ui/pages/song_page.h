@@ -174,6 +174,9 @@ class SongPage : public IPage, public IMultiHelpFramesProvider {
   bool form_view_ = false;
   EnergyCurve::Curve form_curve_ = EnergyCurve::presetCurve(EnergyCurve::Preset::Wave);
   uint8_t form_section_ = 0;
+  EnergyCurve::Preset form_preset_ = EnergyCurve::Preset::Wave;
+  bool form_is_genre_ = false;
+  bool form_is_custom_ = false;
   // H6: the genre (GenerativeMode value) the curve belongs to; -1 until a form is loaded.
   int form_genre_ = -1;
   bool handleFormEvent(UIEvent& ui_event);

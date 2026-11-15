@@ -99,9 +99,9 @@ assert "GEN is the optional middle page" not in readme
 assert "GEN is the optional middle" in readme
 assert "two workflow pages" in readme
 
-assert quickstart_path.exists(), "0.9.19 user quick start is missing"
+assert quickstart_path.exists(), "user quick start is missing"
 quickstart = quickstart_path.read_text()
-assert quickstart.startswith("# GroovePuter 0.9.22 (unreleased) — First Five Minutes")
+assert quickstart.startswith("# GroovePuter — First Five Minutes")
 for action in ("Space", "Fn+M", "G", "D", "Ctrl+Z", "Alt+H"):
     assert action in quickstart, action
 for internal_term in ("provenance", "lineage", "MaterialVersion", "ReferenceRole"):
@@ -112,13 +112,13 @@ assert "middle **GEN** panel" in quickstart
 assert "You do not need this panel for" in quickstart
 
 assert "../user/QUICKSTART.md" in docs_index or "user/QUICKSTART.md" in docs_index
-assert "0.9.19 First Five Minutes" in docs_index
-assert "current 0.9.19 user workflow manual" in docs_index
-assert "tagged source baseline" in docs_index
+assert "first-session guide for the internal `.33–.35` line" in docs_index
+assert "current internal-line user workflow manual" in docs_index
+assert "latest packaged GitHub Release is **v0.9.19**" in docs_index
 assert "latest packaged GitHub Release" in docs_index
 assert "older 0.9.1-era manual" not in docs_index
 
-assert manual.startswith("# GroovePuter 0.9.22 (unreleased) Manual")
+assert manual.startswith("# GroovePuter Manual — Internal 0.9.33–0.9.35 Development Line")
 assert "docs/user/QUICKSTART.md" in manual
 assert "GENERATE: GENRE -> FEEL" in manual
 assert "GEN is the optional local generation-target panel inside GENRE" in manual
@@ -161,7 +161,7 @@ assert "| `Alt+Backspace` | Discard working edits to accepted material |" in key
 assert "`Alt+X` is reserved globally for LiveMix" in keys
 
 # Canonical key map: current version plus beginner constitution and full expert reference.
-assert keys.startswith("# GroovePuter 0.9.22 (unreleased) Key Map")
+assert keys.startswith("# GroovePuter Key Map — Cardputer ADV")
 assert "## First Five Minutes" in keys
 for expected in (
     "`Space`",

@@ -92,6 +92,11 @@ SOURCES := \
 	../src/generation/migration/phrase_execution.cpp \
 	../src/input/performance_keyboard.cpp \
 	../src/input/internal_synth_output.cpp \
+	../src/midi/midi_companion_settings.cpp \
+	../src/midi/smf_export_writer.cpp \
+	../src/midi/smf_stream.cpp \
+	../src/midi/midi_song_export.cpp \
+	../src/midi/midi_song_export_file.cpp \
 	../src/ui/miniacid_display.cpp \
 	../src/ui/global_midi_sync_overlay.cpp \
 	../src/ui/cassette_skin.cpp \
@@ -107,6 +112,7 @@ SOURCES := \
 	../src/platform/cardputer_material_publication_session.cpp \
 	../src/platform/cardputer_usb_role_runtime.cpp \
 	../src/platform/cardputer_usb_host_midi.cpp \
+	../src/platform/cardputer_midi_song_export.cpp \
 	../src/ui/pages/help_page.cpp \
 	../src/ui/pages/help_dialog.cpp \
 	../src/ui/pages/tb303_params_page.cpp \

@@ -21,6 +21,7 @@ struct MidiPerformanceRouteProjection {
     MidiMelodicWireRoute dx{};
     std::array<DrumMidiRoute, kPerformanceDrumLaneCount> drums{};
     MidiReceiverModeControl receiverModeControl{MidiReceiverModeControl::None};
+    bool vendorSpecificControls{false};   // Yamaha-only CCs (EQ) are allowed
 };
 
 inline MidiPerformanceRouteProjection projectMidiPerformanceRoutes(
@@ -32,6 +33,7 @@ inline MidiPerformanceRouteProjection projectMidiPerformanceRoutes(
     const MidiDeviceCapabilities capabilities =
         midiDeviceCapabilitiesForProfile(settings.profile);
     projection.receiverModeControl = capabilities.receiverModeControl;
+    projection.vendorSpecificControls = capabilities.vendorSpecificControls;
     projection.enabled = settings.enabled && settings.liveEnabled;
 
     // The persisted model still has no full user-defined Performance target

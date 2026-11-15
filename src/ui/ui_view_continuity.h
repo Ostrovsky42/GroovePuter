@@ -12,8 +12,8 @@ struct UiViewContinuityState {
   uint8_t synthTab[2]{0, 0};
   uint8_t phraseCursorCell[2]{0, 0};
   uint8_t phraseGrid[2]{1, 1};
-  // PERFORM tools layer: visible flag and tab share one byte (the [LOOP] tab
-  // made it six tabs and six per-tab rows; the struct stays 16 bytes).
+  // PERFORM tools layer: visible flag and tab share one byte. The Macro tab is
+  // the seventh context; its row cursor resets on restore to preserve 16 bytes.
   // Bit-fields cannot have default member initialisers before C++20: they
   // zero-initialise with `UiViewContinuityState{}`, which every owner uses.
   uint8_t performToolsVisible : 1;
@@ -27,7 +27,7 @@ struct UiViewContinuityState {
 static_assert(sizeof(UiViewContinuityState) <= 16,
               "runtime UI view continuity must remain tiny");
 static_assert(sizeof(UiViewContinuityState) == 16,
-              "the [LOOP] tab packs its state into the existing 16 bytes");
+              "the Performance tabs fit in the existing 16 bytes");
 
 }  // namespace UI
 

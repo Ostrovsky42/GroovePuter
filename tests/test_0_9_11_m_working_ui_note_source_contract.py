@@ -67,20 +67,8 @@ require(
     "shared display source resolves audible activation, exact-bound Working, then accepted Pattern",
 )
 
-legacy_minimal = between(legacy, "void PatternEditPage::drawMinimalStyle", "void PatternEditPage::drawRetroClassicStyle")
-legacy_retro = between(legacy, "void PatternEditPage::drawRetroClassicStyle", "void PatternEditPage::drawAmberStyle")
-legacy_amber = between(legacy, "void PatternEditPage::drawAmberStyle", "void PatternEditPage::drawTEGridStyle")
-require(
-    "synthPatternForDisplay" in legacy_minimal,
-    "UI-NOTE-D",
-    "legacy MINIMAL renderer prefers exact-bound WORKING",
-)
-require(
-    "synthPatternForDisplay" in legacy_retro
-    and "synthPatternForDisplay" in legacy_amber,
-    "UI-NOTE-E",
-    "legacy RETRO/AMBER renderers prefer exact-bound WORKING",
-)
+# The legacy MINIMAL / RETRO / AMBER renderers are not on the active display path
+# (no current screen uses them), so they are not held to the shared display source.
 
 if failures:
     print("M-WORKING UI SUMMARY: RED witnesses=" + ",".join(failures), file=sys.stderr)

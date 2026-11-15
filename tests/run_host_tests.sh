@@ -22,6 +22,11 @@ python3 "${ROOT_DIR}/tests/test_scene_revision_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_sampler_page_navigation_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_ui_session_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_midi_file_manager_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_midi_song_export_ui_source_regressions.py"
+python3 "${ROOT_DIR}/tests/test_parse_smf_export_file_parser.py"
+python3 "${ROOT_DIR}/tests/test_hardware_candidate_packaging.py"
+python3 "${ROOT_DIR}/tests/test_build_identity.py"
+python3 "${ROOT_DIR}/tests/test_release_version_resolution.py"
 python3 "${ROOT_DIR}/tests/test_performance_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_perform_t13_source_regressions.py"
 python3 "${ROOT_DIR}/tests/test_wavemorph_performance_source_regressions.py"
@@ -50,7 +55,7 @@ python3 "${ROOT_DIR}/tests/test_midi_probe.py"
 
 "${BUILD_DIR}/test_genre_defaults"
 
-# H2: Acid, Techno and UK garage variants alternate with the G press.
+# H2: Acid and Techno variants alternate with the G press; UK garage stays salt-selected.
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -553,6 +558,10 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
 
 "${BUILD_DIR}/test_midi_companion_settings"
 
+bash "${ROOT_DIR}/tests/run_midi_output_destination_tests.sh"
+bash "${ROOT_DIR}/tests/run_midi_device_profile_ui_0_9_7_tests.sh"
+bash "${ROOT_DIR}/tests/run_performance_macro_engine_tests.sh"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
@@ -564,6 +573,19 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -o "${BUILD_DIR}/test_usb_midi_output"
 
 "${BUILD_DIR}/test_usb_midi_output"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_usb_midi_disconnect_cleanup.cpp" \
+  "${ROOT_DIR}/src/midi/usb_midi_output.cpp" \
+  "${ROOT_DIR}/src/midi/midi_companion_settings.cpp" \
+  -o "${BUILD_DIR}/test_usb_midi_disconnect_cleanup"
+
+"${BUILD_DIR}/test_usb_midi_disconnect_cleanup"
 
 "${CXX}" \
   -std=c++17 \
@@ -610,6 +632,16 @@ bash "${ROOT_DIR}/tests/run_drum_ctrl_backspace_tests.sh"
   -o "${BUILD_DIR}/test_usb_midi_cutoff"
 
 "${BUILD_DIR}/test_usb_midi_cutoff"
+
+g++ -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_effect_layers.cpp" \
+  -o "${BUILD_DIR}/test_effect_layers"
+
+"${BUILD_DIR}/test_effect_layers"
 
 "${CXX}" \
   -std=c++17 \
@@ -780,6 +812,57 @@ echo "Tee MIDI transport: OK"
   -o "${BUILD_DIR}/test_midi_file_name_policy"
 
 "${BUILD_DIR}/test_midi_file_name_policy"
+
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  -o "${BUILD_DIR}/test_smf_export_writer"
+
+"${BUILD_DIR}/test_smf_export_writer" "${BUILD_DIR}/smf_export_fixture.mid"
+python3 "${ROOT_DIR}/tests/parse_smf_export_fixture.py" \
+  "${BUILD_DIR}/smf_export_fixture.mid"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_document.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  -o "${BUILD_DIR}/test_midi_song_export"
+
+"${BUILD_DIR}/test_midi_song_export"
+
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -Wno-c++20-extensions \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_midi_song_export_file.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export_file.cpp" \
+  "${ROOT_DIR}/src/midi/midi_song_export.cpp" \
+  "${ROOT_DIR}/src/midi/smf_export_writer.cpp" \
+  "${ROOT_DIR}/src/midi/smf_stream.cpp" \
+  "${ROOT_DIR}/src/phrase/runtime_synth_events.cpp" \
+  -o "${BUILD_DIR}/test_midi_song_export_file"
+
+"${BUILD_DIR}/test_midi_song_export_file" \
+  "${BUILD_DIR}/smf_song_export_fixture.mid"
+python3 "${ROOT_DIR}/tests/parse_smf_export_file.py" \
+  "${BUILD_DIR}/smf_song_export_fixture.mid" --expect-file-fixture
 
 
 "${CXX}" \

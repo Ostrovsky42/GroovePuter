@@ -470,23 +470,37 @@ void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
     gfx.drawText(b.x + 3, b.y + 21, ">");
     gfx.drawText(b.x + 12, b.y + 21, descriptor.name);
     gfx.setTextColor(COLOR_MUTED);
-    if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(neighbor(1)), adjacent))
+    const int nextIndex = neighbor(1);
+    if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(nextIndex), adjacent)) {
       gfx.drawText(b.x + 12, b.y + 31, adjacent.name);
+      // The fourth line: the rhythm after the next one, in the same group.
+      const int count = RhythmBrowser::count();
+      int after = nextIndex;
+      for (int n = 0; n < count; ++n) {
+        after = (after + 1) % count;
+        RhythmBrowser::Descriptor item{};
+        if (RhythmBrowser::descriptorAt(static_cast<uint8_t>(after), item) &&
+            RhythmBrowser::matchesGroup(item, static_cast<RhythmBrowser::Group>(browserGroup_))) {
+          if (after != browserIndex_) gfx.drawText(b.x + 12, b.y + 41, item.name);
+          break;
+        }
+      }
+    }
     // VAR, not P: P is the STYLE level elsewhere on DRUMS.
     char info[40];
     if (descriptor.bpmMin && descriptor.bpmMax > descriptor.bpmMin)
-      std::snprintf(info, sizeof(info), "VAR %u/%u  %u-%u BPM",
+      std::snprintf(info, sizeof(info), "VAR %u/%u %u-%u",
                     unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount),
                     unsigned(descriptor.bpmMin), unsigned(descriptor.bpmMax));
     else if (descriptor.bpmMin)
-      std::snprintf(info, sizeof(info), "VAR %u/%u  %u BPM",
+      std::snprintf(info, sizeof(info), "VAR %u/%u %u",
                     unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount),
                     unsigned(descriptor.bpmMin));
     else
       std::snprintf(info, sizeof(info), "VAR %u/%u",
                     unsigned(browserVariant_ + 1), unsigned(descriptor.variantCount));
     gfx.setTextColor(COLOR_TEXT);
-    gfx.drawText(b.x + 3, b.y + 41, info);
+    gfx.drawText(b.x + 125, b.y + 1, info);   // on the title line: frees y+41 for a rhythm
   }
   bool actualSolo = false;
   bool pending = browserPending_;
@@ -536,7 +550,7 @@ void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
   std::snprintf(apply, sizeof(apply), "ENTER: ALL 8 VOICES -> DRUMS %c%d",
                 bank == 1 ? 'B' : 'A', slot + 1);
   gfx.setTextColor(COLOR_ACCENT);
-  gfx.drawText(b.x + 3, b.y + 81, apply);
+  gfx.drawText(b.x + 3, b.y + 71, apply);   // no blank line above it
   const char* info = browserSession_ ? "1-0 MUTE  M SOLO" : "TAB HEAR  G GROUP";
   char infoText[24];
   std::snprintf(infoText, sizeof(infoText), "%s%s",

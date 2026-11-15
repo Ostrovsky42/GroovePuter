@@ -130,18 +130,28 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
   }
   if (UIInput::isUp(ui_event)) {
     const uint8_t rank = EnergyCurve::energyRank(section.energy);
-    if (rank + 1 < EnergyCurve::kEnergyLevels) section.energy = EnergyCurve::energyAtRank(rank + 1);
+    if (rank + 1 < EnergyCurve::kEnergyLevels) {
+      section.energy = EnergyCurve::energyAtRank(rank + 1);
+      form_is_genre_ = false;
+      form_is_custom_ = true;
+    }
     return true;
   }
   if (UIInput::isDown(ui_event)) {
     const uint8_t rank = EnergyCurve::energyRank(section.energy);
-    if (rank > 0) section.energy = EnergyCurve::energyAtRank(rank - 1);
+    if (rank > 0) {
+      section.energy = EnergyCurve::energyAtRank(rank - 1);
+      form_is_genre_ = false;
+      form_is_custom_ = true;
+    }
     return true;
   }
   const char key = static_cast<char>(
       std::tolower(static_cast<unsigned char>(ui_event.key)));
   if (key == '\n' || key == '\r') {
     section.bars = section.bars == 4 ? 8 : 4;
+    form_is_genre_ = false;
+    form_is_custom_ = true;
     return true;
   }
   if (key == 'n') {  // a new section after this one, same energy and length
@@ -153,6 +163,8 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
     curve.sections[form_section_ + 1] = section;
     ++curve.count;
     ++form_section_;
+    form_is_genre_ = false;
+    form_is_custom_ = true;
     return true;
   }
   if (key == '\b' || key == 0x7F) {
@@ -160,12 +172,17 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
     for (int i = form_section_; i + 1 < curve.count; ++i) curve.sections[i] = curve.sections[i + 1];
     --curve.count;
     if (form_section_ >= curve.count) form_section_ = curve.count - 1;
+    form_is_genre_ = false;
+    form_is_custom_ = true;
     return true;
   }
-  if (key >= '1' && key <= '3') {
+  if (key >= '1' && key <= '8') {
     const auto preset = static_cast<EnergyCurve::Preset>(key - '1');
     curve = EnergyCurve::presetCurve(preset);
     form_section_ = 0;
+    form_preset_ = preset;
+    form_is_genre_ = false;
+    form_is_custom_ = false;
     showToast(EnergyCurve::presetName(preset), 600);
     return true;
   }
@@ -183,6 +200,18 @@ bool SongPage::handleFormEvent(UIEvent& ui_event) {
 
 void SongPage::drawForm(IGfx& gfx) {
   UI::drawStandardHeader(gfx, mini_acid_, "SONG FORM");
+  char formLabel[16];
+  const char* label = form_is_custom_ ? "CUSTOM" : "WAVE";
+  if (form_is_genre_) {
+    const auto mode = static_cast<GenerativeMode>(form_genre_);
+    const char* genre = GenreManager::generativeModeName(mode);
+    label = genre ? genre : "GENRE";
+  } else if (!form_is_custom_) {
+    label = EnergyCurve::presetName(form_preset_);
+  }
+  std::snprintf(formLabel, sizeof(formLabel), "%.15s", label);
+  for (char* c = formLabel; *c; ++c)
+    *c = static_cast<char>(std::toupper(static_cast<unsigned char>(*c)));
   LayoutManager::clearContent(gfx);
   const auto palette = UI::themePalette();
   const EnergyCurve::Curve& curve = form_curve_;
@@ -195,11 +224,12 @@ void SongPage::drawForm(IGfx& gfx) {
   bool anySource = false;
   for (int r = first; r < first + count; ++r) anySource = anySource || formRowHasMaterial(song, r);
   if (anySource) {
-    std::snprintf(line, sizeof(line), "SRC %d-%d  INSERT AT %d  %u BARS",
-                  first + 1, first + count, first + count + 1,
+    std::snprintf(line, sizeof(line), "%s  SRC %d-%d >%d  %uB",
+                  formLabel, first + 1, first + count, first + count + 1,
                   static_cast<unsigned>(EnergyCurve::totalBars(curve)));
   } else {
-    std::snprintf(line, sizeof(line), "SRC --  T MAKES A %uB TAKE HERE",
+    std::snprintf(line, sizeof(line), "%s  SRC --  T:TAKE %uB HERE",
+                  formLabel,
                   static_cast<unsigned>(GroovePuterState::requestedPhraseBars()));
   }
   gfx.setTextColor(anySource ? palette.secondary : palette.warning);
@@ -255,5 +285,5 @@ void SongPage::drawForm(IGfx& gfx) {
   gfx.drawText(Layout::COL_1, LayoutManager::lineY(7), line);
 
   UI::drawStandardFooter(gfx, "[UD]ENERGY [LR]SECT G:INSERT",
-                         "T:TAKE P:STYLE 1-3 N BS F:GRID");
+                         "T:TAKE P:STYLE 1-8 N BS F:GRID");
 }

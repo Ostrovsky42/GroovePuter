@@ -2,12 +2,18 @@
 #include "freertos/task.h"
 #include "esp_heap_caps.h"
 #include <M5Cardputer.h>
+#include "src/ui/imu_probe.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#include "src/input/tilt_settings_file.h"
+#endif
 #include <SD.h>
 #include <SPI.h>
 #include "esp_system.h"
 #include "esp_rom_sys.h"
 #include "esp_heap_caps.h"
 #include "esp_psram.h"
+#include "src/build_identity_generated.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/diag/melody_pending_census.h"
 #include "cardputer_display.h"
@@ -504,6 +510,10 @@ void setup() {
   AudioDiagnostics::instance().enable(false);
   delay(500);
   Serial.println("\n\n!! BOOTING !!");
+  Serial.printf("[BUILD] version=%s commit=%s tree=%s\n",
+                GroovePuterBuild::kVersion,
+                GroovePuterBuild::kSourceCommit,
+                GroovePuterBuild::kSourceDirty ? "dirty" : "clean");
   uint32_t prevBootStage = g_bootStage;
   Serial.printf("[BOOT] Previous stage retained: %u\n", (unsigned)prevBootStage);
   markBootStage(1, "setup-entry");
@@ -1169,6 +1179,80 @@ void loop() {
   // Diagnostic only; compiles to (void)0 unless GROOVEPUTER_MELODY_CENSUS is set.
   MELODY_CENSUS_TICK(g_miniAcid && g_miniAcid->isPlaying());
   M5Cardputer.update();
+#ifdef GROOVEPUTER_IMU_PROBE
+  {
+    static uint32_t lastImuMs = 0;
+    const uint32_t imuNow = millis();
+    if (imuNow - lastImuMs >= 20) {
+      lastImuMs = imuNow;
+      const uint32_t t0 = micros();
+      ImuProbe::enabled = M5.Imu.isEnabled();
+      if (ImuProbe::enabled) {
+        if (M5.Imu.update()) {
+          const auto& d = M5.Imu.getImuData();
+          ImuProbe::ax10 = static_cast<int16_t>(d.accel.x * 10.0f + (d.accel.x < 0 ? -0.5f : 0.5f));
+          ImuProbe::ay10 = static_cast<int16_t>(d.accel.y * 10.0f + (d.accel.y < 0 ? -0.5f : 0.5f));
+          ImuProbe::az10 = static_cast<int16_t>(d.accel.z * 10.0f + (d.accel.z < 0 ? -0.5f : 0.5f));
+          ++ImuProbe::winCount;
+        }
+        if (imuNow - ImuProbe::winStartMs >= 1000) {
+          ImuProbe::fps = ImuProbe::winCount;
+          ImuProbe::winCount = 0;
+          ImuProbe::winStartMs = imuNow;
+        }
+      }
+      const uint32_t cost = micros() - t0;
+      ImuProbe::lastCostUs = cost > 65535u ? 65535u : static_cast<uint16_t>(cost);
+      if (ImuProbe::lastCostUs > ImuProbe::peakCostUs) ImuProbe::peakCostUs = ImuProbe::lastCostUs;
+    }
+  }
+#endif
+#ifdef GROOVEPUTER_TILT
+  {
+    // Tilt to CC offset. Global on/off: the apostrophe key toggles it on any page,
+    // it stays on across page changes, and the sensor is read only while it is on.
+    // The mode is always off after boot.
+    using namespace GroovePuterTilt;
+    const uint32_t tiltNow = millis();
+    {
+      // Shared settings: read the SD file once, a little after boot; write on request.
+      if (gSaveRequested) {
+        gSaveRequested = false;
+        GroovePuterTilt::saveSettingsFile();
+      }
+    }
+    if (gZeroRequested) {
+      gZeroRequested = false;
+      if (gController.enabled()) gController.recalibrate();
+    }
+    if (gToggleRequested) {
+      // First switch-on of this session: read the shared settings (mounts the card once).
+      static bool settingsLoaded = false;
+      if (!settingsLoaded) {
+        settingsLoaded = true;
+        GroovePuterTilt::loadSettingsFile();
+      }
+      gToggleRequested = false;
+      if (gController.enabled()) {
+        gController.disable();
+        UI::showToast("TILT OFF", 700);
+      } else if (M5.Imu.isEnabled()) {
+        gController.enable(tiltNow);
+        UI::showToast("TILT ON: ZERO = THIS POSE", 900);
+      } else {
+        UI::showToast("TILT: NO IMU", 900);
+      }
+    }
+    if (gController.due(tiltNow) && M5.Imu.update()) {
+      const auto& d = M5.Imu.getImuData();
+      if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow, d.gyro.z)) {
+        UI::showToast("TILT OFF: NOT STEADY", 900);
+      }
+    }
+    const uint32_t tiltWord = gController.word();
+    if (tiltWord != gWord.loadRelaxed()) gWord.storeRelease(tiltWord);
+  }
+#endif
   GroovePuterPlatform::serviceCardputerPerformanceConfig(
       g_performanceKeyboard, millis());
   LedManager::instance().update();
@@ -1464,6 +1548,11 @@ void loop() {
         g_miniAcid->adjustParameter(MiniAcidParamId::MainVolume, 3);
         needsDraw = true;
       } else if (c == ';' || c == '\'') {
+#ifdef GROOVEPUTER_TILT
+        // Global tilt toggle: only reached when the page did not take the key, so
+        // text entry on any page still types an apostrophe.
+        if (c == '\'') GroovePuterTilt::gToggleRequested = true;
+#endif
         needsDraw = true;
       } else if (c == ' ') {
         if (GroovePuterMidi::externalClockOwnsTransport()) {
@@ -1796,6 +1885,13 @@ void loop() {
          for (uint32_t i = 0; i < 64u; ++i) g_blockHist[i] = 0;
          g_blockHistMaxUs = 0;
        }
+#endif
+#ifdef GROOVEPUTER_IMU_PROBE
+       Serial.printf("[IMU] en=%d fps=%u cost=%uus peak=%uus a=%d/%d/%d (x0.1g)\n",
+           (int)ImuProbe::enabled, (unsigned)ImuProbe::fps,
+           (unsigned)ImuProbe::lastCostUs, (unsigned)ImuProbe::peakCostUs,
+           (int)ImuProbe::ax10, (int)ImuProbe::ay10, (int)ImuProbe::az10);
+       ImuProbe::peakCostUs = 0;
 #endif
        g_peakUiDrawUs = g_lastUiDrawUs;
     }

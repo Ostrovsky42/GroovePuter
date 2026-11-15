@@ -1,6 +1,6 @@
-# GroovePuter 0.9.22 (unreleased) — First Five Minutes
+# GroovePuter — First Five Minutes
 
-This page describes the 0.9.21 (unreleased) release candidate; it is not a published or hardware-accepted release. Use it for a first session on a M5Stack Cardputer ADV. The goal is simple:
+This guide follows the internal 0.9.33–0.9.35 development line. It is not a published release or a claim of hardware acceptance. Use it for a first session on an M5Stack Cardputer ADV. The goal is simple:
 hear a groove, make a take, develop it, recover from a bad choice, and know where to
 ask for help without learning GroovePuter's internal architecture first.
 
@@ -79,11 +79,15 @@ arrangement return, then make and save one more edit to prove the session can co
 
 ## Export and sharing
 
-The candidate does not expose a documented user-facing WAV or MIDI file export
-workflow for a GroovePuter composition. The MIDI Player imports and plays MIDI files;
-it does not export the current Song. To record external MIDI, route GroovePuter to a
-MIDI-capable DAW or instrument and use that device's recording workflow. This is a
-known productization gap, not a claim that project Save exports a shareable file.
+Stop playback, open **PROJECT → SCENES**, select **Export MIDI**, and press `Enter`.
+GroovePuter writes the selected committed Song to the SD card's `/midi` folder as a
+Standard MIDI File. If a file with that name exists, export chooses a new name.
+
+The file contains tempo and separate Synth A, Synth B and Drums tracks. Temporary
+Performance macros are not included. Conditional/probability steps are exported as
+always-on notes and marked in the file. Voice audio, drum effects and internal drum
+automation are not rendered to MIDI. Keep the GroovePuter project as the editable
+source of truth; use the MIDI file to continue in a DAW or another instrument.
 
 ## The one rule worth remembering
 
@@ -99,4 +103,6 @@ For any page, press `Alt+H` before opening the full manual.
 
 - [`../../MANUAL.md`](../../MANUAL.md) — complete user workflow manual.
 - [`../../src/ui/docs/keys.md`](../../src/ui/docs/keys.md) — complete Cardputer ADV key map.
+- [`MIDI_SETUP.md`](MIDI_SETUP.md) — routing profiles, MIDI export and verified limits.
+- [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) — common export and routing errors.
 - [`../README.md`](../README.md) — documentation index and release evidence.

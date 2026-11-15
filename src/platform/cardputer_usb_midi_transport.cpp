@@ -19,6 +19,7 @@
 #include "src/input/musical_event_queue.h"
 #include "src/input/musical_event_router.h"
 #include "src/midi/midi_companion_settings.h"
+#include "src/midi/midi_device_profile_runtime.h"
 #include "src/midi/midi_control_event_queue.h"
 #include "src/midi/midi_input_dispatcher.h"
 #include "src/midi/midi_input_parser.h"
@@ -43,6 +44,11 @@
 #include "src/midi/usb_endpoint_health.h"
 #include "src/midi/transport_clock_runtime.h"
 #include "src/midi/usb_midi_realtime_parser.h"
+#include "src/midi/effect_layers.h"
+#include "src/performance/performance_macro_cc.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 
 #if ARDUINO_USB_MODE
 #error "USB MIDI requires Cardputer USBMode=default (USB-OTG/TinyUSB)"
@@ -1024,14 +1030,16 @@ void applyCardputerDinEnableRequest();
 void serviceCutoffAutomation();
 
 void midiDispatchTask(void*) {
-    // Enabled at start-up for the first hardware slice: there is no UI toggle
-    // yet, so this is the only way the DIN wire can be heard. Note that with
-    // DIN on, mounted() is true even with no USB host, so SMF no longer parks
-    // in USB WAIT when nothing is listening on USB.
+    // Keep the DIN secondary available, but apply the persisted external MIDI
+    // output switch to the shared owner before dispatching any notes. With DIN
+    // on, mounted() remains true even when output is disabled and no USB host
+    // exists; UsbMidiOutput's enabled gate also covers SMF and generated notes.
     g_wire.setSecondaryEnabled(true);
     if (!g_output.begin()) {
         Serial.println("[MIDI-DISPATCH] USB MIDI begin failed");
     }
+    g_output.setEnabled(
+        GroovePuterMidi::midiDeviceProfileRuntime().settings().enabled);
 
     ScheduledMusicalEvent pendingMusical{};
     ScheduledMusicalEvent pendingDrumGate{};
@@ -1122,8 +1130,9 @@ void midiDispatchTask(void*) {
         // deadline-wait race; this early check prevents stale lifecycle packets
         // from surviving a quick SEQ MASTER -> GP MASTER round trip.
         if (hasPendingTransport &&
-            !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
-                GroovePuterMidi::transportClockRuntime().source())) {
+            (!g_output.enabled() ||
+             !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+                 GroovePuterMidi::transportClockRuntime().source()))) {
             ++g_diagnostics.outboundTransportSuppressed;
             hasPendingTransport = false;
             continue;
@@ -1344,7 +1353,8 @@ void midiDispatchTask(void*) {
         }
 
         if (kind == PendingKind::Transport) {
-            if (!GroovePuterMidi::transportClockSourcePublishesOutboundClock(
+            if (!g_output.enabled() ||
+                !GroovePuterMidi::transportClockSourcePublishesOutboundClock(
                     GroovePuterMidi::transportClockRuntime().source())) {
                 ++g_diagnostics.outboundTransportSuppressed;
             } else if (pendingTransport.type == MidiTransportEventType::Clock &&
@@ -1536,6 +1546,10 @@ VoiceControl g_voice[2];
 uint32_t g_cutoffRequestApplied[2] = {0, 0};
 // Retry clock per voice and controller: a refused level is sent again after 20 ms.
 uint32_t g_cutoffNextTryMs[2][GroovePuterMidi::kControllerCount] = {};
+// One bit per controller records whether its deadline has been initialized.
+// millis() may already be past the signed half-range on first use after uptime.
+uint16_t g_cutoffAttemptedMask[2] = {0, 0};   // one bit per controller index
+uint8_t g_levelRotation[2] = {0, 0};          // where each voice's walk starts this pass
 
 void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     MusicalEvent event{MusicalEventType::ControlChange,
@@ -1545,7 +1559,122 @@ void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
     g_output.handleMusicalEvent(event);
 }
 
+// Layers over the base of each controller: tilt offsets (GROOVEPUTER_TILT) and the
+// macro-to-CC link are summed per controller and laid over the level without touching
+// the held value, the selection or the sweep. A pending return to the base is kept per
+// controller until the base has been delivered again.
+uint16_t g_layerPending[2] = {0, 0};   // per voice, bit per controller index
+
+uint8_t applyLayers(int voice, GroovePuterMidi::CutoffVoice& control,
+                    GroovePuterMidi::CutoffVoice::Level* levels, uint8_t count) {
+    static_assert(GroovePuterMidi::kControllers[0].number == 74 &&
+                  GroovePuterMidi::kControllers[1].number == 91 &&
+                  GroovePuterMidi::kControllers[2].number == 94 &&
+                  GroovePuterMidi::kControllers[3].number == 71,
+                  "tilt choices map to CUTOFF 0, REVERB 1, DELAY 2");
+    int sums[GroovePuterMidi::kControllerCount] = {};
+#ifdef GROOVEPUTER_TILT
+    // Choice -> index into kControllers: 1 CUTOFF, 2 REVERB, 3 DELAY, (4 is gone), 5 ATTACK,
+    // 6 RELEASE, 7 VOLUME, 8 PAN (kTiltChoiceMax).
+    static constexpr uint8_t kChoiceIndex[9] = {255, 0, 1, 2, 3, 5, 6, 4, 7};
+    const uint32_t word = GroovePuterTilt::gWord.loadAcquire();
+    // The offsets reach only the synth the target names.
+    const bool active = GroovePuterTilt::wordTargetsVoice(word, static_cast<uint8_t>(voice));
+    // While TILT is on, an axis on REVERB or DELAY (0) or VOLUME (100) gets that value
+    // when the controller has none yet, so the axis has a base to move from.
+    if (active) {
+        for (uint8_t axis = 0; axis < 3; ++axis) {
+            const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
+                                       ? GroovePuterTilt::gAxisChoice[axis] : 0;
+            if (choice != 2 && choice != 3 && choice != 7) continue;
+            const uint8_t index = kChoiceIndex[choice];
+            GroovePuterMidi::CutoffVoice::Level probe{};
+            if (!control.levelFor(index, probe)) {
+                control.setDefault(index, choice == 7 ? 70 : 0);
+            }
+        }
+    }
+    const int offsets[3] = {active ? GroovePuterTilt::wordX(word) : 0,
+                            active ? GroovePuterTilt::wordY(word) : 0,
+                            active ? GroovePuterTilt::wordZ(word) : 0};
+    for (uint8_t axis = 0; axis < 3; ++axis) {
+        uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
+                             ? GroovePuterTilt::gAxisChoice[axis] : 0;
+        if (choice == 4) choice = 0;   // RESO is no longer an axis choice
+        if (choice == 0) continue;   // assigned to none
+        sums[kChoiceIndex[choice]] += offsets[axis];   // axes on one controller add up
+    }
+#endif
+    // The macro-to-CC link: the published macro state and the page's link mode.
+    const GroovePuterPerformance::Macros::State macros =
+        GroovePuterPerformance::Macros::unpackState(
+            GroovePuterPerformance::MacroCc::gPublishedMacroState.load(std::memory_order_acquire));
+    const auto link = static_cast<GroovePuterPerformance::MacroCc::Link>(
+        GroovePuterPerformance::MacroCc::gLinkMode);
+    int macroOffsets[GroovePuterMidi::kControllerCount];
+    GroovePuterPerformance::MacroCc::offsetsFor(macros, link, static_cast<uint8_t>(voice),
+                                                macroOffsets);
+    for (uint8_t i = 0; i < GroovePuterMidi::kControllerCount; ++i) sums[i] += macroOffsets[i];
+
+    uint16_t& pending = g_layerPending[voice];
+    for (uint8_t index = 0; index < GroovePuterMidi::kControllerCount; ++index) {
+        const uint16_t bit = static_cast<uint16_t>(1u << index);
+        const bool wasPending = (pending & bit) != 0u;
+        if (sums[index] == 0 && !wasPending) continue;
+        const GroovePuterMidi::CutoffController& info = GroovePuterMidi::kControllers[index];
+        // The base: the level already in this frame, or the held value, or none.
+        int found = -1;
+        for (uint8_t i = 0; i < count; ++i) {
+            if (levels[i].index == index) { found = i; break; }
+        }
+        GroovePuterMidi::CutoffVoice::Level level{};
+        bool baseKnown = found >= 0;
+        if (found >= 0) {
+            level = levels[found];
+        } else {
+            baseKnown = control.levelFor(index, level);
+        }
+        // EXPRESSION rests at 127 when nothing was set; the others follow the layer rules.
+        const int fallback = index == GroovePuterPerformance::MacroCc::kIndexExpr ? 127 : -1;
+        const GroovePuterMidi::LayerStep step = GroovePuterMidi::composeLayer(
+            info.kind, baseKnown, level.value, info.minValue, sums[index], wasPending, fallback);
+        if (step.dropPending) pending = static_cast<uint16_t>(pending & ~bit);
+        if (!step.send) continue;
+        GroovePuterMidi::CutoffVoice::Level out{index,
+            GroovePuterMidi::clampForController(index, step.value)};
+        GroovePuterMidi::gLayerWire[index] = out.value;
+        if (found >= 0) {
+            levels[found] = out;
+        } else if (count < GroovePuterMidi::kControllerCount) {
+            levels[count++] = out;
+        }
+        if (sums[index] != 0) pending = static_cast<uint16_t>(pending | bit);
+        if (step.returnsToBase &&
+            g_output.cutoffDelivered(static_cast<uint8_t>(voice), info.number, step.value)) {
+            pending = static_cast<uint16_t>(pending & ~bit);
+        }
+    }
+    return count;
+}
+
 void serviceCutoffAutomation() {
+    // A new device profile resets the sweep and the attempt bookkeeping, so the next
+    // pass starts clean on the new device. Layer return bookkeeping is kept: a pending
+    // return still has to reach the wire.
+    static uint32_t profileRevision = 0;
+    static bool profileSeen = false;
+    const uint32_t revision = GroovePuterMidi::midiDeviceProfileRuntime().revision();
+    if (!profileSeen || revision != profileRevision) {
+        if (profileSeen) {
+            for (int v = 0; v < 2; ++v) {
+                GroovePuterMidi::gCutoffControl[v].request(GroovePuterMidi::CutoffRequest::kCancelSweep, 0);
+                g_cutoffAttemptedMask[v] = 0;
+            }
+        }
+        profileSeen = true;
+        profileRevision = revision;
+    }
+    GroovePuterMidi::PassBudget budget;   // CC sends for both voices in this pass
     for (int voice = 0; voice < 2; ++voice) {
         auto& channel = GroovePuterMidi::gCutoffControl[voice];
         VoiceControl& state = g_voice[voice];
@@ -1604,17 +1733,30 @@ void serviceCutoffAutomation() {
         // is not recorded by the output, so it is retried here, at most every 20 ms per
         // controller, and a reconnect resends it. Nothing is sent before the user has
         // set a value.
-        GroovePuterMidi::CutoffVoice::Level levels[2];
-        const uint8_t levelCount = state.control.levels(levels);
+        GroovePuterMidi::CutoffVoice::Level levels[GroovePuterMidi::kControllerCount];
+        uint8_t levelCount = state.control.levels(levels);
+        levelCount = applyLayers(voice, state.control, levels, levelCount);
         const uint32_t nowMs = millis();
-        for (uint8_t i = 0; i < levelCount; ++i) {
+        const uint8_t rotation = g_levelRotation[voice];
+        if (levelCount > 0) {
+            g_levelRotation[voice] = static_cast<uint8_t>((rotation + 1u) % levelCount);
+        }
+        for (uint8_t step = 0; step < levelCount; ++step) {
+            const uint8_t i = GroovePuterMidi::rotatedIndex(step, levelCount, rotation);
             const uint8_t index = levels[i].index;
             const uint8_t held = levels[i].value;
+            const uint16_t attemptedBit = static_cast<uint16_t>(1u << index);
+            const bool hasAttempted =
+                (g_cutoffAttemptedMask[voice] & attemptedBit) != 0u;
             if (!g_output.cutoffDelivered(static_cast<uint8_t>(voice),
                                           GroovePuterMidi::kControllers[index].number, held) &&
-                static_cast<int32_t>(nowMs - g_cutoffNextTryMs[voice][index]) >= 0) {
+                GroovePuterMidi::cutoffSendDeadlineReached(
+                    hasAttempted, nowMs, g_cutoffNextTryMs[voice][index])) {
+                if (!budget.take()) continue;   // over this pass's budget: next pass
                 emitControl(voice, index, held);
-                g_cutoffNextTryMs[voice][index] = nowMs + 20u;
+                g_cutoffNextTryMs[voice][index] =
+                    nowMs + GroovePuterMidi::kCutoffSendIntervalMs;
+                g_cutoffAttemptedMask[voice] |= attemptedBit;
             }
         }
         channel.publish(state.control.value(), state.control.sweeping(),

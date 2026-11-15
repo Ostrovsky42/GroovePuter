@@ -2,6 +2,10 @@
 #include "ui_utils.h"
 #include "ui_widgets.h"
 #include "ui_theme.h"
+#include "imu_probe.h"
+#ifdef GROOVEPUTER_TILT
+#include "src/input/tilt_axis.h"
+#endif
 #include "src/dsp/miniacid_engine.h"
 #include "src/midi/smf_player_service.h"
 #include "src/midi/transport_clock_runtime.h"
@@ -261,11 +265,49 @@ namespace UI {
                      Layout::HEADER.y + Layout::HEADER.h - 1,
                      divider);
         gfx.setTextColor(foreground);
+#ifdef GROOVEPUTER_IMU_PROBE
+        char imuLine[40];
+        const char* headerText = gStatusLine;
+        if (status.context == UiStatusContext::Perform) {
+            ImuProbe::formatLine(imuLine, sizeof(imuLine));
+            headerText = imuLine;
+        }
+#else
+        const char* headerText = gStatusLine;
+#endif
+#ifdef GROOVEPUTER_TILT
+        // PERFORM only: a short right-aligned tilt label (offsets are CUTOFF/DELAY steps).
+        int tiltLabelW = 0;
+        if (status.context == UiStatusContext::Perform) {
+            const uint32_t tw = GroovePuterTilt::gWord.loadAcquire();
+            char tilt[20];
+            if (GroovePuterTilt::wordActive(tw)) {
+                std::snprintf(tilt, sizeof(tilt), "TILT %+d %+d",
+                              GroovePuterTilt::wordX(tw), GroovePuterTilt::wordY(tw));
+            } else {
+                std::snprintf(tilt, sizeof(tilt), "TILT OFF");
+            }
+            tiltLabelW = gfx.textWidth(tilt) + 4;
+            gfx.setTextColor(GroovePuterTilt::wordActive(tw) ? COLOR_WHITE : divider);
+            Widgets::drawClippedText(gfx,
+                                     Layout::HEADER.x + Layout::HEADER.w - 4 - (tiltLabelW - 4),
+                                     Layout::HEADER.y + 4,
+                                     tiltLabelW,
+                                     tilt);
+            gfx.setTextColor(foreground);
+        }
+        Widgets::drawClippedText(gfx,
+                                 Layout::HEADER.x + 4,
+                                 Layout::HEADER.y + 4,
+                                 Layout::HEADER.w - 8 - tiltLabelW,
+                                 headerText);
+#else
         Widgets::drawClippedText(gfx,
                                  Layout::HEADER.x + 4,
                                  Layout::HEADER.y + 4,
                                  Layout::HEADER.w - 8,
-                                 gStatusLine);
+                                 headerText);
+#endif
     }
 
     void drawLiveMixLockBadge(IGfx& gfx, const UiStatusSnapshot& status) {

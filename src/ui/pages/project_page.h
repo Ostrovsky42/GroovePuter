@@ -31,7 +31,13 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   int getHelpFrameCount() const override;
   void drawHelpFrame(IGfx& gfx, int frameIndex, Rect bounds) const override;
   enum class ProjectSection { Scenes = 0, Device, Led, Midi };
-  enum class MainFocus { Load = 0, SaveAs, New, ImportMidi, ClearProject, VisualStyle, Volume, LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest, UsbRole, MidiDevice, MidiInputEnabled, MidiInputChannel, MidiInputTarget };
+  enum class MainFocus {
+    Load = 0, SaveAs, New, ImportMidi, ExportMidi, ClearProject,
+    VisualStyle, Volume,
+    LedMode, LedSource, LedColor, LedBri, LedFlash, LedTest,
+    UsbRole, MidiDevice, MidiOutput, MidiInputEnabled, MidiInputChannel,
+    MidiInputTarget
+  };
 
  private:
   enum class DialogType { None = 0, Load, SaveAs, ImportMidi, MidiImportTracks, MidiAdvance, ConfirmClear, Rename };
@@ -66,6 +72,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   void openMidiAdvanceDialog();
   void returnToMidiBrowser();
   bool importMidiAtSelection();
+  bool exportMidiAtSelection();
   void drawMidiAdvanceDialog(IGfx& gfx);
   void drawMidiImportTracks(IGfx& gfx);
   bool handleMidiImportTracks(UIEvent& ui_event);
@@ -152,6 +159,7 @@ class ProjectPage : public IPage, public IMultiHelpFramesProvider {
   bool midi_import_append_ = false;
   int midi_adv_scroll_ = 0;
   uint8_t midi_profile_preview_ = 0xFF;
+  uint8_t midi_output_preview_ = 0xFF;
   uint8_t usb_role_preview_ = 0xFF;  // unset; otherwise the UsbBootRole being previewed
   bool activateUsbRole();
   std::string save_name_;

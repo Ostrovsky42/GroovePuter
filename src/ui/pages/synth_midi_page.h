@@ -7,9 +7,10 @@
 #include "../ui_utils.h"
 #include "../selection_popup.h"
 
-// MIDI tab of a synth: one selected SEQTRAK controller of this voice, its value,
-// and a four-bar sweep (RAMP or RETURN). The page changes no music: it requests
-// values and sweeps from the MIDI dispatcher through the voice's control channel.
+// MIDI tab of a synth: one selected profile-routed controller of this voice,
+// its value and a bounded sweep (RAMP or RETURN). The page changes no music:
+// it requests values and sweeps from the MIDI dispatcher through the voice's
+// control channel.
 class SynthMidiPage : public IPage {
  public:
   SynthMidiPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audio_guard, int voiceIndex);

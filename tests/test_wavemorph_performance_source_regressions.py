@@ -122,7 +122,8 @@ def test_performance_tools_use_fixed_control_rate_state() -> None:
             "PERFORM hints must describe the local tool layer, not conflicting Fn keys")
     require("keyboard_.setTempoBpm(miniAcid_.bpm());" in page,
             "arp/ratchet timing must follow the current GroovePuter BPM")
-    for label in ("[KEY]", "[CHORD]", "[ARP]", "[RHYTHM]",
+    for label in ("KEY", "CHORD", "ARP", "RHYTHM", "MACRO",
+                  "TENSION", "ENERGY", "SPACE", "MUTATION",
                   "ROOT", "SCALE", "OCTAVE", "VELOCITY",
                   "MODE", "INVERSION", "SPREAD", "LEADING", "MEMORY",
                   "ORDER", "RATE", "OCTAVES", "GATE", "LATCH",

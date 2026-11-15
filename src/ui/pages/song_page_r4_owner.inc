@@ -105,6 +105,8 @@ bool SongPage::handleEvent(UIEvent& ui_event) {
         form_curve_ = EnergyCurve::genreCurve(static_cast<uint8_t>(mode));
         form_section_ = 0;
         form_genre_ = mode;
+        form_is_genre_ = true;
+        form_is_custom_ = false;
         char name[48];
         const char* label = GenreManager::generativeModeName(static_cast<GenerativeMode>(mode));
         std::snprintf(name, sizeof(name), "FORM: %s", label ? label : "");

@@ -1,6 +1,7 @@
 // SONG -> FORM: an energy curve inserts ordinary Song rows from existing material.
 #include <cassert>
 #include <cstdio>
+#include <cstring>
 
 #include "src/state/energy_curve.h"
 
@@ -19,6 +20,21 @@ Song takeSong() {
     song.positions[r].patterns[3] = static_cast<int16_t>(12 + r);
   }
   return song;
+}
+
+bool sameSong(const Song& lhs, const Song& rhs) {
+  if (lhs.length != rhs.length || lhs.reverse != rhs.reverse) return false;
+  for (int row = 0; row < Song::kMaxPositions; ++row) {
+    for (int track = 0; track < SongPosition::kTrackCount; ++track) {
+      if (lhs.positions[row].patterns[track] !=
+          rhs.positions[row].patterns[track]) return false;
+    }
+    for (int voice = 0; voice < 2; ++voice) {
+      if (lhs.stepsOverrideAt(voice, row) != rhs.stepsOverrideAt(voice, row))
+        return false;
+    }
+  }
+  return true;
 }
 }  // namespace
 
@@ -40,11 +56,63 @@ int main() {
   assert(presetCurve(Preset::Drop).sections[3].energy == 1);
   assert(totalBars(presetCurve(Preset::Wave)) == 16);
 
+  // Named arrangement roles are transient starting curves. Their musical
+  // contours stay editable and materialize through the same Song row path.
+  {
+    const Curve intro = presetCurve(Preset::Intro);
+    const Curve main = presetCurve(Preset::Main);
+    const Curve development = presetCurve(Preset::Development);
+    const Curve breakRole = presetCurve(Preset::Break);
+    const Curve build = presetCurve(Preset::Build);
+    const Curve drop = presetCurve(Preset::Drop);
+    const Curve outro = presetCurve(Preset::Outro);
+    assert(std::strcmp(presetName(Preset::Intro), "INTRO") == 0);
+    assert(std::strcmp(presetName(Preset::Main), "MAIN") == 0);
+    assert(std::strcmp(presetName(Preset::Development), "DEVELOPMENT") == 0);
+    assert(std::strcmp(presetName(Preset::Break), "BREAK") == 0);
+    assert(std::strcmp(presetName(Preset::Outro), "OUTRO") == 0);
+    for (const Curve* role : {&intro, &main, &development, &breakRole,
+                              &build, &drop, &outro}) {
+      assert(validCurve(*role));
+      assert(role->count > 0 && role->count <= kMaxSections);
+      assert(totalBars(*role) > 0);
+    }
+    assert(intro.sections[0].energy == 1 &&
+           energyRank(intro.sections[intro.count - 1].energy) >
+               energyRank(intro.sections[0].energy));
+    for (uint8_t i = 0; i < main.count; ++i)
+      assert(main.sections[i].energy == 4);
+    assert(development.count >= 3);
+    assert(breakRole.sections[0].energy == 4);
+    bool hasPause = false;
+    for (uint8_t i = 0; i < breakRole.count; ++i)
+      hasPause = hasPause || breakRole.sections[i].energy == 0;
+    assert(hasPause && breakRole.sections[breakRole.count - 1].energy > 0);
+    for (uint8_t i = 1; i < build.count; ++i)
+      assert(energyRank(build.sections[i - 1].energy) <=
+             energyRank(build.sections[i].energy));
+    assert(drop.sections[0].energy < 4 && drop.sections[1].energy == 3 &&
+           drop.sections[2].energy == 4 && drop.sections[3].energy == 1 &&
+           drop.sections[4].energy == 4);
+    for (uint8_t i = 1; i < outro.count; ++i)
+      assert(energyRank(outro.sections[i - 1].energy) >=
+             energyRank(outro.sections[i].energy));
+  }
+
   // BUILD after the TAKE: 20 rows inserted, existing rows kept, sections restart the TAKE.
   {
     Song song = takeSong();
+    song.setStepsOverride(0, 0, true);
+    song.setStepsOverride(1, 1, true);
     assert(apply(song, presetCurve(Preset::Build), 0, 4, 4) == Status::Ok);
     assert(song.length == 24);
+    // The copied source cells keep their explicit STEPS choice even when the
+    // referenced slot is a Melody. Check an energy-4 section that retains both
+    // synth tracks; the lower-energy section intentionally removes them.
+    assert(song.stepsOverrideAt(0, 16));
+    assert(!song.stepsOverrideAt(1, 16));
+    assert(song.stepsOverrideAt(1, 17));
+    assert(!song.stepsOverrideAt(0, 17));
     for (int r = 0; r < 4; ++r) assert(patternAt(song, r, SongTrack::SynthA) == r);  // untouched
     // Section 1 (energy 1, rows 4..7): drums only, in TAKE order.
     for (int b = 0; b < 4; ++b) {
@@ -104,6 +172,35 @@ int main() {
       for (int t = 0; t < SongPosition::kTrackCount; ++t)
         assert(song.positions[r].patterns[t] == before.positions[r].patterns[t]);
     assert(song.length == before.length);
+  }
+
+  // Malformed curves are refused before reading beyond the fixed section
+  // array or inserting any rows.
+  {
+    Curve tooMany{};
+    tooMany.count = kMaxSections + 1;
+    for (uint8_t i = 0; i < kMaxSections; ++i)
+      tooMany.sections[i] = Section{4, 2};
+    Song song = takeSong();
+    const Song before = song;
+    assert(apply(song, tooMany, 0, 4, 4) == Status::BadRange);
+    assert(sameSong(song, before));
+
+    Curve badEnergy{};
+    badEnergy.count = 1;
+    badEnergy.sections[0] = Section{4, kMaxEnergy + 1};
+    song = takeSong();
+    const Song beforeBadEnergy = song;
+    assert(apply(song, badEnergy, 0, 4, 4) == Status::BadRange);
+    assert(sameSong(song, beforeBadEnergy));
+
+    Curve badLength{};
+    badLength.count = 1;
+    badLength.sections[0] = Section{3, 2};
+    song = takeSong();
+    const Song beforeBadLength = song;
+    assert(apply(song, badLength, 0, 4, 4) == Status::BadRange);
+    assert(sameSong(song, beforeBadLength));
   }
 
   // H3: seven levels in the Up/Down order, codes 5 (A+B) and 6 (DR+B).
