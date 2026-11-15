@@ -42,14 +42,17 @@ enum class PerformInputRow : uint8_t {
     FreezeRiff,     // FREEZE RIFF (listener loopHold)
     Variation,      // VARIATION (listener loopEvolve)
     NewRiffIf,      // NEW RIFF IF (listener loopReplace)
-    // --- TILT (experimental: the apostrophe toggles tilt; a quick flick cycles the target) ---
+#ifdef GROOVEPUTER_TILT
+    // Experimental TILT has zero UI footprint in the production build.
+    // The rows exist only when the feature itself is compiled in.
     TiltTargetRow,  // TILT TARGET: SYNTH A / SYNTH B / ALL
     TiltSensRow,    // TILT SENS: how much tilt gives full scale (45 / 30 / 20 / 12 deg)
-    TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / ATTACK / ...)
-    TiltYRow,       // TILT Y: the same choice for the Y axis
-    TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
-    TiltFlickRow,   // TILT FLICK: ON = a quick flick cycles the target; OFF = menu only
-    TiltZeroRow,    // TILT ZERO: press to make the current pose the zero of X, Y and Z
+    TiltXRow,       // TILT X: the controller the X axis drives
+    TiltYRow,       // TILT Y: the controller the Y axis drives
+    TiltZRow,       // TILT Z: the controller the gyro yaw drives
+    TiltFlickRow,   // TILT FLICK: quick flick cycles the target
+    TiltZeroRow,    // TILT ZERO: make the current pose the zero
+#endif
     Count,
 };
 
@@ -95,11 +98,18 @@ public:
     static constexpr uint8_t kInputRowCount = performInputRow(PerformInputRow::Count);
     static constexpr uint8_t kPartnerRowFirst = performInputRow(PerformInputRow::Helper);
     static constexpr uint8_t kPartnerRowLast = performInputRow(PerformInputRow::NewRiffIf);
+#ifdef GROOVEPUTER_TILT
     static constexpr uint8_t kTiltRowFirst = performInputRow(PerformInputRow::TiltTargetRow);
     static constexpr uint8_t kTiltRowLast = performInputRow(PerformInputRow::TiltZeroRow);
+#endif
     static constexpr uint8_t kLoopRowCount = performLoopRow(PerformLoopRow::Count);
+#ifdef GROOVEPUTER_TILT
     static_assert(kPartnerRowLast + 1 == kTiltRowFirst, "TILT follows the HELPER group");
-    static_assert(kTiltRowLast + 1 == kInputRowCount, "TILT Y is the last INPUT row");
+    static_assert(kTiltRowLast + 1 == kInputRowCount, "TILT ZERO is the last INPUT row");
+#else
+    static_assert(kPartnerRowLast + 1 == kInputRowCount,
+                  "production INPUT ends after the HELPER group");
+#endif
     static_assert(kLoopRowCount == 9, "the LOOP tab has nine rows");
     static_assert(kLoopRowCount <= 32 && kInputRowCount <= 32,
                   "a row index fits the continuity byte per tab");
