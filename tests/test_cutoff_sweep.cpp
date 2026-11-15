@@ -557,7 +557,21 @@ void testSixteenControllersRoundTripInBothWords() {
     }
 }
 
+void testDefaultFillsOnlyAnUnsetController() {
+    using namespace GroovePuterMidi;
+    CutoffVoice v;
+    CutoffVoice::Level out{};
+    assert(!v.levelFor(1, out));                 // REVERB has no value yet
+    v.setDefault(1, 0);
+    assert(v.levelFor(1, out) && out.value == 0);
+    v.setDefault(1, 99);                          // a value that is already set is kept
+    assert(v.levelFor(1, out) && out.value == 0);
+    v.setDefault(4, 100);                         // VOLUME default
+    assert(v.levelFor(4, out) && out.value == 100);
+}
+
 int main() {
+    testDefaultFillsOnlyAnUnsetController();
     testSixteenControllersRoundTripInBothWords();
     testControllerMetadataKindsAndNeutral();
     testManualMapsValuesAndClamps();

@@ -1565,7 +1565,7 @@ void emitControl(int voice, uint8_t controllerIndex, uint8_t value) {
 // controller until the base has been delivered again.
 uint16_t g_layerPending[2] = {0, 0};   // per voice, bit per controller index
 
-uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
+uint8_t applyLayers(int voice, GroovePuterMidi::CutoffVoice& control,
                     GroovePuterMidi::CutoffVoice::Level* levels, uint8_t count) {
     static_assert(GroovePuterMidi::kControllers[0].number == 74 &&
                   GroovePuterMidi::kControllers[1].number == 91 &&
@@ -1580,6 +1580,20 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
     const uint32_t word = GroovePuterTilt::gWord.loadAcquire();
     // The offsets reach only the synth the target names.
     const bool active = GroovePuterTilt::wordTargetsVoice(word, static_cast<uint8_t>(voice));
+    // While TILT is on, an axis on REVERB or DELAY (0) or VOLUME (100) gets that value
+    // when the controller has none yet, so the axis has a base to move from.
+    if (active) {
+        for (uint8_t axis = 0; axis < 3; ++axis) {
+            const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
+                                       ? GroovePuterTilt::gAxisChoice[axis] : 0;
+            if (choice != 2 && choice != 3 && choice != 7) continue;
+            const uint8_t index = kChoiceIndex[choice];
+            GroovePuterMidi::CutoffVoice::Level probe{};
+            if (!control.levelFor(index, probe)) {
+                control.setDefault(index, choice == 7 ? 100 : 0);
+            }
+        }
+    }
     const int offsets[3] = {active ? GroovePuterTilt::wordX(word) : 0,
                             active ? GroovePuterTilt::wordY(word) : 0,
                             active ? GroovePuterTilt::wordZ(word) : 0};

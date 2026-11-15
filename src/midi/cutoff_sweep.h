@@ -303,6 +303,21 @@ public:
     uint8_t owner() const { return owner_; }
     bool sweeping() const { return automation_.sweepActive(); }
 
+    // A default for a controller that has no value yet (TILT gives REVERB and DELAY 0,
+    // VOLUME 100 while it is on). It keeps a value that is already set, and it does not
+    // select, claim or move a running sweep.
+    void setDefault(uint8_t index, uint8_t value) {
+        if (index >= kControllerCount) return;
+        if (index == owner_) {
+            if (!automation_.known()) automation_.restore(clampForController(index, value), true);
+            return;
+        }
+        if (!known_[index]) {
+            held_[index] = clampForController(index, value);
+            known_[index] = true;
+        }
+    }
+
     // Manual edit of the selected controller. A sweep on another controller keeps going.
     void manual(uint8_t value) {
         const uint8_t v = clampForController(selected_, value);
