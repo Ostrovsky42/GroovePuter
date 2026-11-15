@@ -17,7 +17,13 @@ namespace {
 constexpr int kFocusableRows = 4;   // controller, SWEEP, TARGET, TIME
 constexpr int kStepCoarse = 5;
 constexpr int kStepFine = 1;
-constexpr int kStandardValue = 64;  // Ctrl+A on the controller row
+constexpr int kStandardValue = 64;  // fallback when a controller index is unknown
+// Ctrl+A returns the selected controller to its own neutral (64, 0 for sends, 127 for EXPR).
+int neutralFor(uint8_t controller) {
+  return controller < GroovePuterMidi::kControllerCount
+             ? GroovePuterMidi::kControllers[controller].neutral
+             : kStandardValue;
+}
 constexpr int kStandardTarget = 110;
 
 using Channel = GroovePuterMidi::CutoffControlChannel;
@@ -240,9 +246,10 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
   if (ui_event.ctrl && !ui_event.alt && !ui_event.meta && (key == 'a' || key == 'A')) {
     if (focus_ == 0) {
       const uint8_t controller = GroovePuterMidi::gCutoffControl[voice_index_].controller();
-      requested_ = kStandardValue;
+      const int neutral = neutralFor(controller);
+      requested_ = neutral;
       GroovePuterMidi::gCutoffControl[voice_index_].request(Request::kManual,
-          static_cast<uint8_t>(kStandardValue), controller);
+          static_cast<uint8_t>(neutral), controller);
       return true;
     }
     if (focus_ == 2) {
@@ -285,7 +292,7 @@ void SynthMidiPage::adjust(int direction, bool fine) {
     // dispatcher publishes once per pass, so two quick presses would otherwise step
     // from the same base and add only one step.
     const int base = requested_ >= 0 ? requested_
-                   : channel.known() ? channel.value() : kStandardValue;
+                   : channel.known() ? channel.value() : neutralFor(channel.controller());
     int next = base + direction * step;
     next = next < 0 ? 0 : next > 127 ? 127 : next;
     // Clamp as the dispatcher will (PAN starts at 1), or the published value never

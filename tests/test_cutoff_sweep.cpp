@@ -310,7 +310,7 @@ void testReturnShapeGoesThereAndBack() {
 void testControllerTableAndIndex() {
     using GroovePuterMidi::controllerIndex;
     using GroovePuterMidi::kControllerCount;
-    assert(kControllerCount == 8);
+    assert(kControllerCount == 9);            // eight PERFORM controllers + EXPRESSION
     assert(controllerIndex(74) == 0);       // CUTOFF is the default
     assert(controllerIndex(73) == 5);       // ATTACK
     assert(controllerIndex(71) == 3);      // RESO
@@ -527,6 +527,11 @@ void testControllerMetadataKindsAndNeutral() {
         assert(hasNeutral(kControllers[i].kind) == (kControllers[i].kind == CutoffKind::Centered));
     }
     assert(clampForController(7, 0) == 1 && clampForController(7, 127) == 127);
+    // EXPRESSION: a level with its neutral at 127; sends reset to 0, offsets to 64.
+    assert(kControllers[8].number == 11 && kControllers[8].kind == CutoffKind::Level);
+    assert(kControllers[8].neutral == 127 && kControllers[1].neutral == 0);
+    assert(kControllers[0].neutral == 64 && kControllers[7].neutral == 64);
+    assert(controllerIndex(11) == 8);
 }
 
 void testSixteenControllersRoundTripInBothWords() {

@@ -35,7 +35,7 @@ inline constexpr uint8_t kSynthBChannel = 8;   // MIDI channel 9, SEQTRAK SYNTH 
 // Order is the PERFORM controller list: the tilt axes use CUTOFF (0) and RESO (3).
 // RESO (CC71) is back at the user's request; it was not audible on the SEQTRAK patch
 // under test, so check it on the device.
-inline constexpr uint8_t kControllerCount = 8;
+inline constexpr uint8_t kControllerCount = 9;
 // The request and published words carry a 4-bit controller index: up to 16 entries.
 inline constexpr uint8_t kMaxControllerIndex = 15;
 // How a value is read on the wire. Centered controls are offsets around 64 in
@@ -48,16 +48,20 @@ struct CutoffController {
     uint8_t minValue;  // Yamaha's usable range; PAN is 1..127
     uint8_t maxValue;  // 127 for every controller on the synth tab
     CutoffKind kind;
+    uint8_t neutral;   // what Ctrl+A sets: 64 for offsets, 0 for sends, 127 for EXPRESSION
 };
 inline constexpr CutoffController kControllers[kControllerCount] = {
-    {74, "CUTOFF", 0, 127, CutoffKind::Centered},
-    {91, "REVERB", 0, 127, CutoffKind::Send},
-    {94, "DELAY", 0, 127, CutoffKind::Send},
-    {71, "RESO", 0, 127, CutoffKind::Centered},
-    {7, "VOLUME", 0, 127, CutoffKind::Level},
-    {73, "ATTACK", 0, 127, CutoffKind::Centered},
-    {75, "RELEASE", 0, 127, CutoffKind::Centered},
-    {10, "PAN", 1, 127, CutoffKind::Centered},
+    {74, "CUTOFF", 0, 127, CutoffKind::Centered, 64},
+    {91, "REVERB", 0, 127, CutoffKind::Send, 0},
+    {94, "DELAY", 0, 127, CutoffKind::Send, 0},
+    {71, "RESO", 0, 127, CutoffKind::Centered, 64},
+    {7, "VOLUME", 0, 127, CutoffKind::Level, 64},
+    {73, "ATTACK", 0, 127, CutoffKind::Centered, 64},
+    {75, "RELEASE", 0, 127, CutoffKind::Centered, 64},
+    {10, "PAN", 1, 127, CutoffKind::Centered, 64},
+    // EXPRESSION (CC11): a performance level, received on every SEQTRAK track; Yamaha's
+    // Reset All Controllers returns it to 127, so that is its neutral.
+    {11, "EXPR", 0, 127, CutoffKind::Level, 127},
 };
 
 // The neutral value of a Centered controller is 64; the other kinds have none.
