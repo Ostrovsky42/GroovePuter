@@ -18,6 +18,36 @@ constexpr int kFocusableRows = 4;   // controller, SWEEP, TARGET, TIME
 constexpr int kStepCoarse = 5;
 constexpr int kStepFine = 1;
 constexpr int kStandardValue = 64;  // fallback when a controller index is unknown
+// Vendor-only controls (EQ) are offered only when the device profile is SEQTRAK.
+bool vendorControlsOffered() {
+  return GroovePuterMidi::midiDeviceCapabilitiesForProfile(
+             GroovePuterMidi::midiDeviceProfileRuntime().profile())
+      .vendorSpecificControls;
+}
+bool controllerOffered(int index) {
+  return index >= 0 && index < GroovePuterMidi::kControllerCount &&
+         (!GroovePuterMidi::kControllers[index].vendor || vendorControlsOffered());
+}
+int offeredCount() {
+  int count = 0;
+  for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) if (controllerOffered(i)) ++count;
+  return count;
+}
+int offeredIndex(int position) {
+  int seen = 0;
+  for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) {
+    if (!controllerOffered(i)) continue;
+    if (seen == position) return i;
+    ++seen;
+  }
+  return 0;
+}
+int offeredPosition(int index) {
+  int seen = 0;
+  for (int i = 0; i < index && i < GroovePuterMidi::kControllerCount; ++i) if (controllerOffered(i)) ++seen;
+  return seen;
+}
+
 // Ctrl+A returns the selected controller to its own neutral (64, 0 for sends, 127 for EXPR).
 int neutralFor(uint8_t controller) {
   return controller < GroovePuterMidi::kControllerCount
@@ -199,7 +229,10 @@ void SynthMidiPage::draw(IGfx& gfx) {
 
   if (popup_.isOpen()) {
     const char* names[GroovePuterMidi::kControllerCount];
-    for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) names[i] = GroovePuterMidi::kControllers[i].name;
+    int count = 0;
+    for (int i = 0; i < GroovePuterMidi::kControllerCount; ++i) {
+      if (controllerOffered(i)) names[count++] = GroovePuterMidi::kControllers[i].name;
+    }
     popup_.draw(gfx, names);
   }
 }
@@ -208,7 +241,7 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
   if (popup_.isOpen()) {
     const auto result = popup_.handleEvent(ui_event);
     if (result == UI::SelectionPopupResult::Confirmed) {
-      selectController(static_cast<uint8_t>(popup_.selectedIndex()));
+      selectController(static_cast<uint8_t>(offeredIndex(popup_.selectedIndex())));
     }
     return true;
   }
@@ -263,7 +296,8 @@ bool SynthMidiPage::handleEvent(UIEvent& ui_event) {
 
 void SynthMidiPage::openControllerList() {
   const uint8_t current = GroovePuterMidi::gCutoffControl[voice_index_].controller();
-  popup_.open("CONTROLLER", GroovePuterMidi::kControllerCount, current < GroovePuterMidi::kControllerCount ? current : 0);
+  popup_.open("CONTROLLER", offeredCount(),
+              controllerOffered(current) ? offeredPosition(current) : 0);
 }
 
 void SynthMidiPage::selectController(uint8_t index) {

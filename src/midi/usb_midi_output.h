@@ -271,6 +271,7 @@ private:
     bool patternStartupRoutesBound_;
     bool performanceStartupRoutesComplete_;
     bool seqtrakReceiverModeControl_;
+    bool vendorControls_{false};   // Yamaha-only synth CCs (EQ): SEQTRAK profile only
     uint32_t transportControllerStateEpoch_{0};
     bool enabled_;
     bool begun_;

@@ -66,6 +66,7 @@ void UsbMidiOutput::configureLanes() {
     seqtrakReceiverModeControl_ = !patternStartupRoutesBound_ ||
         startup.receiverModeControl ==
             GroovePuterMidi::MidiReceiverModeControl::SeqtrakCc26;
+    vendorControls_ = patternStartupRoutesBound_ && startup.vendorSpecificControls;
 
     for (uint8_t voice = 0; voice < kPatternDrumVoiceCount; ++voice) {
         patternDrumNotes_[voice] = kSeqtrakDrumNote;
@@ -1650,6 +1651,8 @@ void UsbMidiOutput::handleCutoffControlChange(const MusicalEvent& event) {
     // targets. Anything else never reaches the wire through this path.
     const int index = GroovePuterMidi::controllerIndex(event.note);
     if (index < 0) return;
+    // Vendor-only controllers (EQ) reach the wire only with the SEQTRAK profile.
+    if (GroovePuterMidi::kControllers[index].vendor && !vendorControls_) return;
     int slot = -1;
     if (event.target == MusicalEventTarget::SynthA) slot = 0;
     if (event.target == MusicalEventTarget::SynthB) slot = 1;

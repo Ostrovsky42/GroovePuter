@@ -310,7 +310,7 @@ void testReturnShapeGoesThereAndBack() {
 void testControllerTableAndIndex() {
     using GroovePuterMidi::controllerIndex;
     using GroovePuterMidi::kControllerCount;
-    assert(kControllerCount == 9);            // eight PERFORM controllers + EXPRESSION
+    assert(kControllerCount == 11);           // eight PERFORM controllers + EXPRESSION + EQ HI/LO
     assert(controllerIndex(74) == 0);       // CUTOFF is the default
     assert(controllerIndex(73) == 5);       // ATTACK
     assert(controllerIndex(71) == 3);      // RESO
@@ -523,7 +523,8 @@ void testControllerMetadataKindsAndNeutral() {
     assert(kControllers[7].kind == CutoffKind::Centered);   // PAN
     assert(kCenteredNeutral == 64);
     for (int i = 0; i < kControllerCount; ++i) {
-        assert(kControllers[i].maxValue == 127);
+        // EQ HI / LO are Yamaha's 40..88 range; everything else runs to 127.
+        assert(kControllers[i].maxValue == (i >= 9 ? 88 : 127));
         assert(hasNeutral(kControllers[i].kind) == (kControllers[i].kind == CutoffKind::Centered));
     }
     assert(clampForController(7, 0) == 1 && clampForController(7, 127) == 127);
@@ -532,6 +533,10 @@ void testControllerMetadataKindsAndNeutral() {
     assert(kControllers[8].neutral == 127 && kControllers[1].neutral == 0);
     assert(kControllers[0].neutral == 64 && kControllers[7].neutral == 64);
     assert(controllerIndex(11) == 8);
+    assert(kControllers[9].number == 20 && kControllers[9].vendor);
+    assert(kControllers[10].number == 21 && kControllers[10].minValue == 40);
+    assert(clampForController(9, 127) == 88 && clampForController(9, 0) == 40);
+    assert(!kControllers[0].vendor);
 }
 
 void testSixteenControllersRoundTripInBothWords() {

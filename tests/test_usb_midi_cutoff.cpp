@@ -212,6 +212,18 @@ void testSynthBUsesItsOwnChannelAndDedupe() {
     assert(usb.ccs.size() == 2);
 }
 
+void testVendorControlsNeedTheSeqtrakProfile() {
+    // EQ HI / LO (CC20 / CC21) are Yamaha-only: without a bound SEQTRAK profile
+    // they never reach the wire, even though the table knows them.
+    RecordingTransport usb;
+    UsbMidiOutput out(usb, route());
+    assert(out.begin());
+    out.pollConnection();
+    out.handleMusicalEvent(cc(20, 80));
+    out.handleMusicalEvent(cc(21, 50));
+    assert(usb.ccs.empty());
+}
+
 }  // namespace
 
 void testCutoffFollowsTrackOutputMode() {
@@ -284,6 +296,7 @@ void testAllowedControllersOnlyAndPanRange() {
 }  // namespace
 
 int main() {
+    testVendorControlsNeedTheSeqtrakProfile();
     testEncodesCutoffOnSynthAChannel8();
     testClampsOutOfRangeValues();
     testDeduplicatesUnchangedValue();
