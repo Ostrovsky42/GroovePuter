@@ -265,16 +265,19 @@ void testAllowedControllersOnlyAndPanRange() {
     UsbMidiOutput out(usb, route());
     assert(out.begin());
     out.pollConnection();
-    const uint8_t allowed[] = {74, 73, 75, 91, 94, 7, 10};
+    // The eight PERFORM synth controls (kControllers): CUTOFF, REVERB, DELAY, RESO,
+    // VOLUME, ATTACK, RELEASE, PAN.
+    const uint8_t allowed[] = {74, 91, 94, 71, 7, 73, 75, 10};
     for (uint8_t number : allowed) out.handleMusicalEvent(cc(number, 64));
-    assert(usb.ccs.size() == 7);            // every documented synth control reaches the wire
-    // Not allowed: portamento, arpeggiator, DX-only, master effect parameters.
-    const uint8_t refused[] = {71, 5, 65, 27, 116, 102};
+    assert(usb.ccs.size() == 8);            // every documented synth control reaches the wire
+    // Not allowed: portamento, arpeggiator, DX-only, master effect parameters,
+    // chorus (93) and the modulation wheel (1), which the SEQTRAK tables do not list.
+    const uint8_t refused[] = {5, 65, 27, 116, 102, 93, 1};
     for (uint8_t number : refused) out.handleMusicalEvent(cc(number, 64));
-    assert(usb.ccs.size() == 7);
+    assert(usb.ccs.size() == 8);
     // PAN has a usable range of 1..127: zero is sent as 1, and delivery agrees.
     out.handleMusicalEvent(cc(10, 0));
-    assert(usb.ccs.size() == 8 && usb.ccs[7].controller == 10 && usb.ccs[7].value == 1);
+    assert(usb.ccs.size() == 9 && usb.ccs[8].controller == 10 && usb.ccs[8].value == 1);
     assert(out.cutoffDelivered(0, 10, 0));
 }
 
