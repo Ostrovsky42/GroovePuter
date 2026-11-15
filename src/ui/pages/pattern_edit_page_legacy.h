@@ -132,7 +132,6 @@ PatternEditPage::PatternEditPage(IGfx& gfx, MiniAcid& mini_acid, AudioGuard audi
   pattern_bar_->setCallbacks(std::move(pattern_callbacks));
   BankSelectionBarComponent::Callbacks bank_callbacks;
   bank_callbacks.onSelect = [this](int index) {
-    if (mini_acid_.songModeEnabled()) return;
     focus_ = Focus::BankRow;
     bank_cursor_ = index;
     setBankIndex(index);
@@ -170,6 +169,10 @@ int PatternEditPage::bankIndexFromKey(char key) const {
 void PatternEditPage::setBankIndex(int bankIndex) {
   if (bankIndex < 0) bankIndex = 0;
   if (bankIndex >= kBankCount) bankIndex = kBankCount - 1;
+  if (mini_acid_.songModeEnabled()) {
+    setSongPositionBank(bankIndex);
+    return;
+  }
   if (bank_index_ == bankIndex) return;
   if (mini_acid_.hasUnsavedWorkingMelody(voice_index_)) {
     UI::showToast("ALT+ENTER SAVE", 1200);
@@ -254,7 +257,7 @@ void PatternEditPage::movePatternCursorVertical(int delta) {
     return;
   }
   if (focus_ == Focus::PatternRow) {
-    if (delta < 0 && !mini_acid_.songModeEnabled()) {
+    if (delta < 0) {
       bank_cursor_ = bank_index_;
       focus_ = Focus::BankRow;
       return;
@@ -686,7 +689,6 @@ bool PatternEditPage::handleEvent(UIEvent& ui_event) {
       }
     }
     if (focus_ == Focus::BankRow) {
-      if (mini_acid_.songModeEnabled()) return true;
       setBankIndex(activeBankCursor());
       return true;
     }

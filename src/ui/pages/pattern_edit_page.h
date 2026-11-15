@@ -177,6 +177,9 @@ class PatternEditPage : public IPage, public IMultiHelpFramesProvider {
                      : PatternMutationResult::Invalid;
   }
 
+  // Song mode: A/B changes the bank of this voice's pattern at the current song position.
+  void setSongPositionBank(int bankIndex);
+
   template <typename PrepareFn>
   bool commitSongMutation(PrepareFn&& prepare) {
     using GroovePuterUndo::SongUndoPayload;
