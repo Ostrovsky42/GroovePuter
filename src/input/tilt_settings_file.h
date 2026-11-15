@@ -5,12 +5,16 @@
 #include <SD.h>
 
 #include "src/input/tilt_axis.h"
+#include "src/platform/cardputer_sd.h"
 
 namespace GroovePuterTilt {
 
 inline constexpr const char* kSettingsPath = "/grooveputer_tilt.txt";
 
+// The card is mounted on demand, like the other features do, and only from a user
+// action (the first TILT switch-on, a settings change). Nothing touches it at boot.
 inline void loadSettingsFile() {
+    if (!GroovePuterPlatform::ensureCardputerSdMounted()) return;
     if (!SD.exists(kSettingsPath)) return;
     File f = SD.open(kSettingsPath, FILE_READ);
     if (!f) return;
@@ -23,6 +27,7 @@ inline void loadSettingsFile() {
 }
 
 inline void saveSettingsFile() {
+    if (!GroovePuterPlatform::ensureCardputerSdMounted()) return;
     char body[96];
     formatSettings(currentSettings(), body, sizeof(body));
     if (SD.exists(kSettingsPath)) SD.remove(kSettingsPath);   // FILE_WRITE appends

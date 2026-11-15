@@ -1216,11 +1216,6 @@ void loop() {
     const uint32_t tiltNow = millis();
     {
       // Shared settings: read the SD file once, a little after boot; write on request.
-      static bool settingsLoaded = false;
-      if (!settingsLoaded && millis() > 2000) {
-        settingsLoaded = true;
-        GroovePuterTilt::loadSettingsFile();
-      }
       if (gSaveRequested) {
         gSaveRequested = false;
         GroovePuterTilt::saveSettingsFile();
@@ -1231,6 +1226,12 @@ void loop() {
       if (gController.enabled()) gController.recalibrate();
     }
     if (gToggleRequested) {
+      // First switch-on of this session: read the shared settings (mounts the card once).
+      static bool settingsLoaded = false;
+      if (!settingsLoaded) {
+        settingsLoaded = true;
+        GroovePuterTilt::loadSettingsFile();
+      }
       gToggleRequested = false;
       if (gController.enabled()) {
         gController.disable();
