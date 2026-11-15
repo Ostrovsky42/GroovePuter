@@ -1571,11 +1571,10 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
                   GroovePuterMidi::kControllers[1].number == 91 &&
                   GroovePuterMidi::kControllers[2].number == 94 &&
                   GroovePuterMidi::kControllers[3].number == 71,
-                  "tilt choices map to CUTOFF 0, REVERB 1, DELAY 2, RESO 3");
+                  "tilt choices map to CUTOFF 0, REVERB 1, DELAY 2");
     int sums[GroovePuterMidi::kControllerCount] = {};
 #ifdef GROOVEPUTER_TILT
-    // Choice 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO -> index into kControllers (0 is none).
-    // Choice -> index into kControllers: 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO, 5 ATTACK,
+    // Choice -> index into kControllers: 1 CUTOFF, 2 REVERB, 3 DELAY, (4 is gone), 5 ATTACK,
     // 6 RELEASE, 7 VOLUME, 8 PAN (kTiltChoiceMax).
     static constexpr uint8_t kChoiceIndex[9] = {255, 0, 1, 2, 3, 5, 6, 4, 7};
     const uint32_t word = GroovePuterTilt::gWord.loadAcquire();
@@ -1585,8 +1584,9 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
                             active ? GroovePuterTilt::wordY(word) : 0,
                             active ? GroovePuterTilt::wordZ(word) : 0};
     for (uint8_t axis = 0; axis < 3; ++axis) {
-        const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
-                                   ? GroovePuterTilt::gAxisChoice[axis] : 0;
+        uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
+                             ? GroovePuterTilt::gAxisChoice[axis] : 0;
+        if (choice == 4) choice = 0;   // RESO is no longer an axis choice
         if (choice == 0) continue;   // assigned to none
         sums[kChoiceIndex[choice]] += offsets[axis];   // axes on one controller add up
     }

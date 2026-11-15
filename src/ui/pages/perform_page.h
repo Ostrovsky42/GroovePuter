@@ -45,7 +45,7 @@ enum class PerformInputRow : uint8_t {
     // --- TILT (experimental: the apostrophe toggles tilt; a quick flick cycles the target) ---
     TiltTargetRow,  // TILT TARGET: SYNTH A / SYNTH B / ALL
     TiltSensRow,    // TILT SENS: how much tilt gives full scale (45 / 30 / 20 / 12 deg)
-    TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / RESO)
+    TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / ATTACK / ...)
     TiltYRow,       // TILT Y: the same choice for the Y axis
     TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
     TiltFlickRow,   // TILT FLICK: ON = a quick flick cycles the target; OFF = menu only

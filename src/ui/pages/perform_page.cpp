@@ -162,7 +162,6 @@ inline const char* tiltChoiceName(uint8_t choice) {
         case 1: return "CUTOFF";
         case 2: return "REVERB";
         case 3: return "DELAY";
-        case 4: return "RESO";
         case 5: return "ATTACK";
         case 6: return "RELEASE";
         case 7: return "VOLUME";
@@ -730,14 +729,16 @@ void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
         UI::showToast(toast, 800);
         return;
     }
-    // X, Y, Z: NONE, CUTOFF, REVERB, DELAY, RESO (five steps, wrapping).
+    // X, Y, Z: NONE, CUTOFF, REVERB, DELAY, ATTACK, RELEASE, VOLUME, PAN (RESO is out).
     const uint8_t axis = row == ir(InRow::TiltXRow) ? 0 : (row == ir(InRow::TiltYRow) ? 1 : 2);
     uint8_t choice = gAxisChoice[axis];
-    if (choice > GroovePuterTilt::kTiltChoiceMax) choice = 0;
+    if (choice > GroovePuterTilt::kTiltChoiceMax || choice == 4) choice = 0;   // 4 = old RESO
     if (direction >= 0) {
         choice = choice >= GroovePuterTilt::kTiltChoiceMax ? 0 : static_cast<uint8_t>(choice + 1);
+        if (choice == 4) choice = 5;   // skip the removed RESO
     } else {
         choice = choice == 0 ? GroovePuterTilt::kTiltChoiceMax : static_cast<uint8_t>(choice - 1);
+        if (choice == 4) choice = 3;
     }
     gAxisChoice[axis] = choice;
     gSaveRequested = true;

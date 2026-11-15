@@ -271,21 +271,23 @@ void testSharedSettingsRoundTripAndBadValues() {
     using namespace GroovePuterTilt;
     StoredSettings v{};
     v.sens = 4;
-    v.choice[0] = 2; v.choice[1] = 3; v.choice[2] = 4;
+    v.choice[0] = 2; v.choice[1] = 3; v.choice[2] = 8;
     v.flick = false;
     char text[96];
     formatSettings(v, text, sizeof(text));
     const StoredSettings back = parseSettings(text);
-    CHECK(back.sens == 4 && back.choice[0] == 2 && back.choice[1] == 3 && back.choice[2] == 4);
+    CHECK(back.sens == 4 && back.choice[0] == 2 && back.choice[1] == 3 && back.choice[2] == 8);
     CHECK(!back.flick);
     // Bad or missing lines keep the defaults; a bad value does not overwrite a good one.
     const StoredSettings partial = parseSettings("sens=9\nx=77\nflick=yes\nz=2\n");
     CHECK(partial.sens == kSensDefault && partial.choice[0] == 1 && partial.choice[2] == 2);
     CHECK(partial.flick);
-    CHECK(parseSettings("").choice[1] == 4);
+    CHECK(parseSettings("").choice[1] == 0);   // Y defaults to none (RESO is gone)
     // Choices 5..8 are the new controllers; 9 (EXPRESSION) and above are not offered.
     const StoredSettings wide = parseSettings("x=8\ny=9\nz=12\n");
-    CHECK(wide.choice[0] == 8 && wide.choice[1] == 4 && wide.choice[2] == 0);   // bad values keep the defaults
+    CHECK(wide.choice[0] == 8 && wide.choice[1] == 0 && wide.choice[2] == 0);   // bad values keep the defaults
+    // RESO (4) is no longer offered: an old file with it reads as none.
+    CHECK(parseSettings("y=4\n").choice[1] == 0);
 }
 
 int main() {

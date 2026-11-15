@@ -154,13 +154,13 @@ private:
 // Process-wide tilt settings, set on PERFORM > INPUT and read by loop() and the dispatcher.
 // TILT SENS index into kSensRangeDeg.
 inline volatile uint8_t gSensIndex = kSensDefault;
-// Controller assigned to each axis (X, Y, Z): 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
-// Defaults: X = CUTOFF, Y = RESO, Z = none.
-// Choices for an axis: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO, 5 ATTACK, 6 RELEASE,
-// 7 VOLUME, 8 PAN. EXPRESSION and EQ are left out on purpose (rarely useful as a
-// tilt axis). The numbers are stored on the SD file and must not change.
+// Controller assigned to each axis (X, Y, Z): see kTiltChoiceMax below.
+// Defaults: X = CUTOFF, Y = none, Z = none.
+// Choices for an axis: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 5 ATTACK, 6 RELEASE,
+// 7 VOLUME, 8 PAN. Number 4 (RESO) is no longer offered and reads as none. EXPRESSION
+// and EQ are left out on purpose. The numbers are stored on the SD file, so they stay.
 inline constexpr uint8_t kTiltChoiceMax = 8;
-inline volatile uint8_t gAxisChoice[3] = {1, 4, 0};
+inline volatile uint8_t gAxisChoice[3] = {1, 0, 0};
 // TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
 inline volatile bool gFlickEnabled = true;
 // TILT ZERO request from PERFORM > INPUT; loop() applies it to the controller.
@@ -286,7 +286,7 @@ inline volatile bool gToggleRequested = false;
 // zero is a pose). Plain text, one key per line; unknown or bad values keep defaults.
 struct StoredSettings {
     uint8_t sens = kSensDefault;
-    uint8_t choice[3] = {1, 4, 0};
+    uint8_t choice[3] = {1, 0, 0};
     bool flick = true;
 };
 
@@ -305,9 +305,9 @@ inline StoredSettings parseSettings(const char* text) {
     while (line != nullptr && *line != '\0') {
         unsigned value = 0;
         if (std::sscanf(line, "sens=%u", &value) == 1 && value < 5u) v.sens = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "x=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[0] = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "y=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[1] = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "z=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[2] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "x=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[0] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "y=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[1] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "z=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[2] = static_cast<uint8_t>(value);
         if (std::sscanf(line, "flick=%u", &value) == 1 && value <= 1u) v.flick = value != 0u;
         const char* next = std::strchr(line, '\n');
         line = next == nullptr ? nullptr : next + 1;
