@@ -191,37 +191,6 @@ void testTargetPackKeepsOffsets() {
     CHECK(packOffsets(false, 9, 9, TiltTarget::A) == 0u);
 }
 
-void testFlickFiresOnFastSwing() {
-    using namespace GroovePuterTilt;
-    FlickDetector f;
-    uint32_t t = 1000;
-    CHECK(!f.update(0, 0, t));                       // rest
-    t += 60;
-    CHECK(!f.update(18.0f, 0.0f, t));                      // swing starts, not full yet
-    t += 60;
-    CHECK(f.update(kFlickDeg, 0, t));                       // full scale within 300 ms: fires
-    t += 20;
-    CHECK(!f.update(kFlickDeg, 0, t));                      // stays held: no second flick
-    t += 20;
-    CHECK(!f.update(0, 0, t));                       // back to rest
-    t += 200;
-    CHECK(f.update(0, -kFlickDeg, t));                      // the other axis, negative: fires again
-}
-
-void testFlickIgnoresSlowHoldAndNeedsRest() {
-    using namespace GroovePuterTilt;
-    FlickDetector f;
-    uint32_t t = 5000;
-    CHECK(!f.update(0, 0, t));
-    CHECK(!f.update(20, 0, t + 20));                 // swing starts
-    t = 5000 + 20 + kFlickWindowMs + 50;
-    CHECK(!f.update(kFlickDeg, 0, t));                      // reached full scale too late: no flick
-    CHECK(!f.update(kFlickDeg, 0, t + 20));
-    CHECK(!f.update(0, 0, t + 40));                  // back to rest
-    CHECK(f.update(0, 0, t + 60) == false);
-    CHECK(f.update(kFlickDeg, 0, t + 300));                 // a new swing from rest: fires again
-}
-
 void testZGyroAndSensitivity() {
     using namespace GroovePuterTilt;
     // Word: Z sits in bits 24..31 and does not disturb X, Y or the target bits.
@@ -272,16 +241,13 @@ void testSharedSettingsRoundTripAndBadValues() {
     StoredSettings v{};
     v.sens = 4;
     v.choice[0] = 2; v.choice[1] = 3; v.choice[2] = 8;
-    v.flick = false;
     char text[96];
     formatSettings(v, text, sizeof(text));
     const StoredSettings back = parseSettings(text);
     CHECK(back.sens == 4 && back.choice[0] == 2 && back.choice[1] == 3 && back.choice[2] == 8);
-    CHECK(!back.flick);
     // Bad or missing lines keep the defaults; a bad value does not overwrite a good one.
-    const StoredSettings partial = parseSettings("sens=9\nx=77\nflick=yes\nz=2\n");
+    const StoredSettings partial = parseSettings("sens=9\nx=77\nz=2\n");
     CHECK(partial.sens == kSensDefault && partial.choice[0] == 1 && partial.choice[2] == 2);
-    CHECK(partial.flick);
     CHECK(parseSettings("").choice[1] == 0);   // Y defaults to none (RESO is gone)
     // Choices 5..8 are the new controllers; 9 (EXPRESSION) and above are not offered.
     const StoredSettings wide = parseSettings("x=8\ny=9\nz=12\n");

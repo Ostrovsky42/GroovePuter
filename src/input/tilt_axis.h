@@ -123,34 +123,6 @@ inline bool wordTargetsVoice(uint32_t w, uint8_t voice) {
     return wordActive(w) && (((w >> 1u) & 3u) >> voice & 1u) != 0u;
 }
 
-// Quick flick: a swing from rest to a fixed angle on either axis within a short window
-// fires once. Thresholds are in degrees, so TILT SENS does not change how easy a flick
-// is. Rest must be re-entered before the next flick. A slow hold never fires.
-inline constexpr float kFlickDeg = 25.0f;      // a deliberate flick (about the old 50 at 30 deg)
-inline constexpr float kRestDeg = 11.0f;       // back inside this counts as rest
-inline constexpr uint32_t kFlickWindowMs = 300;
-class FlickDetector {
-public:
-    void reset() { swinging_ = false; spent_ = false; }
-    // Feeds the current axis angles (degrees from zero); true on the step that completes a flick.
-    bool update(float xDeg, float yDeg, uint32_t nowMs) {
-        const float ax = xDeg < 0.0f ? -xDeg : xDeg;
-        const float ay = yDeg < 0.0f ? -yDeg : yDeg;
-        const float m = ax > ay ? ax : ay;
-        if (m <= kRestDeg) { swinging_ = false; return false; }
-        if (!swinging_) { swinging_ = true; spent_ = false; startMs_ = nowMs; }
-        if (spent_) return false;
-        const bool inWindow = static_cast<uint32_t>(nowMs - startMs_) <= kFlickWindowMs;
-        if (m >= kFlickDeg) { spent_ = true; return inWindow; }
-        if (!inWindow) spent_ = true;   // slow hold: no flick until rest again
-        return false;
-    }
-private:
-    uint32_t startMs_ = 0;
-    bool swinging_ = false;
-    bool spent_ = false;
-};
-
 // Process-wide tilt settings, set on PERFORM > INPUT and read by loop() and the dispatcher.
 // TILT SENS index into kSensRangeDeg.
 inline volatile uint8_t gSensIndex = kSensDefault;
@@ -161,8 +133,6 @@ inline volatile uint8_t gSensIndex = kSensDefault;
 // and EQ are left out on purpose. The numbers are stored on the SD file, so they stay.
 inline constexpr uint8_t kTiltChoiceMax = 8;
 inline volatile uint8_t gAxisChoice[3] = {1, 0, 0};
-// TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
-inline volatile bool gFlickEnabled = true;
 // TILT ZERO request from PERFORM > INPUT; loop() applies it to the controller.
 inline volatile bool gZeroRequested = false;
 // Shared settings (not per project) are written by loop() when a setting changes.
@@ -182,14 +152,7 @@ public:
         y_.reset();
         zAngle_ = 0.0f;
         z_ = 0;
-        flick_.reset();
         bad_ = false;
-    }
-    // True once after each flick that moved the target (cleared on read).
-    bool takeTargetChanged() {
-        const bool changed = targetChanged_;
-        targetChanged_ = false;
-        return changed;
     }
 
     void enable(uint32_t nowMs) {
@@ -198,7 +161,6 @@ public:
         y_.reset();
         zAngle_ = 0.0f;
         z_ = 0;
-        flick_.reset();
         lastMs_ = nowMs;
         badSince_ = 0;
         bad_ = false;
@@ -243,10 +205,6 @@ public:
         const float dtS = static_cast<float>(dt) * 0.001f;
         zAngle_ = zAngle_ * (1.0f - static_cast<float>(dt) / kGyroLeakMs) + gzDps * dtS;
         z_ = static_cast<int8_t>(offsetForDelta(zAngle_, range));
-        if (gFlickEnabled && flick_.update(x_.deltaDeg(), y_.deltaDeg(), nowMs)) {
-            target_ = nextTarget(target_);
-            targetChanged_ = true;
-        }
         return true;
     }
 
@@ -266,9 +224,7 @@ private:
     TiltAxis y_;
     float zAngle_ = 0.0f;
     int8_t z_ = 0;
-    FlickDetector flick_;
     TiltTarget target_ = TiltTarget::All;   // kept across off/on
-    bool targetChanged_ = false;
     uint32_t lastMs_ = 0;
     uint32_t badSince_ = 0;
     bool enabled_ = false;
@@ -281,21 +237,18 @@ inline TiltController gController;
 inline MidiRealtimeWord gWord;
 inline volatile bool gToggleRequested = false;
 
-// Shared TILT settings, kept across projects: TILT SENS, the X/Y/Z controllers and
-// TILT FLICK. The target and the zero are not stored (the target starts at ALL, the
+// Shared TILT settings, kept across projects: TILT SENS and the X/Y/Z controllers. The target and the zero are not stored (the target starts at ALL, the
 // zero is a pose). Plain text, one key per line; unknown or bad values keep defaults.
 struct StoredSettings {
     uint8_t sens = kSensDefault;
     uint8_t choice[3] = {1, 0, 0};
-    bool flick = true;
 };
 
 // Writes the file body into out; returns the number of characters (not counting the NUL).
 inline int formatSettings(const StoredSettings& v, char* out, size_t size) {
-    return std::snprintf(out, size, "sens=%u\nx=%u\ny=%u\nz=%u\nflick=%u\n",
+    return std::snprintf(out, size, "sens=%u\nx=%u\ny=%u\nz=%u\n",
                          static_cast<unsigned>(v.sens), static_cast<unsigned>(v.choice[0]),
-                         static_cast<unsigned>(v.choice[1]), static_cast<unsigned>(v.choice[2]),
-                         v.flick ? 1u : 0u);
+                         static_cast<unsigned>(v.choice[1]), static_cast<unsigned>(v.choice[2]));
 }
 
 // Reads the text back. Starts from the defaults, so a missing or partial file is harmless.
@@ -308,7 +261,6 @@ inline StoredSettings parseSettings(const char* text) {
         if (std::sscanf(line, "x=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[0] = static_cast<uint8_t>(value);
         if (std::sscanf(line, "y=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[1] = static_cast<uint8_t>(value);
         if (std::sscanf(line, "z=%u", &value) == 1 && value <= kTiltChoiceMax && value != 4u) v.choice[2] = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "flick=%u", &value) == 1 && value <= 1u) v.flick = value != 0u;
         const char* next = std::strchr(line, '\n');
         line = next == nullptr ? nullptr : next + 1;
     }
@@ -319,14 +271,12 @@ inline StoredSettings currentSettings() {
     StoredSettings v{};
     v.sens = static_cast<uint8_t>(gSensIndex);
     for (uint8_t i = 0; i < 3; ++i) v.choice[i] = static_cast<uint8_t>(gAxisChoice[i]);
-    v.flick = gFlickEnabled;
     return v;
 }
 
 inline void applySettings(const StoredSettings& v) {
     gSensIndex = v.sens;
     for (uint8_t i = 0; i < 3; ++i) gAxisChoice[i] = v.choice[i];
-    gFlickEnabled = v.flick;
 }
 
 }  // namespace GroovePuterTilt

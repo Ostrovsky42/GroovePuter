@@ -42,13 +42,12 @@ enum class PerformInputRow : uint8_t {
     FreezeRiff,     // FREEZE RIFF (listener loopHold)
     Variation,      // VARIATION (listener loopEvolve)
     NewRiffIf,      // NEW RIFF IF (listener loopReplace)
-    // --- TILT (experimental: the apostrophe toggles tilt; a quick flick cycles the target) ---
+    // --- TILT (experimental: the apostrophe toggles tilt) ---
     TiltTargetRow,  // TILT TARGET: SYNTH A / SYNTH B / ALL
     TiltSensRow,    // TILT SENS: how much tilt gives full scale (45 / 30 / 20 / 12 deg)
     TiltXRow,       // TILT X: the controller the X axis drives (none / CUTOFF / REVERB / DELAY / ATTACK / ...)
     TiltYRow,       // TILT Y: the same choice for the Y axis
     TiltZRow,       // TILT Z: the same choice for the gyro yaw (turn the device like a dial)
-    TiltFlickRow,   // TILT FLICK: ON = a quick flick cycles the target; OFF = menu only
     TiltZeroRow,    // TILT ZERO: press to make the current pose the zero of X, Y and Z
     Count,
 };

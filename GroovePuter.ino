@@ -1246,12 +1246,6 @@ void loop() {
       const auto& d = M5.Imu.getImuData();
       if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow, d.gyro.z)) {
         UI::showToast("TILT OFF: NOT STEADY", 900);
-      } else if (gController.takeTargetChanged()) {
-        // A quick flick moved the target; the offsets now reach only that synth.
-        static char targetToast[24];
-        std::snprintf(targetToast, sizeof(targetToast), "TILT > %s",
-                      targetName(gController.target()));
-        UI::showToast(targetToast, 700);
       }
     }
     const uint32_t tiltWord = gController.word();
