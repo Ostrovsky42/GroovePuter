@@ -46,6 +46,7 @@
 #include "src/midi/usb_midi_realtime_parser.h"
 #ifdef GROOVEPUTER_TILT
 #include "src/input/tilt_axis.h"
+#include "src/midi/effect_layers.h"
 #endif
 
 #if ARDUINO_USB_MODE
@@ -1602,35 +1603,38 @@ uint8_t applyTiltLevels(int voice, const GroovePuterMidi::CutoffVoice& control,
             group = static_cast<uint8_t>(group | (1u << other));
         }
         const uint8_t index = kChoiceIndex[choice];
-        if (sum == 0 && (touched & group) == 0u) continue;
+        const GroovePuterMidi::CutoffController& info = GroovePuterMidi::kControllers[index];
+        // The base: the level already in this frame, or the held value, or none.
         int found = -1;
         for (uint8_t i = 0; i < count; ++i) {
             if (levels[i].index == index) { found = i; break; }
         }
-        GroovePuterMidi::CutoffVoice::Level level;
+        GroovePuterMidi::CutoffVoice::Level level{};
+        bool baseKnown = found >= 0;
         if (found >= 0) {
             level = levels[found];
-        } else if (!control.levelFor(index, level)) {
-            // Never set by hand or swept: tilt starts from the centre value. A pending
-            // return to the base still goes out, so the CC cannot stick.
-            level = {index, 64};
-        }
-        const uint8_t base = level.value;
-        int value = static_cast<int>(base) + sum;
-        value = value < 0 ? 0 : (value > 127 ? 127 : value);
-        level.value = GroovePuterMidi::clampForController(index, static_cast<uint8_t>(value));
-        if (found >= 0) {
-            levels[found] = level;
         } else {
-            levels[count++] = level;
+            baseKnown = control.levelFor(index, level);
+        }
+        const GroovePuterMidi::LayerStep step = GroovePuterMidi::composeLayer(
+            info.kind, baseKnown, level.value, info.minValue, sum,
+            (touched & group) != 0u);
+        if (step.dropPending) touched = static_cast<uint8_t>(touched & ~group);
+        if (!step.send) continue;
+        GroovePuterMidi::CutoffVoice::Level out{index, step.value};
+        out.value = GroovePuterMidi::clampForController(index, out.value);
+        if (found >= 0) {
+            levels[found] = out;
+        } else {
+            levels[count++] = out;
         }
         for (uint8_t other = 0; other < 3; ++other) {
             if ((group & (1u << other)) != 0u && offsets[other] != 0) {
                 touched = static_cast<uint8_t>(touched | (1u << other));
             }
         }
-        if (sum == 0 && g_output.cutoffDelivered(static_cast<uint8_t>(voice),
-                                                 GroovePuterMidi::kControllers[index].number, base)) {
+        if (step.returnsToBase &&
+            g_output.cutoffDelivered(static_cast<uint8_t>(voice), info.number, step.value)) {
             touched = static_cast<uint8_t>(touched & ~group);
         }
     }

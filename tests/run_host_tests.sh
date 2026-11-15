@@ -633,6 +633,16 @@ bash "${ROOT_DIR}/tests/run_performance_macro_engine_tests.sh"
 
 "${BUILD_DIR}/test_usb_midi_cutoff"
 
+g++ -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_effect_layers.cpp" \
+  -o "${BUILD_DIR}/test_effect_layers"
+
+"${BUILD_DIR}/test_effect_layers"
+
 "${CXX}" \
   -std=c++17 \
   -Wall \
