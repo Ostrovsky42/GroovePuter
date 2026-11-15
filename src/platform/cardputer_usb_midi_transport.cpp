@@ -1575,7 +1575,9 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
     int sums[GroovePuterMidi::kControllerCount] = {};
 #ifdef GROOVEPUTER_TILT
     // Choice 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO -> index into kControllers (0 is none).
-    static constexpr uint8_t kChoiceIndex[5] = {255, 0, 1, 2, 3};
+    // Choice -> index into kControllers: 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO, 5 ATTACK,
+    // 6 RELEASE, 7 VOLUME, 8 PAN, 9 EXPRESSION, 10 EQ HI, 11 EQ LO (EQ: SEQTRAK only).
+    static constexpr uint8_t kChoiceIndex[12] = {255, 0, 1, 2, 3, 5, 6, 4, 7, 8, 9, 10};
     const uint32_t word = GroovePuterTilt::gWord.loadAcquire();
     // The offsets reach only the synth the target names.
     const bool active = GroovePuterTilt::wordTargetsVoice(word, static_cast<uint8_t>(voice));
@@ -1583,7 +1585,7 @@ uint8_t applyLayers(int voice, const GroovePuterMidi::CutoffVoice& control,
                             active ? GroovePuterTilt::wordY(word) : 0,
                             active ? GroovePuterTilt::wordZ(word) : 0};
     for (uint8_t axis = 0; axis < 3; ++axis) {
-        const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= 4
+        const uint8_t choice = GroovePuterTilt::gAxisChoice[axis] <= GroovePuterTilt::kTiltChoiceMax
                                    ? GroovePuterTilt::gAxisChoice[axis] : 0;
         if (choice == 0) continue;   // assigned to none
         sums[kChoiceIndex[choice]] += offsets[axis];   // axes on one controller add up

@@ -156,13 +156,20 @@ constexpr uint8_t inputLine(uint8_t row) {
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
 
-// Names for the tilt rows. Choices: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
+// Names for the tilt rows (see kTiltChoiceMax for the numbers).
 inline const char* tiltChoiceName(uint8_t choice) {
     switch (choice) {
         case 1: return "CUTOFF";
         case 2: return "REVERB";
         case 3: return "DELAY";
         case 4: return "RESO";
+        case 5: return "ATTACK";
+        case 6: return "RELEASE";
+        case 7: return "VOLUME";
+        case 8: return "PAN";
+        case 9: return "EXPR";
+        case 10: return "EQ HI";
+        case 11: return "EQ LO";
         default: return "NONE";
     }
 }
@@ -729,11 +736,11 @@ void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
     // X, Y, Z: NONE, CUTOFF, REVERB, DELAY, RESO (five steps, wrapping).
     const uint8_t axis = row == ir(InRow::TiltXRow) ? 0 : (row == ir(InRow::TiltYRow) ? 1 : 2);
     uint8_t choice = gAxisChoice[axis];
-    if (choice > 4) choice = 0;
+    if (choice > GroovePuterTilt::kTiltChoiceMax) choice = 0;
     if (direction >= 0) {
-        choice = choice >= 4 ? 0 : static_cast<uint8_t>(choice + 1);
+        choice = choice >= GroovePuterTilt::kTiltChoiceMax ? 0 : static_cast<uint8_t>(choice + 1);
     } else {
-        choice = choice == 0 ? 4 : static_cast<uint8_t>(choice - 1);
+        choice = choice == 0 ? GroovePuterTilt::kTiltChoiceMax : static_cast<uint8_t>(choice - 1);
     }
     gAxisChoice[axis] = choice;
     gSaveRequested = true;

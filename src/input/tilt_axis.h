@@ -156,6 +156,10 @@ private:
 inline volatile uint8_t gSensIndex = kSensDefault;
 // Controller assigned to each axis (X, Y, Z): 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO.
 // Defaults: X = CUTOFF, Y = RESO, Z = none.
+// Choices for an axis: 0 none, 1 CUTOFF, 2 REVERB, 3 DELAY, 4 RESO, 5 ATTACK, 6 RELEASE,
+// 7 VOLUME, 8 PAN, 9 EXPRESSION, 10 EQ HI, 11 EQ LO. The numbers 0..4 are stored on the
+// SD file and must not change; new controllers only add numbers at the end.
+inline constexpr uint8_t kTiltChoiceMax = 11;
 inline volatile uint8_t gAxisChoice[3] = {1, 4, 0};
 // TILT FLICK: on = a quick flick cycles the target; off = the target changes only in the menu.
 inline volatile bool gFlickEnabled = true;
@@ -301,9 +305,9 @@ inline StoredSettings parseSettings(const char* text) {
     while (line != nullptr && *line != '\0') {
         unsigned value = 0;
         if (std::sscanf(line, "sens=%u", &value) == 1 && value < 5u) v.sens = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "x=%u", &value) == 1 && value <= 4u) v.choice[0] = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "y=%u", &value) == 1 && value <= 4u) v.choice[1] = static_cast<uint8_t>(value);
-        if (std::sscanf(line, "z=%u", &value) == 1 && value <= 4u) v.choice[2] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "x=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[0] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "y=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[1] = static_cast<uint8_t>(value);
+        if (std::sscanf(line, "z=%u", &value) == 1 && value <= kTiltChoiceMax) v.choice[2] = static_cast<uint8_t>(value);
         if (std::sscanf(line, "flick=%u", &value) == 1 && value <= 1u) v.flick = value != 0u;
         const char* next = std::strchr(line, '\n');
         line = next == nullptr ? nullptr : next + 1;
