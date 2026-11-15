@@ -1590,7 +1590,7 @@ uint8_t applyLayers(int voice, GroovePuterMidi::CutoffVoice& control,
             const uint8_t index = kChoiceIndex[choice];
             GroovePuterMidi::CutoffVoice::Level probe{};
             if (!control.levelFor(index, probe)) {
-                control.setDefault(index, choice == 7 ? 100 : 0);
+                control.setDefault(index, choice == 7 ? 70 : 0);
             }
         }
     }
