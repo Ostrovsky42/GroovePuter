@@ -65,10 +65,16 @@ rsync -a --delete \
   "${PROJECT_ROOT}/" "${TEMP_ROOT}/GroovePuter/"
 
 BUILD_VERSION="${GROOVEPUTER_BUILD_VERSION:-0.0.0-dev}"
-SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse --verify HEAD)"
-SOURCE_STATE="clean"
-if [[ -n "$(git -C "${PROJECT_ROOT}" status --porcelain --untracked-files=normal)" ]]; then
-  SOURCE_STATE="dirty"
+# A copied build tree (the memory baseline builds from one) has no .git: record unknown.
+if git -C "${PROJECT_ROOT}" rev-parse --git-dir >/dev/null 2>&1; then
+  SOURCE_COMMIT="$(git -C "${PROJECT_ROOT}" rev-parse --verify HEAD)"
+  SOURCE_STATE="clean"
+  if [[ -n "$(git -C "${PROJECT_ROOT}" status --porcelain --untracked-files=normal)" ]]; then
+    SOURCE_STATE="dirty"
+  fi
+else
+  SOURCE_COMMIT="${GROOVEPUTER_SOURCE_COMMIT:-0000000000000000000000000000000000000000}"
+  SOURCE_STATE="dirty"   # not verifiable from a copy: report as not clean
 fi
 python3 "${SCRIPT_DIR}/write_build_identity.py" \
   --output "${TEMP_ROOT}/GroovePuter/src/build_identity_generated.h" \
