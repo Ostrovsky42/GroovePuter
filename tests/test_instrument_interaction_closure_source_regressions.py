@@ -109,7 +109,7 @@ def main() -> None:
         "both synth voices must consume prepared retriggers",
     )
     require(
-        "event.durationSubticks" in trigger
+        "playbackEvent.durationSubticks" in trigger
         and "kSubticksPerStep" in trigger
         and "retrigSpanSamples" in trigger,
         "Rn retriggers must be scheduled inside the active event gate",
