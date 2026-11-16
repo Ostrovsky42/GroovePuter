@@ -218,7 +218,7 @@ int main() {
       page.drawContent(gfx);
       assert(gfx.sawExact(kLoopLabels[r]));  // the selected row is on screen
       for (uint8_t i = 0; i < PerformPage::kLoopRowCount; ++i) sawLoopLabel[i] |= gfx.sawExact(kLoopLabels[i]);
-      assert(gfx.sawExact("[LOOP]"));
+      assert(gfx.sawExact("LOOP"));   // the LOOP tab label (the active tab is drawn without brackets)
       bool bar = false;
       for (const auto& rc : gfx.rects) bar |= (rc.w == 2 && rc.x >= 236 && rc.x + rc.w <= 240);
       assert(bar);  // scroll bar inside the 240 px screen
