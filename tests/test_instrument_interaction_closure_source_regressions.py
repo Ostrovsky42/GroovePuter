@@ -98,8 +98,8 @@ def main() -> None:
         "void MiniAcid::triggerDrumVoice_",
     )
     require(
-        "event.fx == static_cast<uint8_t>(StepFx::Retrig)" in trigger
-        and "event.fxParam > 0" in trigger
+        "playbackEvent.fx == static_cast<uint8_t>(StepFx::Retrig)" in trigger
+        and "playbackEvent.fxParam > 0" in trigger
         and "retrig.active = true" in trigger,
         "synth Retrig must arm an audible runtime retrigger",
     )
