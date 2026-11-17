@@ -98,7 +98,7 @@ int runWitness(const std::filesystem::path& root) {
                  afterClear != replacement && afterClear != first,
                  "Clear reset project identity high-water")) return 2;
 
-    const auto projectDir = root / "patterns" / "c1a-copy";
+    const auto projectDir = root / "grooveputer" / "patterns" / "c1a-copy";
     if (!require(std::filesystem::exists(projectDir), "identity namespace vanished")) return 2;
     std::puts("C1A MaterialId project persistence: PASS");
     return 0;

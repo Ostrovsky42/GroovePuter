@@ -37,7 +37,6 @@ static GroovePuterMidi::NudgeRepeater g_nudgeRepeat;
 #include <cstdarg>
 #include <cstdio>
 #include "src/ui/miniacid_display.h"
-#include "src/audio/cardputer_audio_recorder.h"
 #include "miniacid_encoder8.h"
 #include "scene_storage_cardputer.h"
 #include "src/ui/led_manager.h"
@@ -79,7 +78,6 @@ static constexpr IGfxColor CP_BLACK = IGfxColor::Black();
 CardputerDisplay g_display;
 MiniAcidDisplay* g_miniDisplay = nullptr;
 SceneStorageCardputer g_sceneStorage;
-CardputerAudioRecorder* g_audioRecorder = nullptr;
 #include "src/audio/audio_out_i2s.h"
 #include "src/platform/cardputer_capabilities.h"
 #if GROOVEPUTER_ENABLE_SAMPLER
@@ -299,10 +297,6 @@ void audioTask(void *param) {
       stats.endWrite();
     }
 
-    if (g_audioRecorder) {
-      g_audioRecorder->writeSamples(g_audioBuffer, kBlockFrames);
-    }
-    
     if (AudioDiagnostics::instance().isEnabled()) {
       AudioDiagnostics::instance().flushIfReady(millis());
     }
@@ -746,12 +740,6 @@ void setup() {
   g_miniDisplay->setAudioGuard(guard);
   g_miniAcid->setAcceptAudioMutationGate(&g_audioMutationGate);
   
-  Serial.println("7c. UI setAudioRecorder");
-  // Initialize audio recorder (done after other initialization to avoid boot issues)
-  // DISABLING FOR CRASH DEBUGGING
-  // g_audioRecorder = new CardputerAudioRecorder();
-  // g_miniDisplay->setAudioRecorder(g_audioRecorder);
-
   Serial.println("9. Final Init...");
   markBootStage(90, "before encoder init");
   g_encoder8->initialize();

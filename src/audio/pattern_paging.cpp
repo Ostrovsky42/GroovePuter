@@ -16,10 +16,13 @@
 
 #include "../platform/cardputer_material_publication_session.h"
 #include "../platform/log.h"
+#include "../storage/data_root_migration.h"
+#include "../storage/data_root.h"
 
 namespace {
 
-constexpr char kPatternRootDirectory[] = "/patterns";
+constexpr const char* kPatternRootDirectory = GroovePuterStorage::kPatternsDirectory;
+constexpr const char* kProjectRootDirectory = GroovePuterStorage::kProjectsDirectory;
 constexpr char kDefaultProjectName[] = "grooveputer_scene";
 constexpr char kMagic[4] = {'G', 'P', 'P', 'G'};
 constexpr char kMaterialIdentityMagic[4] = {'G', 'P', 'M', 'I'};
@@ -204,7 +207,7 @@ SongHarmonicStorageStatus codecStorageStatus(
 
 bool readSongHarmonicFile(const std::string& path, uint8_t* bytes,
                           size_t& size) {
-    File file = SD.open(path.c_str(), FILE_READ);
+    File file = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
     if (!file) return false;
     size = file.size();
     if (size == 0 || size > GroovePuterHarmony::kMaxSongHarmonicStateBytes) {
@@ -226,7 +229,7 @@ bool readSongHarmonicFile(const std::string& path, uint8_t* bytes,
 
 bool copySongHarmonicFiles(const std::string& sourceProject,
                            const std::string& targetProject) {
-    File directory = SD.open(projectDirectoryFor(sourceProject).c_str(), FILE_READ);
+    File directory = SD.open(GroovePuterStorage::readPathFor(projectDirectoryFor(sourceProject)).c_str(), FILE_READ);
     if (!directory || !directory.isDirectory()) {
         directory.close();
         return true;
@@ -254,7 +257,7 @@ bool copySongHarmonicFiles(const std::string& sourceProject,
 }
 
 bool clearSongHarmonicFilesFor(const std::string& projectName) {
-    File directory = SD.open(projectDirectoryFor(projectName).c_str(), FILE_READ);
+    File directory = SD.open(GroovePuterStorage::readPathFor(projectDirectoryFor(projectName)).c_str(), FILE_READ);
     if (!directory || !directory.isDirectory()) {
         directory.close();
         return true;
@@ -285,6 +288,10 @@ std::string legacyPagePath(int pageIndex) {
 }
 
 bool ensureRootDirectory() {
+    if (!SD.exists(GroovePuterStorage::kDataRoot) &&
+        !SD.mkdir(GroovePuterStorage::kDataRoot)) {
+        return false;
+    }
     return SD.exists(kPatternRootDirectory) || SD.mkdir(kPatternRootDirectory);
 }
 
@@ -335,13 +342,13 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
 
 // Melody payloads live beside, rather than inside, the resident Pattern pages.
 std::string melodyDirectoryFor(const std::string& projectName) {
-    return "/projects/" + projectName + "/melody";
+    return std::string(kProjectRootDirectory) + "/" + projectName + "/melody";
 }
 
 bool clearProjectMelodiesFor(const std::string& projectName) {
     const std::string path = melodyDirectoryFor(projectName);
     if (!SD.exists(path.c_str())) return true;
-    File directory = SD.open(path.c_str(), FILE_READ);
+    File directory = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
     if (!directory || !directory.isDirectory()) return false;
     bool ok = true;
     for (File entry = directory.openNextFile(); entry;
@@ -360,9 +367,9 @@ bool copyProjectMelodies(const std::string& sourceProject,
                          const std::string& targetProject) {
     const std::string source = melodyDirectoryFor(sourceProject);
     if (!SD.exists(source.c_str())) return true;
-    const std::string targetProjectPath = "/projects/" + targetProject;
+    const std::string targetProjectPath = std::string(kProjectRootDirectory) + "/" + targetProject;
     const std::string target = melodyDirectoryFor(targetProject);
-    for (const auto& directory : {std::string("/projects"), targetProjectPath, target}) {
+    for (const auto& directory : {std::string(kProjectRootDirectory), targetProjectPath, target}) {
         if (!SD.exists(directory.c_str()) && !SD.mkdir(directory.c_str())) return false;
     }
     File directory = SD.open(source.c_str(), FILE_READ);
@@ -495,7 +502,7 @@ MaterialIdentityMeta makeIdentityMeta(uint32_t highWater) {
 }
 
 bool readIdentityMeta(const std::string& path, uint32_t& highWater) {
-    File file = SD.open(path.c_str(), FILE_READ);
+    File file = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
     if (!file) return false;
     if (file.size() != sizeof(MaterialIdentityMeta)) {
         file.close();
@@ -528,7 +535,7 @@ bool loadIdentityHighWater(const std::string& projectName, uint32_t& highWater) 
     bool sawValid = false;
     uint32_t highest = 0;
     for (const std::string& path : paths) {
-        if (!SD.exists(path.c_str())) continue;
+        if (!SD.exists(GroovePuterStorage::readPathFor(path).c_str())) continue;
         sawAny = true;
         uint32_t candidate = 0;
         if (!readIdentityMeta(path, candidate)) continue;
@@ -727,7 +734,7 @@ bool headerIsValid(const PageFileHeader& header, size_t fileSize) {
 bool readAndValidatePageData(const std::string& path, Scene* staging,
     PatternPagingService::PageMaterialDescriptors* descriptors,
     uint32_t* outGeneration) {
-    File file = SD.open(path.c_str(), FILE_READ);
+    File file = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
     if (!file) return false;
 
     PageFileHeader header{};
@@ -865,7 +872,7 @@ bool readPageCandidate(int pageIndex, Read&& read) {
         bool validA = read(pathA, &genA);
         if (validA) {
             uint32_t genB = 0;
-            File fb = SD.open(pathB.c_str(), FILE_READ);
+            File fb = SD.open(GroovePuterStorage::readPathFor(pathB).c_str(), FILE_READ);
             bool bMightBeNewer = false;
             if (fb) {
                 PageFileHeader h{};
@@ -1036,8 +1043,8 @@ uint32_t PatternPagingService::activeStorageGeneration(int pageIndex) {
     const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
     const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
     uint32_t genA = 0, genB = 0;
-    bool hasA = SD.exists(pathA.c_str());
-    bool hasB = SD.exists(pathB.c_str());
+    bool hasA = SD.exists(GroovePuterStorage::readPathFor(pathA).c_str());
+    bool hasB = SD.exists(GroovePuterStorage::readPathFor(pathB).c_str());
     if (hasA || hasB) {
         Scene& staging = sceneTransactionScratch();
         bool validA = hasA && readAndValidatePage(pathA, staging, &genA);
@@ -1059,8 +1066,8 @@ GroovePuterMaterial::PublicationSlot PatternPagingService::activePublicationSlot
     const std::string pathA = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotA);
     const std::string pathB = slotPathFor(proj, pageIndex, GroovePuterMaterial::PublicationSlot::SlotB);
     uint32_t genA = 0, genB = 0;
-    bool hasA = SD.exists(pathA.c_str());
-    bool hasB = SD.exists(pathB.c_str());
+    bool hasA = SD.exists(GroovePuterStorage::readPathFor(pathA).c_str());
+    bool hasB = SD.exists(GroovePuterStorage::readPathFor(pathB).c_str());
     if (hasA || hasB) {
         Scene& staging = sceneTransactionScratch();
         bool validA = hasA && readAndValidatePage(pathA, staging, &genA);

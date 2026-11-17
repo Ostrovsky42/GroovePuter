@@ -10,6 +10,9 @@
 #endif
 
 #include <cstdio>
+
+#include "../storage/data_root.h"
+#include "../storage/data_root_migration.h"
 #include <string>
 #include <vector>
 
@@ -76,7 +79,7 @@ class SdFileSystem : public FileSystem {
     return written == length;
   }
   bool read(const char* path, std::vector<uint8_t>& out) const override {
-    File f = SD.open(path, FILE_READ);
+    File f = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
     if (!f) return false;
     const size_t length = f.size();
     // Reject corrupt sizes before allocating from the constrained SD heap.
@@ -124,7 +127,7 @@ inline std::string slotPath(const std::string& project,
   std::snprintf(buffer, sizeof(buffer), "/melody/v%u_g%03u.%s",
                 static_cast<unsigned>(address.voice),
                 static_cast<unsigned>(address.globalSlot), extension);
-  return "/projects/" + project + buffer;
+  return GROOVEPUTER_DATA_ROOT "/projects/" + project + buffer;
 }
 
 inline std::string slotPath(const std::string& project,
@@ -135,7 +138,7 @@ inline std::string slotPath(const std::string& project,
                 static_cast<unsigned>(address.voice),
                 static_cast<unsigned>(address.globalSlot),
                 GroovePuterMaterial::publicationSlotSuffix(slot));
-  return "/projects/" + project + buffer;
+  return GROOVEPUTER_DATA_ROOT "/projects/" + project + buffer;
 }
 
 inline std::string finalPath(

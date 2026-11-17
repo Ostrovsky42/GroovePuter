@@ -9,6 +9,8 @@
 #include <cstring>
 #include <string>
 
+#include "src/storage/data_root.h"
+
 namespace GroovePuterUi {
 
 inline constexpr std::size_t kSmfPlayerSessionBrowserRows = 7;
@@ -21,7 +23,7 @@ struct SmfPlayerSessionBrowserRow {
 struct SmfPlayerSessionSnapshot {
     static constexpr std::size_t kPathCapacity = 128;
 
-    char browserPath[kPathCapacity]{"/midi"};
+    char browserPath[kPathCapacity]{GROOVEPUTER_DATA_ROOT "/midi"};
     std::array<SmfPlayerSessionBrowserRow,
                kSmfPlayerSessionBrowserRows> browserRows{};
     int16_t browserSelection{0};
@@ -113,7 +115,7 @@ private:
         if (result.browserPath[0] != '/') {
             std::snprintf(result.browserPath,
                           SmfPlayerSessionSnapshot::kPathCapacity,
-                          "%s", "/midi");
+                          "%s", GroovePuterStorage::kMidiDirectory);
         }
         result.browserSelection = clampNonNegative(result.browserSelection);
         result.browserScroll = clampNonNegative(result.browserScroll);

@@ -8,6 +8,8 @@
 #include <string>
 #include <cstring>
 
+#include "../storage/data_root.h"
+
 #ifdef ARDUINO
 /**
  * VoiceCache - SD Card Voice Caching System
@@ -15,11 +17,11 @@
  * Stores pre-synthesized voice phrases as RAW audio files on SD card.
  * Provides instant playback for cached phrases without CPU-intensive synthesis.
  * 
- * Storage format: /scenes/voices/<hash>.raw (16-bit signed, 44100 Hz, mono)
+ * Storage format: GROOVEPUTER_DATA_ROOT "/scenes/voices/<hash>.raw" (16-bit signed, 44100 Hz, mono)
  */
 class VoiceCache {
 public:
-    static constexpr const char* kVoiceDir = "/scenes/voices";
+    static constexpr const char* kVoiceDir = GROOVEPUTER_DATA_ROOT "/scenes/voices";
     static constexpr uint32_t kSampleRate = 44100;
     static constexpr size_t kMaxPhraseLength = 5 * kSampleRate; // 5 seconds max
     static constexpr size_t kStreamBufferSize = 512; // Samples per read
@@ -30,6 +32,7 @@ public:
      * Initialize the cache directory on SD card
      */
     bool init() {
+        // The root and scenes folders are created by scene storage init, which runs first.
         if (!SD.exists(kVoiceDir)) {
             if (!SD.mkdir(kVoiceDir)) {
                 Serial.println("[VoiceCache] Failed to create voices directory");

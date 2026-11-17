@@ -7,6 +7,7 @@
 
 #include "ui_core.h"
 #include "src/audio/midi_importer.h"
+#include "src/storage/data_root.h"
 
 namespace GroovePuterUi {
 
@@ -119,7 +120,7 @@ private:
     void drawDeleteOverlay(IGfx& gfx, const Rect& bounds);
 
     Workspace workspace_{};
-    char currentPath_[kPathBytes]{"/midi"};
+    char currentPath_[kPathBytes]{GROOVEPUTER_DATA_ROOT "/midi"};
     char renameBuffer_[kNameBytes]{};
     int entryCount_{0};
     int windowStart_{0};

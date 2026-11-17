@@ -5,6 +5,7 @@
 #include <cstring>
 
 #include "smf_stream.h"
+#include "src/storage/data_root.h"
 #include "src/ui/midi_file_name_policy.h"
 
 namespace GroovePuterMidi {
@@ -75,7 +76,7 @@ bool buildFinalPath(ISongExportStorage& storage,
         continue;
       }
     }
-    const int written = std::snprintf(path, pathSize, "/midi/%s", filename);
+    const int written = std::snprintf(path, pathSize, GROOVEPUTER_DATA_ROOT "/midi/%s", filename);
     if (written <= 0 || static_cast<std::size_t>(written) >= pathSize) return false;
     if (!storage.exists(path)) return true;
   }
@@ -89,7 +90,7 @@ bool buildTemporaryPaths(ISongExportStorage& storage,
     bool available = true;
     for (uint8_t i = 0; i < 5; ++i) {
       const int written = std::snprintf(
-          paths[i], sizeof(paths[i]), "/midi/.gpexp-%04u-%c.tmp",
+          paths[i], sizeof(paths[i]), GROOVEPUTER_DATA_ROOT "/midi/.gpexp-%04u-%c.tmp",
           static_cast<unsigned>(id), suffixes[i]);
       if (written <= 0 || static_cast<std::size_t>(written) >= sizeof(paths[i])) {
         return false;
@@ -275,7 +276,7 @@ bool exportSongAsSmf(const MidiSongExportSnapshot& snapshot,
     setFileError(result, SongExportFileError::InvalidSnapshot);
     return false;
   }
-  if (!storage.ensureDirectory("/midi")) {
+  if (!storage.ensureDirectory(GroovePuterStorage::kMidiDirectory)) {
     setFileError(result, SongExportFileError::StorageFailure);
     return false;
   }

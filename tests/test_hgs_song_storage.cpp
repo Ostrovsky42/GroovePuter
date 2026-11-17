@@ -101,7 +101,7 @@ int main() {
          SongHarmonicStorageStatus::InvalidData);
   assert(unchangedByStaleLookup.harmony.materialId == oldState.harmony.materialId);
 
-  const auto sourceDirectory = root / "patterns" / "hgs-song-src";
+  const auto sourceDirectory = root / "grooveputer" / "patterns" / "hgs-song-src";
   bool corruptedOldRecord = false;
   for (const auto& entry : std::filesystem::directory_iterator(sourceDirectory)) {
     if (entry.path().filename().string().find("m00000258_") ==

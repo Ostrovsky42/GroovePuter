@@ -546,8 +546,11 @@ void report_sizes() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
 
   report_sizes();
   test_b1_b2_bass_plan_export_and_forwarding();
@@ -559,8 +562,11 @@ int main() {
   test_b10_b11_survival_and_immutability();
 
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   std::puts("0.9.14 D1-B generated Synth A origin: ALL PASS");
   return 0;
 }

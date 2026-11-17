@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
   }
   assert(engine.saveSceneToStorage());
   assert(engine.loadSceneByName("source"));
-  const auto sourceFiles = projectFiles(root / "projects" / "source");
+  const auto sourceFiles = projectFiles(root / "grooveputer" / "projects" / "source");
 
   const std::string target = clearSameProject ? "source" : "new-blank";
   const bool created = engine.createNewSceneWithName(target);
@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
     assert(!engine.workingMaterial_[voice].holdsMelody());
   }
   if (!clearSameProject) {
-    assert(projectFiles(root / "projects" / "source") == sourceFiles);
+    assert(projectFiles(root / "grooveputer" / "projects" / "source") == sourceFiles);
     assert(engine.loadSceneByName("source"));
   }
   fs::remove_all(root);

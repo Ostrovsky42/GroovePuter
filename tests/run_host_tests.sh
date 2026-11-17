@@ -1042,3 +1042,15 @@ bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
   -o "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
 
 "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
+
+# Data root: one-time copy of card-root GroovePuter folders into /grooveputer.
+"${CXX}" \
+  -std=c++17 \
+  -Wall \
+  -Wextra \
+  -Werror \
+  -I"${ROOT_DIR}" \
+  "${ROOT_DIR}/tests/test_data_root_migration.cpp" \
+  -o "${BUILD_DIR}/test_data_root_migration"
+
+"${BUILD_DIR}/test_data_root_migration"

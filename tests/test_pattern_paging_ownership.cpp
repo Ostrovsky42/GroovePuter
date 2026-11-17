@@ -96,7 +96,7 @@ void testBackupRecovery() {
     char fileName[32];
     std::snprintf(fileName, sizeof(fileName), "page_%02d.gpp", kPage);
     const std::filesystem::path main =
-        gRoot / "patterns" / "ownership-backup" / fileName;
+        gRoot / "grooveputer" / "patterns" / "ownership-backup" / fileName;
 
     std::fstream file(main, std::ios::binary | std::ios::in | std::ios::out);
     assert(file.is_open());

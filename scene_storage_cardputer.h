@@ -3,6 +3,7 @@
 #include <string>
 #include <vector>
 #include "scene_storage.h"
+#include "src/storage/data_root.h"
 
 class SceneStorageCardputer : public SceneStorage {
 public:
@@ -24,8 +25,9 @@ public:
 
 private:
   static constexpr const char* kDefaultSceneName = "grooveputer_scene";
-  static constexpr const char* kSceneNamePath = "/scenes/grooveputer_scene_name.txt";
-  static constexpr const char* kScenesDirectory = "/scenes";
+  static constexpr const char* kSceneNamePath =
+      GROOVEPUTER_DATA_ROOT "/scenes/grooveputer_scene_name.txt";
+  static constexpr const char* kScenesDirectory = GROOVEPUTER_DATA_ROOT "/scenes";
   static constexpr const char* kSceneExtension = ".json";
   static constexpr const char* kAutoSceneExtension = ".auto.json";
 

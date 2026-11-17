@@ -586,14 +586,20 @@ void test_d1c1_publication_neutral() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   test_d1c1_witnesses();
   test_d1c1_never_new_idea();
   test_d1c1_publication_neutral();
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   std::filesystem::remove("grooveputer_scene_name.txt");
   std::puts("0.9.14 D1-C1 attack/continuation alignment: ALL PASS");
   return 0;

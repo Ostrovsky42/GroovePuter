@@ -2,6 +2,7 @@
 #include "scenes.h"
 #include "src/debug_log.h"
 #include "src/audio/pattern_paging.h"
+#include "src/storage/data_root.h"
 #include "src/phrase/phrase_core.h"
 #include "src/state/generated_phrase_product_state.h"
 #include "src/state/melody_promotion.h"
@@ -3201,7 +3202,7 @@ bool validateStoredProjectMaterial(const Scene& resident) {
           // payloads under this or another slot. This is read-only and helps
           // distinguish a missing file from stale slot descriptors.
           const std::string melodyDirectoryPath =
-              "/projects/" + project + "/melody";
+              GROOVEPUTER_DATA_ROOT "/projects/" + project + "/melody";
           File melodyDirectory = SD.open(melodyDirectoryPath.c_str(), FILE_READ);
           if (melodyDirectory && melodyDirectory.isDirectory()) {
             for (File entry = melodyDirectory.openNextFile(); entry;
@@ -3240,7 +3241,7 @@ bool validateStoredProjectMaterial(const Scene& resident) {
           // migration may have left the payload under another project name.
           // Never copy or publish it automatically; report valid candidates so
           // recovery can be reviewed without changing the SD card.
-          File projects = SD.open("/projects", FILE_READ);
+          File projects = SD.open(GroovePuterStorage::kProjectsDirectory, FILE_READ);
           if (projects && projects.isDirectory()) {
             for (File entry = projects.openNextFile(); entry;
                  entry = projects.openNextFile()) {

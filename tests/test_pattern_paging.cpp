@@ -20,14 +20,14 @@ std::filesystem::path pageFile(const std::filesystem::path& root,
                                int page = kPage) {
   char fileName[32];
   std::snprintf(fileName, sizeof(fileName), "page_%02d.gpp", page);
-  return root / "patterns" / project / fileName;
+  return root / "grooveputer" / "patterns" / project / fileName;
 }
 
 std::filesystem::path legacyPageFile(const std::filesystem::path& root,
                                      int page = kPage) {
   char fileName[32];
   std::snprintf(fileName, sizeof(fileName), "page_%02d.gpp", page);
-  return root / "patterns" / fileName;
+  return root / "grooveputer" / "patterns" / fileName;
 }
 
 void selectEmptyProject(const std::string& project) {
@@ -220,7 +220,7 @@ void testLegacyMigration(const std::filesystem::path& root) {
   const std::filesystem::path legacy = legacyPageFile(root);
   std::filesystem::create_directories(legacy.parent_path());
   std::filesystem::rename(pageFile(root, "legacy-source"), legacy);
-  std::filesystem::remove_all(root / "patterns" / "legacy-source");
+  std::filesystem::remove_all(root / "grooveputer" / "patterns" / "legacy-source");
 
   assert(PatternPagingService::setProjectName("legacy-target"));
   assert(!std::filesystem::exists(legacy));
