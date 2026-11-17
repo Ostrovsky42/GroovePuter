@@ -30,7 +30,8 @@ class BrowserTestGfx final : public IGfx {
   // Right edge of text in the browser's middle band (y 27..67: names, info,
   // hear line), which must stay clear of the miniature at x 186.
   int bandRight = 0;
-  // Miniature cells: fills at x >= 180 (solid hit 2x3, soft hit 2x1).
+  // Miniature cells: fills at x >= 180 (solid hit 2x4, soft hit 2x1). The beat grid
+  // is drawn with lines, not fills, so it is not counted as hits.
   int miniHits = 0;
   int miniSoft = 0;
   void drawText(int x, int y, const char* value) override {
