@@ -1,6 +1,7 @@
 #include "../scenes.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/phrase/runtime_pattern_event_bank.h"
+#include "../src/state/generated_pattern_harmony_origin.h"
 #include "../src/state/generation_request_state.h"
 #include "support/gf2_generation_observation.h"
 
