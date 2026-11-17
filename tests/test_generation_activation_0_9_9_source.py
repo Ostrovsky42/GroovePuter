@@ -122,7 +122,10 @@ for persisted_file in (ROOT / "scene_storage.h", ROOT / "scenes.h", ROOT / "scen
 # perform normal ACTIVATE.
 for anchor in ("void MiniAcid::reset()", "void MiniAcid::stop()",
                "bool MiniAcid::createNewSceneWithName", "void MiniAcid::loadSceneFromStorage"):
-    block = ENGINE[ENGINE.find(anchor):ENGINE.find("}\n", ENGINE.find(anchor)) + 2]
+    if anchor == "void MiniAcid::stop()":
+        block = between(ENGINE, anchor, "void MiniAcid::pauseTransport()")
+    else:
+        block = ENGINE[ENGINE.find(anchor):ENGINE.find("}\n", ENGINE.find(anchor)) + 2]
     require("cancelPendingGenerationActivation" in block,
             f"pending activation not cancelled by lifecycle path: {anchor}")
 stop_block = between(ENGINE, "void MiniAcid::stop()", "void MiniAcid::pauseTransport()")
@@ -162,7 +165,7 @@ require("committedRevision" in compact_undo and "cancelPendingGenerationActivati
 
 # Both generators share one owner, but their musical preparation remains
 # separate. Fallback still uses its B2 helper; plain G still uses quantized flow.
-fallback = between(PATTERN, "// C keeps B2's legacy/fallback musical generator", "if (keyF)")
+fallback = between(PATTERN, "// C keeps B2's legacy/fallback musical generator", "if (keyF && !ui_event.ctrl)")
 require("preparePatternEditorGeneration" in fallback,
         "C must not replace fallback G musical generator")
 require("armCompactSynthActivation" in fallback and "completeArmedActivation" in fallback,
