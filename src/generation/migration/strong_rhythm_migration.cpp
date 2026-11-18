@@ -1307,6 +1307,22 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     // DnB writes its drum grammar too, but only when this G replaces drums.
     idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
                                      replaceDrums ? &nextDrums : nullptr);
+    if (idiomApplied && replaceDrums &&
+        settings.generativeMode ==
+            static_cast<uint8_t>(GenerativeMode::DrumAndBass)) {
+      // DnB writes its own drum topology after the initial materialization;
+      // run the shared FEEL interpreter over those final hits so that write
+      // does not erase their timing offsets.
+      const PatternMaterializerBinding binding =
+          standardDrumPatternBinding(deferredSynthRoles());
+      result.feelStatus = applyFeelToMaterializedDrums(
+          binding, resolvedFeel, context.feelAmount, materializationGeneration,
+          nextDrums);
+      if (result.feelStatus != FeelPatternApplyStatus::Ok) {
+        result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+        return result;
+      }
+    }
     // CALL/RESPONSE phase 8: which template and level wrote this bar, so the
     // partner can read the chord of a step from the template's stabs.
     if (idiomApplied) {
