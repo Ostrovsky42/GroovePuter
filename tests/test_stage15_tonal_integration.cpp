@@ -273,6 +273,9 @@ void testAllModesDeterministicAndInRegister() {
       if (tonal.idiomTemplate == 0xFFu) {
         assertRegister(tonalA, 24, 47);
         assertRegister(tonalB, 48, 71);
+      } else {
+        assertRegister(tonalA, 18, 65);
+        assertRegister(tonalB, 51, 94);
       }
 
       DrumPatternSet repeatDrums{};
@@ -330,6 +333,9 @@ void testNoPitchSourceStillMaterializes() {
   if (result.idiomTemplate == 0xFFu) {
     assertRegister(emptyA, 24, 47);
     assertRegister(emptyB, 48, 71);
+  } else {
+    assertRegister(emptyA, 18, 65);
+    assertRegister(emptyB, 51, 94);
   }
 }
 
