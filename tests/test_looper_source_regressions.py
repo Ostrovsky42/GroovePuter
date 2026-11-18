@@ -123,11 +123,15 @@ assert "kMaxRowByContext[6] = {5, 5, 5, 5, kInputRowCount - 1, kLoopRowCount - 1
 assert "kLoopSetup" not in header and "LOOP SETUP" not in page
 assert "kLoopRowCount = performLoopRow(PerformLoopRow::Count);" in header
 enum_body = header[header.index("enum class PerformInputRow"):header.index("Count,", header.index("enum class PerformInputRow"))]
-order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
+product_enum_body = enum_body.split("#ifdef GROOVEPUTER_TILT", 1)[0]
+order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", product_enum_body, flags=re.M)
 assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Helper", "ReplyBars",
-                 "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf",
-                 "TiltTargetRow", "TiltSensRow", "TiltXRow", "TiltYRow", "TiltZRow",
-                 "TiltZeroRow"], order
+                 "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf"], order
+tilt_enum_body = enum_body.split("#ifdef GROOVEPUTER_TILT", 1)[1]
+tilt_enum_body = tilt_enum_body.split("#endif", 1)[0]
+tilt_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", tilt_enum_body, flags=re.M)
+assert tilt_order == ["TiltTargetRow", "TiltSensRow", "TiltXRow", "TiltYRow", "TiltZRow",
+                     "TiltFlickRow", "TiltZeroRow"], tilt_order
 loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count,", header.index("enum class PerformLoopRow"))]
 loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
 assert loop_order == ["Looper", "RecordSource", "LoopBars", "LoopChannel", "NoteLength", "HoldLayer",
