@@ -509,23 +509,31 @@ void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
     actualSolo = page->mini_acid_.rhythmAuditionSolo(browserSession_);
     pending = pending || page->mini_acid_.rhythmAuditionPending(browserSession_);
   }
-  const char* hear = !browserSession_ ? "BROWSING" :
-      (pending ? "PENDING NEXT BAR" : browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
-       (actualSolo ? "SOLO" : "WITH SONG"));
-  gfx.drawText(b.x + 3, b.y + 51, hear);
+  // The audition state line exists only in a session; browsing shows no line.
+  if (browserSession_) {
+    const char* hear = pending ? "PENDING NEXT BAR" : browserSolo_ != actualSolo ? "MODE / NEXT BAR" :
+        (actualSolo ? "SOLO" : "WITH SONG");
+    gfx.drawText(b.x + 3, b.y + 51, hear);
+  }
   gfx.setTextColor(COLOR_MUTED);
   gfx.drawText(b.x + 3, b.y + 61, "UP/DN RHYTHM L/R VAR G/Alt+G GRP");
   // Miniature of the selected rhythm at the right: 16 steps x 8 drum voices,
-  // 3 px per step and 5 px per voice, x 186..233, y 13..51 (text in this band
-  // ends before x 184, the hint at y 61 sits below). Mutes are not drawn here;
-  // they show on the track screens. Soft hits are a dim dot, the rest solid.
+  // 3 px per step (2 px cell) and 6 px per voice (4 px cell), x 186..233,
+  // y 10..55 relative to the content top. The title's VAR text sits above y 10,
+  // the hint at y 61 below. Mutes are not drawn here; they show on the track
+  // screens. Faint vertical lines mark each beat (every 4 steps) in the gap
+  // column before that step. Soft hits are a dim dot, the rest solid.
   refreshBrowserMiniature_();
   if (browserBuffers_) {
     const auto& mini = browserBuffers_->miniature;
     const int mx = b.x + 186;
-    const int my = b.y + 13;
+    const int my = b.y + 10;
+    const int gridBottom = my + NUM_DRUM_VOICES * 6 - 2;
+    for (int step = 4; step < DrumPattern::kSteps; step += 4) {
+      gfx.drawLine(mx + step * 3 - 1, my, mx + step * 3 - 1, gridBottom, COLOR_LIGHT_GRAY);
+    }
     for (int voice = 0; voice < NUM_DRUM_VOICES; ++voice) {
-      const int rowY = my + voice * 5;
+      const int rowY = my + voice * 6;
       for (int step = 0; step < DrumPattern::kSteps; ++step) {
         const uint16_t bit = static_cast<uint16_t>(1u << step);
         if (!(mini.hit[voice] & bit)) continue;
@@ -533,7 +541,7 @@ void DrumSequencerPage::drawBrowser_(IGfx& gfx) {
         if (mini.soft[voice] & bit) {
           gfx.fillRect(cellX, rowY + 1, 2, 1, COLOR_MUTED);
         } else {
-          gfx.fillRect(cellX, rowY, 2, 3, COLOR_TEXT);
+          gfx.fillRect(cellX, rowY, 2, 4, COLOR_TEXT);
         }
       }
     }

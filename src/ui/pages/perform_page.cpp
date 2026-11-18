@@ -23,6 +23,7 @@
 #include "synth_sequencer_page.h"
 #include "../undo_ux.h"
 #include "src/performance/performance_macro_cc.h"
+#include "src/midi/effect_layers.h"
 #ifdef GROOVEPUTER_TILT
 #include "src/input/tilt_axis.h"
 #endif
@@ -173,10 +174,21 @@ inline const char* tiltChoiceName(uint8_t choice) {
         default: return "NONE";
     }
 }
-// "CUTOFF -12 DEG": the controller of an axis and its current tilt angle (0 when off).
+// Controller index of a tilt choice (see kTiltChoiceMax); -1 for none.
+inline int tiltChoiceIndex(uint8_t choice) {
+    static constexpr int kIndex[9] = {-1, 0, 1, 2, -1, 5, 6, 4, 7};
+    return choice <= 8 ? kIndex[choice] : -1;
+}
+// "CUTOFF -12 DEG > 84": the controller, its tilt angle, and the value on the wire.
 inline void formatTiltAxis(char* out, size_t size, uint8_t choice, float deg) {
     const int whole = static_cast<int>(deg >= 0.0f ? deg + 0.5f : deg - 0.5f);
-    std::snprintf(out, size, "%s %+d DEG", tiltChoiceName(choice), whole);
+    const int index = tiltChoiceIndex(choice);
+    if (index < 0) {
+        std::snprintf(out, size, "%s %+d DEG", tiltChoiceName(choice), whole);
+        return;
+    }
+    std::snprintf(out, size, "%s %+d > %u", tiltChoiceName(choice), whole,
+                  static_cast<unsigned>(GroovePuterMidi::gLayerWire[index]));
 }
 // Sensitivity steps, full scale in degrees: 60, 45, 30, 20, 12.
 inline const char* tiltSensName(uint8_t index) {
@@ -699,7 +711,7 @@ void PerformPage::cyclePartnerSetting(uint8_t row, int direction) {
 }
 
 // TILT rows on INPUT. TARGET steps A -> B -> ALL (left steps back); Y steps REVERB, DELAY,
-// RESO. Both are session values; the flick on the sensor can also move the target.
+// RESO. Both are session values; the target changes only from its own row.
 void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
 #ifdef GROOVEPUTER_TILT
     using namespace GroovePuterTilt;
@@ -714,12 +726,6 @@ void PerformPage::cycleTiltSetting(uint8_t row, int direction) {
     if (row == ir(InRow::TiltZeroRow)) {
         gZeroRequested = true;
         UI::showToast("TILT: ZERO SET HERE", 900);
-        return;
-    }
-    if (row == ir(InRow::TiltFlickRow)) {
-        gFlickEnabled = !gFlickEnabled;
-        gSaveRequested = true;
-        UI::showToast(gFlickEnabled ? "TILT FLICK: ON" : "TILT FLICK: OFF (MENU ONLY)", 800);
         return;
     }
     if (row == ir(InRow::TiltSensRow)) {

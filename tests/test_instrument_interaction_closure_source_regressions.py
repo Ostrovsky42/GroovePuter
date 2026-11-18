@@ -98,8 +98,8 @@ def main() -> None:
         "void MiniAcid::triggerDrumVoice_",
     )
     require(
-        "event.fx == static_cast<uint8_t>(StepFx::Retrig)" in trigger
-        and "event.fxParam > 0" in trigger
+        "playbackEvent.fx == static_cast<uint8_t>(StepFx::Retrig)" in trigger
+        and "playbackEvent.fxParam > 0" in trigger
         and "retrig.active = true" in trigger,
         "synth Retrig must arm an audible runtime retrigger",
     )
@@ -109,7 +109,7 @@ def main() -> None:
         "both synth voices must consume prepared retriggers",
     )
     require(
-        "event.durationSubticks" in trigger
+        "playbackEvent.durationSubticks" in trigger
         and "kSubticksPerStep" in trigger
         and "retrigSpanSamples" in trigger,
         "Rn retriggers must be scheduled inside the active event gate",

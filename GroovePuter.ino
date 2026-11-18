@@ -1216,11 +1216,6 @@ void loop() {
     const uint32_t tiltNow = millis();
     {
       // Shared settings: read the SD file once, a little after boot; write on request.
-      static bool settingsLoaded = false;
-      if (!settingsLoaded && millis() > 2000) {
-        settingsLoaded = true;
-        GroovePuterTilt::loadSettingsFile();
-      }
       if (gSaveRequested) {
         gSaveRequested = false;
         GroovePuterTilt::saveSettingsFile();
@@ -1231,6 +1226,12 @@ void loop() {
       if (gController.enabled()) gController.recalibrate();
     }
     if (gToggleRequested) {
+      // First switch-on of this session: read the shared settings (mounts the card once).
+      static bool settingsLoaded = false;
+      if (!settingsLoaded) {
+        settingsLoaded = true;
+        GroovePuterTilt::loadSettingsFile();
+      }
       gToggleRequested = false;
       if (gController.enabled()) {
         gController.disable();
@@ -1246,12 +1247,6 @@ void loop() {
       const auto& d = M5.Imu.getImuData();
       if (!gController.feed(d.accel.x, d.accel.y, d.accel.z, tiltNow, d.gyro.z)) {
         UI::showToast("TILT OFF: NOT STEADY", 900);
-      } else if (gController.takeTargetChanged()) {
-        // A quick flick moved the target; the offsets now reach only that synth.
-        static char targetToast[24];
-        std::snprintf(targetToast, sizeof(targetToast), "TILT > %s",
-                      targetName(gController.target()));
-        UI::showToast(targetToast, 700);
       }
     }
     const uint32_t tiltWord = gController.word();

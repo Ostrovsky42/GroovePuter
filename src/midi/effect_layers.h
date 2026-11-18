@@ -49,6 +49,10 @@ inline LayerStep composeLayer(CutoffKind kind, bool baseKnown, uint8_t base, uin
     return step;
 }
 
+// The value last laid on the wire per controller index (0 = nothing sent yet). The
+// PERFORM page shows it next to each tilt axis, so a silent controller can be checked.
+inline volatile uint8_t gLayerWire[kControllerCount] = {};
+
 // CC sends per service pass (all voices together). A pass that is not budgeted could
 // spend its time on CC while Note On/Off waits; the budget bounds that work, and the
 // start point rotates so every controller gets its turn.

@@ -75,7 +75,10 @@ try:
          "src/input/call_response_listener.h",
          "src/input/call_response_phrase_capture.h", "src/input/call_response_planner.h",
          "src/input/call_response_performance_plan.h",
-         "src/audio", "platform_sdl", ":(exclude)platform_sdl/sdl_main.cpp", "src/ui/undo_ux.h"],
+         "src/audio", "platform_sdl", ":(exclude)platform_sdl/sdl_main.cpp",
+         # The SDL source list grew with the MIDI settings and SMF export (bbe29a87, 3f492197);
+         # it is not part of the looper base.
+         ":(exclude)platform_sdl/Makefile", "src/ui/undo_ux.h"],
         cwd=ROOT, capture_output=True, text=True, check=True).stdout.split()
     # platform_sdl: 0d4d5c99 (harmony: keep context on a missed transport
     # snapshot) legitimately changed sdl_main.cpp after the looper base.
@@ -124,7 +127,7 @@ order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", enum_body, flags=re.M)
 assert order == ["MidiIn", "ListenChannel", "SendTo", "PlayAs", "LeadStyle", "Helper", "ReplyBars",
                  "ReplyChannel", "FreezeRiff", "Variation", "NewRiffIf",
                  "TiltTargetRow", "TiltSensRow", "TiltXRow", "TiltYRow", "TiltZRow",
-                 "TiltFlickRow", "TiltZeroRow"], order
+                 "TiltZeroRow"], order
 loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count,", header.index("enum class PerformLoopRow"))]
 loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
 assert loop_order == ["Looper", "RecordSource", "LoopBars", "LoopChannel", "NoteLength", "HoldLayer",
