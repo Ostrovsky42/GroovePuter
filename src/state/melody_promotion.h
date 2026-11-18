@@ -12,7 +12,7 @@
 #include <cstdio>
 
 #include "../storage/data_root.h"
-#include "../storage/data_root_migration.h"
+#include "../storage/data_root.h"
 #include <string>
 #include <vector>
 
@@ -79,7 +79,7 @@ class SdFileSystem : public FileSystem {
     return written == length;
   }
   bool read(const char* path, std::vector<uint8_t>& out) const override {
-    File f = SD.open(GroovePuterStorage::readPathFor(path).c_str(), FILE_READ);
+    File f = SD.open(path, FILE_READ);
     if (!f) return false;
     const size_t length = f.size();
     // Reject corrupt sizes before allocating from the constrained SD heap.

@@ -183,26 +183,15 @@ MidiFileManager& midiFileManager() {
     return manager;
 }
 
-// The browse root: the data-root MIDI folder, or the legacy card-root "/midi" while
-// only the legacy folder exists (read fallback until the migration has run).
 namespace {
-constexpr char kLegacyMidiRoot[] = "/midi";
 bool isMidiRootPath(const char* path) {
-    return std::strcmp(path, GroovePuterStorage::kMidiDirectory) == 0 ||
-           std::strcmp(path, kLegacyMidiRoot) == 0;
+    return std::strcmp(path, GroovePuterStorage::kMidiDirectory) == 0;
 }
-const char* midiBrowseRoot() {
-    if (SD.exists(GroovePuterStorage::kMidiDirectory)) return GroovePuterStorage::kMidiDirectory;
-    if (SD.exists(kLegacyMidiRoot)) return kLegacyMidiRoot;
-    return GroovePuterStorage::kMidiDirectory;
-}
+const char* midiBrowseRoot() { return GroovePuterStorage::kMidiDirectory; }
 bool underMidiRoot(const char* path) {
-    const size_t newLen = sizeof(GroovePuterStorage::kMidiDirectory) - 1;
-    if (std::strncmp(path, GroovePuterStorage::kMidiDirectory, newLen) == 0 &&
-        (path[newLen] == '\0' || path[newLen] == '/')) return true;
-    const size_t legacyLen = sizeof(kLegacyMidiRoot) - 1;
-    return std::strncmp(path, kLegacyMidiRoot, legacyLen) == 0 &&
-           (path[legacyLen] == '\0' || path[legacyLen] == '/');
+    const size_t len = sizeof(GroovePuterStorage::kMidiDirectory) - 1;
+    return std::strncmp(path, GroovePuterStorage::kMidiDirectory, len) == 0 &&
+           (path[len] == '\0' || path[len] == '/');
 }
 }  // namespace
 
