@@ -25,15 +25,15 @@ Before Stage A:
 ```text
 PERFORM > INPUT
 11 MIDI/HELPER rows
-+ 7 TILT rows shown as N/A in the normal build
-= 18 selectable rows
++ 6 TILT rows shown as N/A in the normal build
+= 17 selectable rows
 ```
 
 After Stage A:
 
 ```text
 normal product build: 11 selectable rows
-GROOVEPUTER_TILT build: 18 selectable rows
+GROOVEPUTER_TILT build: 17 selectable rows
 ```
 
 ## Hardware list
@@ -190,9 +190,9 @@ NORMAL PRODUCT BUILD
 [ ] KEY / CHORD / ARP / RHYTHM / LOOP / MACRO behavior is unchanged
 
 EXPERIMENTAL TILT BUILD
-[ ] PERFORM > INPUT has 18 selectable rows
+[ ] PERFORM > INPUT has 17 selectable rows
 [ ] TILT group follows HELPER
-[ ] all seven TILT controls remain editable
+[ ] all six TILT controls remain editable
 [ ] apostrophe live toggle still works
 
 REALTIME / REGRESSION

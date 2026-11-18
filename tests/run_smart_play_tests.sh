@@ -231,6 +231,7 @@ run_cr_phase10() {
     echo 'failed to resolve SDL source set' >&2
     exit 2
   fi
+  # Exercise both the normal product row contract and the optional TILT rows.
   # shellcheck disable=SC2046
   "${CXX}" -std=c++17 -Wno-c++20-extensions -I.. -I. -include arduino_compat.h \
     $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 \
@@ -238,6 +239,16 @@ run_cr_phase10() {
     $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "${build}/test"
   popd >/dev/null
   "${build}/test"
+
+  pushd "${ROOT_DIR}/platform_sdl" >/dev/null
+  # shellcheck disable=SC2046
+  "${CXX}" -std=c++17 -Wno-c++20-extensions -DGROOVEPUTER_TILT -I.. -I. \
+    -include arduino_compat.h $(sdl2-config --cflags) \
+    $(pkg-config --cflags SDL2_gfx) -O1 "${sources[@]}" \
+    ../tests/test_cr_phase10_menu.cpp $(sdl2-config --libs) \
+    $(pkg-config --libs SDL2_gfx) -o "${build}/test_tilt"
+  popd >/dev/null
+  "${build}/test_tilt"
 }
 
 # LOOPER phase 0: the layer core (bits, quantize, undo, overflow, plan) +

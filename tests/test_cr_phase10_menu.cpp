@@ -156,15 +156,15 @@ int main() {
   assertDefaults(partner);  // entering INPUT changes nothing
 
   // Production INPUT is the compact 11-row MIDI/HELPER surface. Experimental
-  // TILT builds append seven rows, but disabled TILT has zero UI footprint.
+  // TILT builds append six rows, but disabled TILT has zero UI footprint.
   static_assert(PerformPage::kPartnerRowFirst == 5 && kLast == 10,
                 "MIDI IN 0..4, PARTNER 5..10");
   static_assert(PerformPage::kLoopRowCount == 9, "the LOOP tab has nine rows");
 #ifdef GROOVEPUTER_TILT
   static_assert(PerformPage::kTiltRowFirst == kLast + 1,
                 "TILT follows NEW RIFF IF");
-  static_assert(PerformPage::kInputRowCount == 18,
-                "TILT build appends seven INPUT rows");
+  static_assert(PerformPage::kInputRowCount == 17,
+                "TILT build appends six INPUT rows");
 #else
   static_assert(PerformPage::kInputRowCount == 11,
                 "production INPUT ends after NEW RIFF IF");
