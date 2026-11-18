@@ -6,6 +6,7 @@
 #include <vector>
 #ifdef ARDUINO
 #include <SD.h>
+#include "src/storage/data_root.h"
 #endif
 #if defined(ESP32) || defined(ESP_PLATFORM)
 #include <esp_heap_caps.h>
@@ -218,10 +219,10 @@ bool ProjectPage::renameSelectedScene() {
   }
   if (newName == oldName) { dialog_type_ = DialogType::Load; return true; }
 
-  const std::string oldPath = "/scenes/" + oldName + ".json";
-  const std::string oldAuto = "/scenes/" + oldName + ".auto.json";
-  const std::string newPath = "/scenes/" + newName + ".json";
-  const std::string newAuto = "/scenes/" + newName + ".auto.json";
+  const std::string oldPath = GROOVEPUTER_DATA_ROOT "/scenes/" + oldName + ".json";
+  const std::string oldAuto = GROOVEPUTER_DATA_ROOT "/scenes/" + oldName + ".auto.json";
+  const std::string newPath = GROOVEPUTER_DATA_ROOT "/scenes/" + newName + ".json";
+  const std::string newAuto = GROOVEPUTER_DATA_ROOT "/scenes/" + newName + ".auto.json";
   bool ok = false;
   if (oldName == mini_acid_.currentSceneName()) {
     // The open project: Save As writes the new scene and copies pages and
@@ -872,8 +873,8 @@ bool ProjectPage::deleteSelectionInDialog() {
   }
 
   const std::string name = scenes_[selection_index_];
-  const std::string path = "/scenes/" + name + ".json";
-  const std::string autoPath = "/scenes/" + name + ".auto.json";
+  const std::string path = GROOVEPUTER_DATA_ROOT "/scenes/" + name + ".json";
+  const std::string autoPath = GROOVEPUTER_DATA_ROOT "/scenes/" + name + ".auto.json";
   const bool removed = SD.remove(path.c_str());
   SD.remove(autoPath.c_str());
   if (removed) {

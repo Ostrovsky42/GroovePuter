@@ -605,8 +605,11 @@ void report_sizes() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
 
   report_sizes();
   test_p1_packing();
@@ -617,8 +620,11 @@ int main() {
   test_p9_scene_load_clears();
 
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   std::filesystem::remove("grooveputer_scene_name.txt");  // scene-load test artifact
   std::puts("0.9.14 D1-B1 pitch-class origin witness: ALL PASS");
   return 0;

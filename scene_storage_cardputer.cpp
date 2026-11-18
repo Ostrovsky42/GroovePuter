@@ -17,12 +17,14 @@
 #include "src/platform/cardputer_sd.h"
 #include "src/sampler/sample_scene_persistence.h"
 #include "src/storage/atomic_file_commit.h"
+#include "src/storage/data_root.h"
 
 namespace {
 constexpr size_t kMaxSceneNamesInUi = 24;
 constexpr size_t kMaxSceneNameLength = 48;
 constexpr const char* kTempSuffix = ".tmp";
 constexpr const char* kBackupSuffix = ".bak";
+constexpr const char* kLegacyScenesDirectory = "/scenes";
 
 bool endsWith(const std::string& value, const char* suffix) {
   const size_t suffixLen = std::strlen(suffix);
@@ -177,10 +179,27 @@ void SceneStorageCardputer::initializeStorage() {
   Serial.println("Card initialized successfully");
   isInitialized_ = true;
 
-  if (!SD.exists(kScenesDirectory) && !SD.mkdir(kScenesDirectory)) {
-    Serial.printf("Failed to create directory: %s\n", kScenesDirectory);
+  // The root and every folder below it are created one level at a time: SD.mkdir
+  // is not recursive on the device.
+  if (!SD.exists(GroovePuterStorage::kDataRoot) &&
+      !SD.mkdir(GroovePuterStorage::kDataRoot)) {
+    Serial.printf("Failed to create directory: %s\n", GroovePuterStorage::kDataRoot);
     isInitialized_ = false;
     return;
+  }
+
+  const char* const folders[] = {
+      GroovePuterStorage::kScenesDirectory,
+      GroovePuterStorage::kPatternsDirectory,
+      GroovePuterStorage::kProjectsDirectory,
+      GroovePuterStorage::kMidiDirectory,
+  };
+  for (const char* folder : folders) {
+    if (!SD.exists(folder) && !SD.mkdir(folder)) {
+      Serial.printf("Failed to create directory: %s\n", folder);
+      isInitialized_ = false;
+      return;
+    }
   }
 
   loadStoredSceneName();
@@ -360,38 +379,45 @@ std::vector<std::string> SceneStorageCardputer::getAvailableSceneNames() const {
   if (!isInitialized_) return names;
   names.reserve(8);
 
-  File root = SD.open(kScenesDirectory);
-  if (!root) return names;
-
-  while (true) {
+  // Names come from the data root first, then from the legacy card-root folder
+  // (read-side fallback). A name present in both is listed once.
+  auto collect = [&names](const char* directory) {
+    File root = SD.open(directory);
+    if (!root) return;
+    while (true) {
 #if defined(ESP32) || defined(ESP_PLATFORM)
-    if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < 2048) {
-      Serial.println("Scene list near OOM, truncating");
-      break;
-    }
+      if (heap_caps_get_free_size(MALLOC_CAP_INTERNAL | MALLOC_CAP_8BIT) < 2048) {
+        Serial.println("Scene list near OOM, truncating");
+        break;
+      }
 #endif
-    File entry = root.openNextFile();
-    if (!entry) break;
+      File entry = root.openNextFile();
+      if (!entry) break;
 
-    if (!entry.isDirectory()) {
-      std::string fileName = entry.name();
-      if (!fileName.empty() && fileName.front() == '/') fileName.erase(0, 1);
-      if (!endsWith(fileName, kAutoSceneExtension) &&
-          endsWith(fileName, kSceneExtension)) {
-        fileName.resize(fileName.size() - std::strlen(kSceneExtension));
-        if (names.size() < kMaxSceneNamesInUi) {
-          try {
-            names.emplace_back(std::move(fileName));
-          } catch (const std::bad_alloc&) {
-            entry.close();
-            break;
+      if (!entry.isDirectory()) {
+        std::string fileName = entry.name();
+        if (!fileName.empty() && fileName.front() == '/') fileName.erase(0, 1);
+        if (!endsWith(fileName, kAutoSceneExtension) &&
+            endsWith(fileName, kSceneExtension)) {
+          fileName.resize(fileName.size() - std::strlen(kSceneExtension));
+          if (names.size() < kMaxSceneNamesInUi &&
+              std::find(names.begin(), names.end(), fileName) == names.end()) {
+            try {
+              names.emplace_back(std::move(fileName));
+            } catch (const std::bad_alloc&) {
+              entry.close();
+              break;
+            }
           }
         }
       }
+      entry.close();
     }
-    entry.close();
-  }
-  root.close();
+    root.close();
+  };
+
+  collect(kScenesDirectory);
+  if (SD.exists(kLegacyScenesDirectory)) collect(kLegacyScenesDirectory);
 
   std::sort(names.begin(), names.end());
   names.erase(std::unique(names.begin(), names.end()), names.end());
@@ -418,7 +444,8 @@ bool SceneStorageCardputer::setCurrentSceneName(const std::string& name) {
   const std::string targetPath = scenePathFor(normalized);
   const std::string targetBackup = siblingPath(targetPath, kBackupSuffix);
   const bool sceneAlreadyExists =
-      SD.exists(targetPath.c_str()) || SD.exists(targetBackup.c_str());
+      SD.exists(targetPath.c_str()) ||
+      SD.exists(targetBackup.c_str());
 
   currentSceneName_ = normalized;
   if (!PatternPagingService::setProjectName(currentSceneName_)) {

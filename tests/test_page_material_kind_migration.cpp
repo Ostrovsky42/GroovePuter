@@ -24,6 +24,7 @@
 
 #include "scenes.h"
 #include "src/audio/pattern_paging.h"
+#include "src/storage/data_root.h"
 #include "src/state/material_slot_access.h"
 
 SerialMock Serial;
@@ -115,7 +116,7 @@ int main() {
     (void)GroovePuterMaterial::setResidentKind(scene, 0, 1, MaterialKind::Melody);
     expect(PatternPagingService::savePage(3, scene), "savePage(3) refused");
 
-    const std::string path = "/patterns/m2c_5Ftest/page_03.gpp";
+    const std::string path = GROOVEPUTER_DATA_ROOT "/patterns/m2c_5Ftest/page_03.gpp";
     std::vector<uint8_t> bytes;
     {
       File in = SD.open(path.c_str(), FILE_READ);
@@ -134,7 +135,7 @@ int main() {
       out.close();
     }
 
-    SD.remove("/patterns/m2c_5Ftest/page_03.gpp.bak");
+    SD.remove(GROOVEPUTER_DATA_ROOT "/patterns/m2c_5Ftest/page_03.gpp.bak");
 
     Scene live{};
     seedPatterns(live);

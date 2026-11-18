@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "src/midi/midi_song_export_file.h"
+#include "src/storage/data_root.h"
 
 namespace {
 
@@ -189,7 +190,7 @@ bool exportOnce(Failure failure, const char* fixturePath) {
   if (failure == Failure::None) {
     assert(exported);
     assert(result.error == GroovePuterMidi::SongExportFileError::None);
-    assert(std::strstr(result.path, "/midi/ExportTest-Song1.mid") != nullptr);
+    assert(std::strstr(result.path, GROOVEPUTER_DATA_ROOT "/midi/ExportTest-Song1.mid") != nullptr);
     assert(storage.visibleMidiCount() == 1);
     assert(!storage.hasTemporaryFiles());
     const auto bytes = storage.files.at(result.path);

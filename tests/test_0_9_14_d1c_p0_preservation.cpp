@@ -728,8 +728,11 @@ void report_sizes() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   report_sizes();
   test_positive_matrix();          std::puts("D1-C A-E positive matrix: PASS");
   test_displace_and_thin();        std::puts("D1-C F/G DISPLACE/THIN -> R2 FAIL, UNKNOWN, never NEW_IDEA: PASS");
@@ -742,8 +745,11 @@ int main() {
   test_never_fail_never_new_idea();std::puts("D1-C one-sided aggregation / NEW_IDEA firewall: PASS");
   test_publication_neutrality();
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   std::filesystem::remove("grooveputer_scene_name.txt");
   std::puts("0.9.14 D1-C P0 preservation evaluator: ALL PASS");
   return 0;

@@ -16,10 +16,13 @@
 
 #include "../platform/cardputer_material_publication_session.h"
 #include "../platform/log.h"
+#include "../storage/data_root.h"
+#include "../storage/data_root.h"
 
 namespace {
 
-constexpr char kPatternRootDirectory[] = "/patterns";
+constexpr const char* kPatternRootDirectory = GroovePuterStorage::kPatternsDirectory;
+constexpr const char* kProjectRootDirectory = GroovePuterStorage::kProjectsDirectory;
 constexpr char kDefaultProjectName[] = "grooveputer_scene";
 constexpr char kMagic[4] = {'G', 'P', 'P', 'G'};
 constexpr char kMaterialIdentityMagic[4] = {'G', 'P', 'M', 'I'};
@@ -285,6 +288,10 @@ std::string legacyPagePath(int pageIndex) {
 }
 
 bool ensureRootDirectory() {
+    if (!SD.exists(GroovePuterStorage::kDataRoot) &&
+        !SD.mkdir(GroovePuterStorage::kDataRoot)) {
+        return false;
+    }
     return SD.exists(kPatternRootDirectory) || SD.mkdir(kPatternRootDirectory);
 }
 
@@ -335,7 +342,7 @@ bool copyFile(const std::string& sourcePath, const std::string& targetPath) {
 
 // Melody payloads live beside, rather than inside, the resident Pattern pages.
 std::string melodyDirectoryFor(const std::string& projectName) {
-    return "/projects/" + projectName + "/melody";
+    return std::string(kProjectRootDirectory) + "/" + projectName + "/melody";
 }
 
 bool clearProjectMelodiesFor(const std::string& projectName) {
@@ -360,9 +367,9 @@ bool copyProjectMelodies(const std::string& sourceProject,
                          const std::string& targetProject) {
     const std::string source = melodyDirectoryFor(sourceProject);
     if (!SD.exists(source.c_str())) return true;
-    const std::string targetProjectPath = "/projects/" + targetProject;
+    const std::string targetProjectPath = std::string(kProjectRootDirectory) + "/" + targetProject;
     const std::string target = melodyDirectoryFor(targetProject);
-    for (const auto& directory : {std::string("/projects"), targetProjectPath, target}) {
+    for (const auto& directory : {std::string(kProjectRootDirectory), targetProjectPath, target}) {
         if (!SD.exists(directory.c_str()) && !SD.mkdir(directory.c_str())) return false;
     }
     File directory = SD.open(source.c_str(), FILE_READ);
