@@ -110,7 +110,6 @@ TILT SENS
 TILT X
 TILT Y
 TILT Z
-TILT FLICK
 TILT ZERO
 ```
 
@@ -119,7 +118,8 @@ and no TILT rows rendered as `N/A`.
 ### Experimental TILT build
 
 When `GROOVEPUTER_TILT` is compiled in, the TILT group remains after HELPER
-with all seven controls and the existing apostrophe live toggle.
+with the six controls supported by current `main` and the existing apostrophe
+live toggle.
 
 ## Product control rules introduced by this stage
 

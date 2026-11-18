@@ -131,7 +131,7 @@ tilt_enum_body = enum_body.split("#ifdef GROOVEPUTER_TILT", 1)[1]
 tilt_enum_body = tilt_enum_body.split("#endif", 1)[0]
 tilt_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", tilt_enum_body, flags=re.M)
 assert tilt_order == ["TiltTargetRow", "TiltSensRow", "TiltXRow", "TiltYRow", "TiltZRow",
-                     "TiltFlickRow", "TiltZeroRow"], tilt_order
+                     "TiltZeroRow"], tilt_order
 loop_body = header[header.index("enum class PerformLoopRow"):header.index("Count,", header.index("enum class PerformLoopRow"))]
 loop_order = re.findall(r"^\s*([A-Z][A-Za-z]+)(?: = 0)?,", loop_body, flags=re.M)
 assert loop_order == ["Looper", "RecordSource", "LoopBars", "LoopChannel", "NoteLength", "HoldLayer",

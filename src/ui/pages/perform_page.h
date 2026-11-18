@@ -50,7 +50,6 @@ enum class PerformInputRow : uint8_t {
     TiltXRow,       // TILT X: the controller the X axis drives
     TiltYRow,       // TILT Y: the controller the Y axis drives
     TiltZRow,       // TILT Z: the controller the gyro yaw drives
-    TiltFlickRow,   // TILT FLICK: quick flick cycles the target
     TiltZeroRow,    // TILT ZERO: make the current pose the zero
 #endif
     Count,

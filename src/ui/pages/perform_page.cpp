@@ -494,7 +494,7 @@ void PerformPage::adjustSelectedValue(int direction) {
 #ifdef GROOVEPUTER_TILT
                 case ir(InRow::TiltTargetRow): case ir(InRow::TiltSensRow):
                 case ir(InRow::TiltXRow): case ir(InRow::TiltYRow): case ir(InRow::TiltZRow):
-                case ir(InRow::TiltFlickRow): case ir(InRow::TiltZeroRow):
+                case ir(InRow::TiltZeroRow):
                     cycleTiltSetting(row, direction);
                     break;
 #endif
@@ -1079,7 +1079,6 @@ const char* PerformPage::selectedRowHint() const {
                 case ir(InRow::TiltXRow): return "TILT: CONTROLLER FOR THE X AXIS (NONE TO OFF)";
                 case ir(InRow::TiltYRow): return "TILT: CONTROLLER FOR THE Y AXIS (NONE TO OFF)";
                 case ir(InRow::TiltZRow): return "TILT: CONTROLLER FOR THE GYRO TURN (NONE TO OFF)";
-                case ir(InRow::TiltFlickRow): return "TILT: A QUICK FLICK CHANGES THE TARGET (OFF: MENU ONLY)";
                 case ir(InRow::TiltZeroRow): return "TILT: PRESS TO ZERO X, Y, Z AT THIS POSE";
 #endif
                 default: return "";
@@ -1460,8 +1459,6 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             formatTiltAxis(value, sizeof(value), GroovePuterTilt::gAxisChoice[2],
                            GroovePuterTilt::gController.angleDeg(2));
             drawRow(ir(InRow::TiltZRow), "TILT Z", value, true);
-            drawRow(ir(InRow::TiltFlickRow), "TILT FLICK",
-                    GroovePuterTilt::gFlickEnabled ? "ON" : "OFF", true);
             drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "SET HERE", true);
 #endif
 
