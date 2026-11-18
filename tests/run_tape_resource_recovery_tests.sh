@@ -16,6 +16,7 @@ python3 "${ROOT_DIR}/tests/test_tape_resource_recovery_source_regressions.py"
   -Werror \
   -Wno-c++20-extensions \
   -DARDUINO_M5STACK_CARDPUTER=1 \
+  -DGROOVEPUTER_ENABLE_TAPE=1 \
   -I"${ROOT_DIR}" \
   "${ROOT_DIR}/tests/test_tape_unavailable_contract.cpp" \
   "${ROOT_DIR}/src/dsp/tape_looper.cpp" \
