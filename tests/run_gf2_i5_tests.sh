@@ -3,7 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-i5"
-BASE_SHA="13a03f84f8eb650c90e3d0b64fd1fe61f873785b"
+# Check the current integration delta. The original I5 ancestor includes
+# later accepted documentation with legacy trailing whitespace.
+BASE_SHA="$(git -C "${ROOT}" merge-base origin/main HEAD)"
 mkdir -p "${BUILD_DIR}"
 
 git -C "${ROOT}" cat-file -e "${BASE_SHA}^{commit}"
