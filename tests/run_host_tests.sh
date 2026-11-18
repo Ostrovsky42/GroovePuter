@@ -1042,10 +1042,3 @@ bash "${ROOT_DIR}/tests/run_s1_synth_page_restore_tests.sh"
   -o "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
 
 "${BUILD_DIR}/test_ui_view_continuity_loop_tab"
-
-# Data root: one-time copy of card-root GroovePuter folders into /grooveputer.
-"${CXX}" \
-  -std=c++17 \
-  -Wall \
-  -Wextra \
-  -Werror \
