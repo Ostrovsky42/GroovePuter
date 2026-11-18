@@ -120,20 +120,27 @@ Together the production register gate executes **40,128 cases**. Generic-materia
 
 Within one harmonic event, the role-specific adjacent-leap guard remains active. A transition to a new harmonic event starts a new projector request/root anchor; there is deliberately no cross-event leap optimization or voice-leading policy in Stage 15.
 
-### Conservative accepted genres
+### Accepted genre tonal policies
 
-Base House, Techno and Rave use conservative tonal policy:
+Base Techno keeps a conservative root bass and a nearly static lead that may
+step to a neighbor and return. Base House uses its drive-lead profile, and Base
+Rave uses a repeated-hook profile with fourth/fifth jumps and returns:
 
 ```text
-Bass:   RootAnchor only
-Melody: Static only
+Techno bass:   RootAnchor only
+Techno lead:   Static + Neighbor, preferring Neighbor
+House lead:    drive contours
+Rave lead:     LeapReturn + RepeatThenUp + Neighbor preferred
 ```
+
+The selected profile is the policy contract; rhythmic or idiom owners may
+provide their own authored material where their precedence rules apply.
 
 This prevents the new owner from adding a new contour axis to styles already accepted primarily for their rhythm/FEEL identity. The hardware verdict is still auditory: no unacceptable tonal regression is allowed.
 
 ### Styles expected to gain movement
 
-The production data profiles permit wider tonal intent for Acid, Outrun, Darksynth, Electro, Broken, TripHop, HipHop, FunkSoul, UK Garage, Drum & Bass, LoFi, Reggae and Chip where the existing rhythmic framework alone did not provide sufficient pitch motion.
+The production data profiles permit wider tonal intent for Acid, Outrun, Darksynth, Electro, Broken, House, Rave, TripHop, HipHop, FunkSoul, UK Garage, Drum & Bass, LoFi, Reggae and Chip where the existing rhythmic framework alone did not provide sufficient pitch motion.
 
 `RootOctave` remains a valid Stage 15C API vocabulary item but is intentionally excluded from current production AUTO synth-profile selection: with a moving harmonic root it cannot be guaranteed to fit the fixed bass corridor for every scale/progression combination without octave-folding or register collision. No projector invariant is weakened to force it.
 
