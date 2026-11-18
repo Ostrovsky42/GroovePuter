@@ -1041,6 +1041,7 @@ def _findings(
         "## 1. Exact base",
         "",
         f"Frozen measurement base: `{contract['exact_base_sha']}`.",
+        f"Observed production source: `{contract['observed_source_sha']}`.",
         "",
         "## 2. Corpus",
         "",

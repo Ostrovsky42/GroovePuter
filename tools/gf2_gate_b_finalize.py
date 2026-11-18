@@ -281,6 +281,7 @@ def render_measured_axis_section(
     materialized_rows: list[dict[str, str]],
     statuses: dict[tuple[str, str], DepthStatus],
 ) -> str:
+    profile_count = len({row["profile_id"] for row in materialized_rows})
     density = density_summary(raw_rows, materialized_rows)
     feel = feel_summary(materialized_rows)
     phrase = phrase_summary(materialized_rows)
@@ -294,6 +295,11 @@ def render_measured_axis_section(
     )
     activity_changes = sum(
         status.supporting_activity_stable == "NO" for status in statuses.values()
+    )
+    activity_conclusion = (
+        "No DEPTH-driven change in materialized supporting-role activity was observed in this frozen corpus."
+        if activity_changes == 0
+        else "DEPTH can affect the materialized activity magnitude of the already-selected supporting role."
     )
     activity_observed = sum(
         status.supporting_activity_stable != "NOT_OBSERVED" for status in statuses.values()
@@ -321,16 +327,16 @@ def render_measured_axis_section(
         "",
         f"Profile corridor minima observed in the frozen production selection are **{_fmt_int_values(density.corridor_min_values)}** and corridor maxima are **{_fmt_int_values(density.corridor_max_values)}**.",
         f"The actually resolved internal `structuralDensityTarget` values are **{_fmt_int_values(density.resolved_targets)}**. These are different quantities; corridor bounds must not be reported as resolved materialized targets.",
-        f"All **{len(density.same_target_multi_topology_profiles)}/33** profiles materialize more than one RhythmSignature at at least one identical resolved density target, so a resolved target is not a unique topology identity.",
+        f"All **{len(density.same_target_multi_topology_profiles)}/{profile_count}** profiles materialize more than one RhythmSignature at at least one identical resolved density target, so a resolved target is not a unique topology identity.",
         f"Exact RhythmSignature reuse across different resolved density targets occurs in **{len(density.exact_rhythm_across_targets_profiles)}** profiles: " + ", ".join(f"`{profile}`" for profile in density.exact_rhythm_across_targets_profiles) + ".",
         "Conclusion: **DENSITY is materialized and causal, but is not a unique structural-identity owner.**",
         "",
         "### Feel",
         "",
-        f"Actual timing displacement is present in **{feel.effect_rows}** realizations across **{len(feel.effect_profiles)}/33** profiles and zero in **{feel.zero_rows}** applied realizations.",
+        f"Actual timing displacement is present in **{feel.effect_rows}** realizations across **{len(feel.effect_profiles)}/{profile_count}** profiles and zero in **{feel.zero_rows}** applied realizations.",
         f"The corpus contains **{feel.total_displaced_events}** displaced physical events; maximum observed absolute displacement is **{feel.max_abs_ticks} transport tick**.",
         "Profiles with materialized displacement: " + ", ".join(f"`{profile}`" for profile in feel.effect_profiles) + ".",
-        f"The other **{33 - len(feel.effect_profiles)}/33** profiles have **NO MATERIALIZED EFFECT IN THE FROZEN CORPUS** for FEEL; this is characterization, not an automatic bug classification.",
+        f"The other **{profile_count - len(feel.effect_profiles)}/{profile_count}** profiles have **NO MATERIALIZED EFFECT IN THE FROZEN CORPUS** for FEEL; this is characterization, not an automatic bug classification.",
         "`kFeelTicksPerStep = 24` is the grid-step size at 96 PPQN, not the measured displacement magnitude; the observed offset field is already expressed in transport ticks.",
         "Resolved FEEL values on displaced rows: " + ", ".join(f"`{key}`={value}" for key, value in sorted(resolved_feel_effect.items())) + ".",
         "",
@@ -361,7 +367,7 @@ def render_measured_axis_section(
             f"`secondaryRole` semantic identity is observed and stable in **{role_identity_observed - role_identity_changes} / {len(statuses)}** triplets; identity changes: **{role_identity_changes} / {len(statuses)}**.",
             f"Actual Synth-B active/inactive participation changes while the semantic role identity remains stable in **{activity_changes} / {len(statuses)}** triplets; supporting activity is sufficiently observed in **{activity_observed} / {len(statuses)}** triplets.",
             f"RhythmSignature changes across P1/P2/P3 in **{len(structural_changes)} / {len(statuses)}** matched triplets; TransformationSignature separately measures relative P1→P2→P3 intervention magnitude.",
-            "Conclusion: **DEPTH itself is a causal realization/transformation-magnitude axis. ROLE IDENTITY VIA DEPTH is negative capacity in this frozen corpus. DEPTH can nevertheless affect the materialized activity magnitude of the already-selected supporting role in a small subset.**",
+            f"Conclusion: **DEPTH itself is a causal realization/transformation-magnitude axis. ROLE IDENTITY VIA DEPTH is negative capacity in this frozen corpus. {activity_conclusion}**",
             "",
             "### GRID negative capacity",
             "",
@@ -371,15 +377,15 @@ def render_measured_axis_section(
     return "\n".join(lines)
 
 
-def render_negative_section() -> str:
+def render_negative_section(statuses: dict[tuple[str, str], DepthStatus]) -> str:
     return "\n".join(
         [
             "## 9. Negative capacity",
             "",
             "- Core-v1 structural GRID 8/32: **NEGATIVE CAPACITY / intentionally unsupported**.",
             "- DEPTH realization/transformation magnitude: **causal/distinct frozen capacity**, not negative capacity.",
-            "- ROLE IDENTITY VIA DEPTH: **NEGATIVE CAPACITY in the frozen corpus**; 0/1,815 semantic secondaryRole identity reassignments are observed.",
-            "- DEPTH → supporting-role activity magnitude is **not** negative capacity: Synth-B active/inactive changes are observed in 15/1,815 matched triplets.",
+            f"- ROLE IDENTITY VIA DEPTH: **NEGATIVE CAPACITY in the frozen corpus**; 0/{len(statuses)} semantic secondaryRole identity reassignments are observed.",
+            f"- DEPTH → supporting-role activity: no Synth-B active/inactive change was observed in {len(statuses)} matched triplets.",
             "- Inert FEEL means **NO MATERIALIZED EFFECT IN THE FROZEN CORPUS** for the affected profiles; it is evidence, not automatically a production defect.",
             "- NegativeSignature remains first-class prohibition/absence evidence but never double-votes the positive source dimension.",
         ]
@@ -421,7 +427,7 @@ def finalize_findings(
         text,
         "## 9. Negative capacity",
         "## 10. Observation limitations",
-        render_negative_section(),
+        render_negative_section(statuses),
     )
     text = _replace_section(
         text,
@@ -432,14 +438,14 @@ def finalize_findings(
 
     counts = classification_counts(pairwise_rows)
     expected = {
-        "STRUCTURALLY DISTINCT": 381,
-        "PARTIALLY DISTINCT": 147,
+        "STRUCTURALLY DISTINCT": 642,
+        "PARTIALLY DISTINCT": 24,
         "TIMBRE-DEPENDENT": 0,
         "STRUCTURALLY REDUNDANT": 0,
         "INSUFFICIENT EVIDENCE": 0,
     }
-    if sum(counts.values()) != 528:
-        raise RuntimeError(f"pairwise cardinality drift: {sum(counts.values())} != 528")
+    if sum(counts.values()) != 666:
+        raise RuntimeError(f"pairwise cardinality drift: {sum(counts.values())} != 666")
     if any(counts[name] != value for name, value in expected.items()):
         raise RuntimeError(f"pairwise classification drift: {dict(counts)}")
 
@@ -468,14 +474,14 @@ def main() -> int:
     profile_rows = read_tsv(profile_path)
     pairwise_rows = read_tsv(pairwise_path)
 
-    if len(raw_rows) != 5445 or len(materialized_rows) != 5445:
+    if len(raw_rows) != 6105 or len(materialized_rows) != 6105:
         raise RuntimeError(
             f"corpus cardinality drift: raw={len(raw_rows)} materialized={len(materialized_rows)}"
         )
-    if len(profile_rows) != 33:
-        raise RuntimeError(f"profile cardinality drift: {len(profile_rows)} != 33")
-    if len(pairwise_rows) != 528:
-        raise RuntimeError(f"pairwise cardinality drift: {len(pairwise_rows)} != 528")
+    if len(profile_rows) != 37:
+        raise RuntimeError(f"profile cardinality drift: {len(profile_rows)} != 37")
+    if len(pairwise_rows) != 666:
+        raise RuntimeError(f"pairwise cardinality drift: {len(pairwise_rows)} != 666")
 
     materialized_fields, profile_fields, statuses = apply_depth_reporting(
         raw_rows, materialized_rows, profile_rows
@@ -487,15 +493,15 @@ def main() -> int:
     activity_changes = sum(
         status.supporting_activity_stable == "NO" for status in statuses.values()
     )
-    if len(statuses) != 1815:
-        raise RuntimeError(f"DEPTH triplet cardinality drift: {len(statuses)} != 1815")
+    if len(statuses) != 2035:
+        raise RuntimeError(f"DEPTH triplet cardinality drift: {len(statuses)} != 2035")
     if identity_changes != 0:
         raise RuntimeError(
             f"semantic secondaryRole identity changed in {identity_changes} triplets; inspect before freeze"
         )
-    if activity_changes != 15:
+    if activity_changes != 0:
         raise RuntimeError(
-            f"supporting Synth-B activity changed in {activity_changes} triplets; expected reviewed corpus=15"
+            f"supporting Synth-B activity changed in {activity_changes} triplets; expected reviewed corpus=0"
         )
 
     write_tsv(materialized_path, materialized_rows, materialized_fields)

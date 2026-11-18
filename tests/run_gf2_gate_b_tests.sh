@@ -3,6 +3,9 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BASE="9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38"
+INTEGRATION_BASE="$(git merge-base origin/main HEAD)"
+GATE_B_SOURCE_FIREWALL_HEAD="c646c2c06ff15d6838de2146f98511a64564f64e"
+SOURCE_FIREWALL_HEAD="${GATE_B_SOURCE_FIREWALL_HEAD}"
 BUILD_DIR="${ROOT}/build/host-tests/gf2-gate-b"
 GENERATED="${BUILD_DIR}/generated"
 REPLAY="${BUILD_DIR}/generated-replay"
@@ -12,8 +15,7 @@ cd "${ROOT}"
 
 echo "GF2-C2 Gate B exact base: ${BASE}"
 git cat-file -e "${BASE}^{commit}"
-
-SOURCE_FIREWALL_HEAD="HEAD"
+git cat-file -e "${GATE_B_SOURCE_FIREWALL_HEAD}^{commit}"
 if [[ -n "${GITHUB_HEAD_REF:-}" ]]; then
   SOURCE_FIREWALL_HEAD="refs/remotes/origin/${GITHUB_HEAD_REF}"
   if ! git show-ref --verify --quiet "${SOURCE_FIREWALL_HEAD}"; then
@@ -22,8 +24,12 @@ if [[ -n "${GITHUB_HEAD_REF:-}" ]]; then
   fi
 fi
 
+# Gate B's source firewall is a historical branch contract. Keep it pinned to
+# the accepted Gate B PR head; comparing its old base to today's main would
+# incorrectly include all later product work. Check whitespace on this run's
+# integration delta separately so the active candidate is still validated.
 echo "GF2-C2 Gate B source firewall head: ${SOURCE_FIREWALL_HEAD}"
-git diff --check "${BASE}...${SOURCE_FIREWALL_HEAD}"
+git diff --check "${INTEGRATION_BASE}...HEAD"
 if [[ -n "$(git diff --name-only "${BASE}...${SOURCE_FIREWALL_HEAD}" -- src/)" ]]; then
   echo "GF2-C2 Gate B source firewall FAILED: Gate B branch src/ delta is non-empty" >&2
   git diff --name-status "${BASE}...${SOURCE_FIREWALL_HEAD}" -- src/ >&2
@@ -88,10 +94,10 @@ depths = tuple(contract["depths"])
 expected_realizations = profile_count * seed_count * len(depths)
 expected_pairs = profile_count * (profile_count - 1) // 2
 
-assert len(raw) == expected_realizations == 5445, (len(raw), expected_realizations)
+assert len(raw) == expected_realizations == 6105, (len(raw), expected_realizations)
 assert len(corpus) == expected_realizations, len(corpus)
-assert len(profiles) == profile_count == 33, len(profiles)
-assert len(pairs) == expected_pairs == contract["pairwise_count"] == 528, len(pairs)
+assert len(profiles) == profile_count == 37, len(profiles)
+assert len(pairs) == expected_pairs == contract["pairwise_count"] == 666, len(pairs)
 
 profile_ids = {row["profile_id"] for row in raw}
 assert len(profile_ids) == profile_count
@@ -146,13 +152,13 @@ assert any(
 assert all(row["physical_duration"] == "NOT_OBSERVED" for row in raw)
 assert all(row["physical_duration"] == "NOT_OBSERVED" for row in corpus)
 assert all(row["depth_role_identity_stable"] == "YES" for row in corpus)
-assert sum(row["depth_supporting_activity_stable"] == "NO" for row in corpus) == 45
+assert sum(row["depth_supporting_activity_stable"] == "NO" for row in corpus) == 0
 assert sum(int(row["depth_role_change_triplets"]) for row in profiles) == 0
-assert sum(int(row["depth_supporting_activity_change_triplets"]) for row in profiles) == 15
+assert sum(int(row["depth_supporting_activity_change_triplets"]) for row in profiles) == 0
 
 classification_counts = Counter(row["classification"] for row in pairs)
-assert classification_counts["STRUCTURALLY DISTINCT"] == 381
-assert classification_counts["PARTIALLY DISTINCT"] == 147
+assert classification_counts["STRUCTURALLY DISTINCT"] == 642
+assert classification_counts["PARTIALLY DISTINCT"] == 24
 assert classification_counts["TIMBRE-DEPENDENT"] == 0
 assert classification_counts["STRUCTURALLY REDUNDANT"] == 0
 assert classification_counts["INSUFFICIENT EVIDENCE"] == 0
@@ -164,8 +170,8 @@ for classification in sorted(classes):
     print(f"Gate B pair {classification}: {classification_counts[classification]}")
 print(f"Gate B phrase laws: {','.join(sorted(laws))}")
 print(f"Gate B observed Synth-B role ordinals (provenance only): {','.join(sorted(roles))}")
-print("Gate B DEPTH secondaryRole identity changes: 0 / 1815")
-print("Gate B DEPTH supporting Synth-B activity changes: 15 / 1815")
+print("Gate B DEPTH secondaryRole identity changes: 0 / 2035")
+print("Gate B DEPTH supporting Synth-B activity changes: 0 / 2035")
 PY
 
 FINDINGS="${GENERATED}/GF2_GATE_B_FINDINGS.md"
@@ -186,7 +192,7 @@ done
 
 grep -Fq 'GRID 8/32' "${FINDINGS}"
 grep -Fq 'ROLE IDENTITY VIA DEPTH' "${FINDINGS}"
-grep -Fq '15 / 1815' "${FINDINGS}"
+grep -Fq '0 / 2035' "${FINDINGS}"
 grep -Fq 'TIMBRE-DEPENDENT' "${FINDINGS}"
 grep -Fq 'NOT_OBSERVED' "${FINDINGS}"
 

@@ -64,6 +64,7 @@ const char* migrationStatusName(StrongRhythmMigrationStatus status) {
     case StrongRhythmMigrationStatus::MaterializationFailed: return "MATERIALIZATION_FAILED";
     case StrongRhythmMigrationStatus::CompatibilityBindingFailed: return "COMPATIBILITY_BINDING_FAILED";
     case StrongRhythmMigrationStatus::FeelApplyFailed: return "FEEL_APPLY_FAILED";
+    case StrongRhythmMigrationStatus::GraphHarmonyProjectionFailed: return "GRAPH_HARMONY_PROJECTION_FAILED";
     case StrongRhythmMigrationStatus::Count: return "INVALID";
   }
   return "INVALID";
@@ -78,6 +79,7 @@ const char* phraseExecutionStatusName(PhraseExecutionStatus status) {
     case PhraseExecutionStatus::HarmonicProjectionFailure: return "HARMONIC_PROJECTION_FAILURE";
     case PhraseExecutionStatus::SemanticProbeFailure: return "SEMANTIC_PROBE_FAILURE";
     case PhraseExecutionStatus::SemanticContractFailure: return "SEMANTIC_CONTRACT_FAILURE";
+    case PhraseExecutionStatus::GraphSourceFailure: return "GRAPH_SOURCE_FAILURE";
     case PhraseExecutionStatus::Count: return "INVALID";
   }
   return "INVALID";
