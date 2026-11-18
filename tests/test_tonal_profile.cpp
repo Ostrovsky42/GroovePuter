@@ -59,23 +59,47 @@ void testAllModes() {
   }
 }
 
-void testAcceptedStaticModesStayConservative() {
-  // 0.9.18: House left this list on purpose (owner-accepted livelier lead):
-  // see testHouseMovesWithDriveLead below. Techno and Rave stay static.
-  for (GenerativeMode mode : {
-           GenerativeMode::Techno,
-           GenerativeMode::Rave,
-       }) {
-    const TonalGenerationProfile profile = tonalGenerationProfileFor(
-        settingsFor(mode));
-    assert(profile.bassPolicy.allowedContours ==
-           bassPitchContourBit(BassPitchContourId::RootAnchor));
-    assert(profile.bassPolicy.preferredContours == 0);
-    assert(profile.melodicPolicy.allowedContours ==
-           melodicContourBit(MelodicContourId::Static));
-    assert(profile.melodicPolicy.preferredContours == 0);
-    assert(profile.bassRegister.maxAdjacentLeapSemitones == 12);
-  }
+void testTechnoStaysNearlyStatic() {
+  const TonalGenerationProfile profile = tonalGenerationProfileFor(
+      settingsFor(GenerativeMode::Techno));
+  assert(profile.bassPolicy.allowedContours ==
+         bassPitchContourBit(BassPitchContourId::RootAnchor));
+  assert(profile.bassPolicy.preferredContours == 0);
+  assert(profile.melodicPolicy.allowedContours ==
+         (melodicContourBit(MelodicContourId::Static) |
+          melodicContourBit(MelodicContourId::Neighbor)));
+  assert(profile.melodicPolicy.preferredContours ==
+         melodicContourBit(MelodicContourId::Neighbor));
+  assert(profile.bassRegister.maxAdjacentLeapSemitones == 12);
+}
+
+void testRaveUsesRepeatedHookProfile() {
+  const TonalGenerationProfile profile = tonalGenerationProfileFor(
+      settingsFor(GenerativeMode::Rave));
+  const uint16_t expectedMelodicContours =
+      melodicContourBit(MelodicContourId::Static) |
+      melodicContourBit(MelodicContourId::Neighbor) |
+      melodicContourBit(MelodicContourId::LeapReturn) |
+      melodicContourBit(MelodicContourId::RepeatThenUp) |
+      melodicContourBit(MelodicContourId::RepeatThenDown);
+  const uint16_t expectedPreferredMelodicContours =
+      melodicContourBit(MelodicContourId::LeapReturn) |
+      melodicContourBit(MelodicContourId::RepeatThenUp) |
+      melodicContourBit(MelodicContourId::Neighbor);
+  assert(profile.bassPolicy.allowedContours ==
+         (bassPitchContourBit(BassPitchContourId::RootAnchor) |
+          bassPitchContourBit(BassPitchContourId::RootFifth) |
+          bassPitchContourBit(BassPitchContourId::NeighborReturn) |
+          bassPitchContourBit(BassPitchContourId::LeapReturn) |
+          bassPitchContourBit(BassPitchContourId::PedalTurn)));
+  assert(profile.bassPolicy.preferredContours ==
+         (bassPitchContourBit(BassPitchContourId::RootFifth) |
+          bassPitchContourBit(BassPitchContourId::LeapReturn) |
+          bassPitchContourBit(BassPitchContourId::NeighborReturn)));
+  assert(profile.melodicPolicy.allowedContours == expectedMelodicContours);
+  assert(profile.melodicPolicy.preferredContours ==
+         expectedPreferredMelodicContours);
+  assert(profile.bassRegister.maxAdjacentLeapSemitones == 23);
 }
 
 void testHouseMovesWithDriveLead() {
@@ -115,22 +139,28 @@ void testMovingProfilesUseFullBassCorridorLeapBudget() {
   }
 }
 
-void testSynthProfilesAvoidUnmaterializableRootOctaveAuto() {
-  for (GenerativeMode mode : {
-           GenerativeMode::Outrun,
-           GenerativeMode::Darksynth,
-           GenerativeMode::Chip,
-       }) {
+void testSynthBassProfilesMatchTheirIntendedContours() {
+  const uint16_t rootOctave =
+      bassPitchContourBit(BassPitchContourId::RootOctave);
+  const uint16_t rootFifth =
+      bassPitchContourBit(BassPitchContourId::RootFifth);
+  const uint16_t leapReturn =
+      bassPitchContourBit(BassPitchContourId::LeapReturn);
+  for (GenerativeMode mode : {GenerativeMode::Outrun,
+                              GenerativeMode::Darksynth}) {
     const TonalGenerationProfile profile = tonalGenerationProfileFor(
         settingsFor(mode));
-    assert((profile.bassPolicy.allowedContours &
-            bassPitchContourBit(BassPitchContourId::RootOctave)) == 0);
-    assert((profile.bassPolicy.allowedContours &
-            bassPitchContourBit(BassPitchContourId::RootFifth)) != 0);
-    assert((profile.bassPolicy.allowedContours &
-            bassPitchContourBit(BassPitchContourId::LeapReturn)) != 0);
-    assert(profile.bassPolicy.preferredContours != 0);
+    assert((profile.bassPolicy.allowedContours & rootOctave) != 0);
+    assert(profile.bassPolicy.preferredContours ==
+           (bassPitchContourBit(BassPitchContourId::RootAnchor) | rootOctave));
   }
+
+  const TonalGenerationProfile chip = tonalGenerationProfileFor(
+      settingsFor(GenerativeMode::Chip));
+  assert((chip.bassPolicy.allowedContours & rootOctave) == 0);
+  assert((chip.bassPolicy.allowedContours & rootFifth) != 0);
+  assert((chip.bassPolicy.allowedContours & leapReturn) != 0);
+  assert(chip.bassPolicy.preferredContours != 0);
 }
 
 void testVariantsInheritModePolicy() {
@@ -164,10 +194,11 @@ void testVariantsInheritModePolicy() {
 
 int main() {
   testAllModes();
-  testAcceptedStaticModesStayConservative();
+  testTechnoStaysNearlyStatic();
+  testRaveUsesRepeatedHookProfile();
   testHouseMovesWithDriveLead();
   testMovingProfilesUseFullBassCorridorLeapBudget();
-  testSynthProfilesAvoidUnmaterializableRootOctaveAuto();
+  testSynthBassProfilesMatchTheirIntendedContours();
   testVariantsInheritModePolicy();
   std::cout << "Stage 15 tonal profile matrix: OK\n";
   return 0;

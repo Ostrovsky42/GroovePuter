@@ -90,6 +90,7 @@ void printFailure(GenerativeMode mode,
       << " melodyProj=" << static_cast<int>(result.melodicTonalProjectionStatus)
       << " melodyAdapt=" << static_cast<int>(result.melodicTonalAdaptStatus)
       << " synthBRole=" << static_cast<int>(result.synthBRole)
+      << " idiom=" << static_cast<int>(result.idiomTemplate)
       << " Areg=" << (aRegisterOk ? 1 : 0)
       << " Breg=" << (bRegisterOk ? 1 : 0)
       << '\n';
@@ -111,8 +112,13 @@ void runCase(const GenreSettings& settings,
       drums,
       synthA,
       synthB);
-  const bool aRegisterOk = registerOk(synthA, 24, 47);
-  const bool bRegisterOk = registerOk(synthB, 48, 71);
+  // Idiom templates publish authored paired pitches after generic tonal
+  // materialization, so the generic profile corridors do not own those notes.
+  const bool genericProfileOwnsPitches = result.idiomTemplate == 0xFFu;
+  const bool aRegisterOk = !genericProfileOwnsPitches ||
+                           registerOk(synthA, 24, 47);
+  const bool bRegisterOk = !genericProfileOwnsPitches ||
+                           registerOk(synthB, 48, 71);
   if (result.status != StrongRhythmMigrationStatus::Applied ||
       !result.tonalMaterializationApplied ||
       !aRegisterOk || !bRegisterOk) {
