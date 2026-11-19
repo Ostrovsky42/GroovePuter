@@ -19,6 +19,7 @@
 #include "src/phrase/runtime_synth_events.h"
 #include "src/state/melody_promotion.h"
 #include "src/state/scene_revision.h"
+#include "src/storage/data_root.h"
 
 namespace {
 
@@ -191,7 +192,7 @@ bool exportCurrentSongAsMidi(
     return false;
   }
   SdSongExportStorage storage;
-  if (!storage.ensureDirectory("/midi")) {
+  if (!storage.ensureDirectory(GroovePuterStorage::kMidiDirectory)) {
     result.error = GroovePuterMidi::SongExportFileError::StorageFailure;
     return false;
   }

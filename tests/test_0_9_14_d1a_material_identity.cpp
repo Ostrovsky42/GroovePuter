@@ -683,8 +683,11 @@ void test_sdmock_unbuffered_semantics() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
 
   test_checkpoint_a0_descriptor_aware_slot_safety();
   test_checkpoint_a1_batch_reservation();
@@ -698,8 +701,11 @@ int main() {
   test_post_success_main_loss_recovery();
 
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
 
   std::puts("0.9.14 D1-A material identity: ALL PASS");
   return 0;

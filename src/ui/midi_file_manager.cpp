@@ -183,10 +183,21 @@ MidiFileManager& midiFileManager() {
     return manager;
 }
 
+namespace {
+bool isMidiRootPath(const char* path) {
+    return std::strcmp(path, GroovePuterStorage::kMidiDirectory) == 0;
+}
+const char* midiBrowseRoot() { return GroovePuterStorage::kMidiDirectory; }
+bool underMidiRoot(const char* path) {
+    const size_t len = sizeof(GroovePuterStorage::kMidiDirectory) - 1;
+    return std::strncmp(path, GroovePuterStorage::kMidiDirectory, len) == 0 &&
+           (path[len] == '\0' || path[len] == '/');
+}
+}  // namespace
+
 void MidiFileManager::open() {
-    if (std::strncmp(currentPath_, "/midi", 5) != 0 ||
-        std::strstr(currentPath_, "..") != nullptr) {
-        copyText(currentPath_, sizeof(currentPath_), "/midi");
+    if (!underMidiRoot(currentPath_) || std::strstr(currentPath_, "..") != nullptr) {
+        copyText(currentPath_, sizeof(currentPath_), midiBrowseRoot());
     }
     mode_ = Mode::Browse;
     deleteConfirmed_ = false;
@@ -239,11 +250,11 @@ bool MidiFileManager::scanDirectorySummary(const char* selectedName,
     }
 
     bool exists = SD.exists(currentPath_);
-    if (!exists && std::strcmp(currentPath_, "/midi") != 0) {
-        copyText(currentPath_, sizeof(currentPath_), "/midi");
+    if (!exists && !isMidiRootPath(currentPath_)) {
+        copyText(currentPath_, sizeof(currentPath_), midiBrowseRoot());
         exists = SD.exists(currentPath_);
     }
-    if (!exists && std::strcmp(currentPath_, "/midi") == 0) {
+    if (!exists && isMidiRootPath(currentPath_)) {
         exists = SD.mkdir(currentPath_);
     }
     if (!exists) {
@@ -268,7 +279,7 @@ bool MidiFileManager::scanDirectorySummary(const char* selectedName,
     }
     storageReady_ = true;
 
-    const int parentCount = std::strcmp(currentPath_, "/midi") != 0 ? 1 : 0;
+    const int parentCount = !isMidiRootPath(currentPath_) ? 1 : 0;
     int selectedFileOffset = -1;
 
     int summaryError = 0;
@@ -415,7 +426,7 @@ bool MidiFileManager::loadWindow(int firstIndex) {
         return false;
     }
 
-    const int parentCount = std::strcmp(currentPath_, "/midi") != 0 ? 1 : 0;
+    const int parentCount = !isMidiRootPath(currentPath_) ? 1 : 0;
     if (parentCount > 0 && windowStart_ == 0) {
         workspace_.entries[0].kind = EntryKind::Parent;
         copyText(workspace_.entries[0].name,
@@ -516,10 +527,10 @@ bool MidiFileManager::navigateInto(const Entry& entry) {
 }
 
 bool MidiFileManager::navigateUp() {
-    if (std::strcmp(currentPath_, "/midi") == 0) return false;
+    if (isMidiRootPath(currentPath_)) return false;
     char* slash = std::strrchr(currentPath_, '/');
     if (!slash || slash <= currentPath_ + 4) {
-        copyText(currentPath_, sizeof(currentPath_), "/midi");
+        copyText(currentPath_, sizeof(currentPath_), midiBrowseRoot());
     } else {
         *slash = '\0';
     }

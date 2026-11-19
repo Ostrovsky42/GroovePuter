@@ -370,14 +370,20 @@ void test_measure_front_panel_keys() {
 
 int main() {
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   test_unknown_never_blocks();
   test_continues_is_not_quality();
   test_measure_front_panel_keys();
   std::filesystem::remove_all("patterns");
+  std::filesystem::remove_all("grooveputer/patterns");
   std::filesystem::remove_all("platform_sdl/patterns");
+  std::filesystem::remove_all("platform_sdl/grooveputer/patterns");
   std::filesystem::remove_all("projects");
+  std::filesystem::remove_all("grooveputer/projects");
   std::filesystem::remove("grooveputer_scene_name.txt");
   std::puts("0.9.14 M0-A product firewall: ALL PASS");
   return 0;

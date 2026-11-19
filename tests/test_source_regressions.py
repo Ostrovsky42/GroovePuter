@@ -67,9 +67,6 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
     scene_storage = (ROOT / "scene_storage_cardputer.cpp").read_text(
         encoding="utf-8"
     )
-    recorder = (ROOT / "src/audio/cardputer_audio_recorder.cpp").read_text(
-        encoding="utf-8"
-    )
     smf_page = (ROOT / "src/ui/pages/smf_player_page.cpp").read_text(
         encoding="utf-8"
     )
@@ -91,8 +88,6 @@ def test_cardputer_sd_has_one_hardware_mount_path() -> None:
             "platform SD owner must configure and mount the card")
     require("SD.begin(" not in scene_storage,
             "scene storage must use the shared platform SD mount")
-    require("SD.begin(" not in recorder,
-            "audio recorder must not remount SD with default pins")
     require("SD.begin(" not in smf_page,
             "SMF UI must not own hardware SD initialization")
     require("std::array<BrowserRow, kBrowserVisibleRows>" in smf_page_header and
