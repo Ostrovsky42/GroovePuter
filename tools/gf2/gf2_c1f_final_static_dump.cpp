@@ -584,8 +584,8 @@ void dumpProfiles() {
     }
   }
 
-  if (rowIndex != 33) {
-    std::cerr << "expected 33 production profile rows, found " << rowIndex
+  if (rowIndex != 37) {
+    std::cerr << "expected 37 production profile rows, found " << rowIndex
               << '\n';
     std::exit(3);
   }

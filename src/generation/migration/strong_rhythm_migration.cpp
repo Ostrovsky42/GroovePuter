@@ -668,13 +668,55 @@ TonalMaterializationResult materializeRole(
   return materializeTonalIntent(request);
 }
 
-uint8_t filteredMelodicOffsets(const MelodicPitchIntentPlan& plan,
-                               StepMask admittedOnsets,
-                               int8_t* destination) {
+uint8_t boundedMelodicOffsets(const MelodicPitchIntentPlan& plan,
+                              StepMask admittedOnsets,
+                              const ChordProgressionPlan& progression,
+                              uint8_t rootPitchClass,
+                              ScaleTypeValue scaleTypeValue,
+                              const TonalRegisterCorridor& corridor,
+                              int8_t* destination) {
   uint8_t output = 0;
   for (uint8_t ordinal = 0; ordinal < plan.onsetCount; ++ordinal) {
     if ((admittedOnsets & stepBit(plan.onsetSteps[ordinal])) == 0) continue;
-    destination[output++] = plan.degreeOffsets[ordinal];
+    int offset = plan.degreeOffsets[ordinal];
+    const uint8_t eventCount = progression.eventCount == 0
+        ? 1
+        : progression.eventCount;
+    // Preserve the generated scale-degree contour where the harmonic root's
+    // available MIDI anchors can represent it inside the role corridor.
+    while (offset != 0) {
+      bool fits = true;
+      for (uint8_t eventIndex = 0; eventIndex < eventCount; ++eventIndex) {
+        const HarmonicEvent event = progression.eventCount == 0
+            ? HarmonicEvent{}
+            : progression.events[eventIndex];
+        const int eventDegree = event.degree;
+        const int displacement =
+            scaleDegreeToSemitone(scaleTypeValue, eventDegree + offset) -
+            scaleDegreeToSemitone(scaleTypeValue, eventDegree);
+        int eventRootPitchClass =
+            static_cast<int>(rootPitchClass) +
+            scaleDegreeToSemitone(scaleTypeValue, eventDegree) +
+            event.rootOffsetSemitones;
+        eventRootPitchClass %= 12;
+        if (eventRootPitchClass < 0) eventRootPitchClass += 12;
+        const int lowestAnchor = static_cast<int>(corridor.minMidi) +
+            (eventRootPitchClass - static_cast<int>(corridor.minMidi % 12u) +
+             12) % 12;
+        const int highestAnchor = static_cast<int>(corridor.maxMidi) -
+            (static_cast<int>(corridor.maxMidi % 12u) - eventRootPitchClass +
+             12) % 12;
+        const int positiveRoom = static_cast<int>(corridor.maxMidi) - lowestAnchor;
+        const int negativeRoom = highestAnchor - static_cast<int>(corridor.minMidi);
+        if (displacement > positiveRoom || displacement < -negativeRoom) {
+          fits = false;
+          break;
+        }
+      }
+      if (fits) break;
+      offset += offset > 0 ? -1 : 1;
+    }
+    destination[output++] = static_cast<int8_t>(offset);
   }
   return output;
 }
@@ -1154,11 +1196,21 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
       }
       result.chordRhythmApplied = true;
     } else if (result.synthBRole == SemanticSynthBRole::Melodic) {
+      int8_t boundedOffsets[kStepsPerBar]{};
+      const uint8_t boundedCount = boundedMelodicOffsets(
+          melodicPitch.plan, melodicPitch.plan.onsets, progression.plan,
+          context.rootPitchClass,
+          context.scaleTypeValue, tonalProfile.secondaryRegister,
+          boundedOffsets);
+      if (boundedCount != onsetCount(melodicPitch.plan.onsets)) {
+        result.status = StrongRhythmMigrationStatus::InvalidContext;
+        return result;
+      }
       const TonalMaterializationResult melodicTonal = materializeRole(
           context, tonalProfile.secondaryRegister, progression.plan,
           harmonicStrategy,
           harmonic.plan.onsets, melodicPitch.plan.onsets,
-          melodicPitch.plan.continuations, melodicPitch.plan.degreeOffsets, 0);
+          melodicPitch.plan.continuations, boundedOffsets, 0);
       result.melodicTonalStatus = melodicTonal.status;
       result.melodicTonalProjectionStatus = melodicTonal.projectionStatus;
       if (!usableTonalResult(melodicTonal)) {
@@ -1217,8 +1269,11 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
           melodicPitch.plan.onsets, melodicPitch.plan.continuations,
           admittedOnsets, chordOccupied);
       int8_t admittedOffsets[kStepsPerBar]{};
-      const uint8_t admittedCount = filteredMelodicOffsets(
-          melodicPitch.plan, admittedOnsets, admittedOffsets);
+      const uint8_t admittedCount = boundedMelodicOffsets(
+          melodicPitch.plan, admittedOnsets, progression.plan,
+          context.rootPitchClass,
+          context.scaleTypeValue, tonalProfile.secondaryRegister,
+          admittedOffsets);
       if (admittedCount != onsetCount(admittedOnsets)) {
         result.status = StrongRhythmMigrationStatus::InvalidContext;
         return result;
@@ -1307,6 +1362,22 @@ StrongRhythmMigrationResult migrateStrongRhythmMaterial(
     // DnB writes its drum grammar too, but only when this G replaces drums.
     idiomApplied = GenreIdiom::apply(idiom, nextSynthA, nextSynthB, nullptr,
                                      replaceDrums ? &nextDrums : nullptr);
+    if (idiomApplied && replaceDrums &&
+        settings.generativeMode ==
+            static_cast<uint8_t>(GenerativeMode::DrumAndBass)) {
+      // DnB writes its own drum topology after the initial materialization;
+      // run the shared FEEL interpreter over those final hits so that write
+      // does not erase their timing offsets.
+      const PatternMaterializerBinding binding =
+          standardDrumPatternBinding(deferredSynthRoles());
+      result.feelStatus = applyFeelToMaterializedDrums(
+          binding, resolvedFeel, context.feelAmount, materializationGeneration,
+          nextDrums);
+      if (result.feelStatus != FeelPatternApplyStatus::Ok) {
+        result.status = StrongRhythmMigrationStatus::FeelApplyFailed;
+        return result;
+      }
+    }
     // CALL/RESPONSE phase 8: which template and level wrote this bar, so the
     // partner can read the chord of a step from the template's stabs.
     if (idiomApplied) {

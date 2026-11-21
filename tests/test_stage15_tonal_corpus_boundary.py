@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 LEGACY = ROOT / "tests/data/stage15_tonal_legacy_baseline.tsv"
-PRE_F13 = ROOT / "tests/data/stage15_tonal_enabled_pre_f13_baseline.tsv"
+CURRENT = ROOT / "tests/data/stage15_tonal_enabled_baseline.tsv"
 
 
 def load(path: Path):
@@ -17,20 +17,25 @@ def load(path: Path):
 
 
 legacy = load(LEGACY)
-pre_f13 = load(PRE_F13)
-assert legacy.keys() == pre_f13.keys(), "legacy/PRE-F13 tonal corpus keys diverged"
+current = load(CURRENT)
+assert legacy.keys() == current.keys(), "current legacy/tonal corpus keys diverged"
 
 pitch_changes = 0
+articulation_changes = 0
 for key in sorted(legacy):
     before = legacy[key]
-    after = pre_f13[key]
-    for field in ("status", "secondary_role", "topology", "articulation"):
-        assert before[field] == after[field], f"{key}: PRE-F13 tonal path changed {field}"
+    after = current[key]
+    for field in ("status", "secondary_role", "topology"):
+        assert before[field] == after[field], f"{key}: tonal path changed {field}"
     if before["pitch"] != after["pitch"]:
         pitch_changes += 1
+    if before["articulation"] != after["articulation"]:
+        articulation_changes += 1
 
-assert pitch_changes > 0, "PRE-F13 tonal-enabled corpus never changes pitch"
+assert pitch_changes > 0, "current tonal-enabled corpus never changes pitch"
+assert articulation_changes > 0, "current tonal-enabled corpus never changes articulation"
 print(
-    "Stage 15 PRE-F13 tonal corpus boundary: OK "
-    f"(256 rows, pitch changed in {pitch_changes}, topology/articulation unchanged)"
+    "Stage 15 current legacy/tonal corpus boundary: OK "
+    f"(256 rows, pitch changed in {pitch_changes}, "
+    f"articulation changed in {articulation_changes}, topology unchanged)"
 )

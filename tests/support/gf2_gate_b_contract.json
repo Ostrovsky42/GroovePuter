@@ -1,8 +1,9 @@
 {
   "depths": ["P1", "P2", "P3"],
   "exact_base_sha": "9c01b0c34b80aacb1dd6be66bb07c5cef3ad1c38",
-  "pairwise_count": 528,
-  "profile_count": 33,
+  "observed_source_sha": "22df93080a7827684d5b11be09b7516e31828724",
+  "pairwise_count": 666,
+  "profile_count": 37,
   "schema_version": 1,
   "seed_count": 55
 }

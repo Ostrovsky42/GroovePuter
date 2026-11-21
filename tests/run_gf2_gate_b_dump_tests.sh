@@ -136,7 +136,7 @@ with raw_path.open(newline="", encoding="utf-8") as handle:
     rows = list(csv.DictReader(handle, delimiter="\t"))
 
 expected = contract["profile_count"] * contract["seed_count"] * len(contract["depths"])
-assert len(rows) == expected == 5445, (len(rows), expected)
+assert len(rows) == expected == 6105, (len(rows), expected)
 keys = {(r["profile_id"], r["seed"], r["depth"]) for r in rows}
 assert len(keys) == expected
 

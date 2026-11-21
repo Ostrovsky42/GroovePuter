@@ -101,7 +101,7 @@ Flash the **exact frozen PR head** reported in the final PR checkpoint. Do not a
 
 ### Register corridors
 
-Production tonal profiles use non-overlapping role corridors inside the existing supported synth-note range:
+Generic tonal profiles use non-overlapping role corridors inside the existing supported synth-note range:
 
 ```text
 Synth A / bass       24..47
@@ -116,24 +116,31 @@ A second exhaustive key/scale gate checks all exact profiles across all ten `Sca
 33 profiles × 10 scales × 12 roots × 8 addresses = 31,680 cases
 ```
 
-Together the production register gate executes **40,128 cases**. Every successful case must keep Synth A in `24..47` and Synth B in `48..71`.
+Together the production register gate executes **40,128 cases**. Generic-materializer cases must keep Synth A in `24..47` and Synth B in `48..71`. When `StrongRhythmMigrationResult.idiomTemplate` identifies a selected `GenreIdiom` template, that owner has its own accepted envelope: Synth A `18..65` and Synth B `51..94`. The idiom envelope covers the template's authored octave shifts and lead placement; it intentionally overlaps the generic corridors. Both owners are checked on every applicable sweep case.
 
 Within one harmonic event, the role-specific adjacent-leap guard remains active. A transition to a new harmonic event starts a new projector request/root anchor; there is deliberately no cross-event leap optimization or voice-leading policy in Stage 15.
 
-### Conservative accepted genres
+### Accepted genre tonal policies
 
-Base House, Techno and Rave use conservative tonal policy:
+Base Techno keeps a conservative root bass and a nearly static lead that may
+step to a neighbor and return. Base House uses its drive-lead profile, and Base
+Rave uses a repeated-hook profile with fourth/fifth jumps and returns:
 
 ```text
-Bass:   RootAnchor only
-Melody: Static only
+Techno bass:   RootAnchor only
+Techno lead:   Static + Neighbor, preferring Neighbor
+House lead:    drive contours
+Rave lead:     LeapReturn + RepeatThenUp + Neighbor preferred
 ```
+
+The selected profile is the policy contract; rhythmic or idiom owners may
+provide their own authored material where their precedence rules apply.
 
 This prevents the new owner from adding a new contour axis to styles already accepted primarily for their rhythm/FEEL identity. The hardware verdict is still auditory: no unacceptable tonal regression is allowed.
 
 ### Styles expected to gain movement
 
-The production data profiles permit wider tonal intent for Acid, Outrun, Darksynth, Electro, Broken, TripHop, HipHop, FunkSoul, UK Garage, Drum & Bass, LoFi, Reggae and Chip where the existing rhythmic framework alone did not provide sufficient pitch motion.
+The production data profiles permit wider tonal intent for Acid, Outrun, Darksynth, Electro, Broken, House, Rave, TripHop, HipHop, FunkSoul, UK Garage, Drum & Bass, LoFi, Reggae and Chip where the existing rhythmic framework alone did not provide sufficient pitch motion.
 
 `RootOctave` remains a valid Stage 15C API vocabulary item but is intentionally excluded from current production AUTO synth-profile selection: with a moving harmonic root it cannot be guaranteed to fit the fixed bass corridor for every scale/progression combination without octave-folding or register collision. No projector invariant is weakened to force it.
 
@@ -238,7 +245,8 @@ The new tonal path must not return `MissingPitchSource`. Check `TonalPatternAdap
 | ChordRhythm owns harmonic timing | derive new harmonic event positions inside TonalMaterializer |
 | event-local anchors stay independent | collapse all harmonic events into one phrase-global TonalProjectionRequest |
 | global scale is preserved across events | derive or transpose a new `ScaleType` from the active harmonic root |
-| bass/secondary registers never overlap | raise bass max to 48 or lower secondary min to 47 |
+| generic bass/secondary registers never overlap | raise generic bass max to 48 or lower generic secondary min to 47 |
+| idiom-owned register envelope stays bounded | publish a GenreIdiom pitch outside Synth A `18..65` or Synth B `51..94` |
 | all production addresses materialize | introduce a contour/progression combination that returns projection failure in the 8448-case sweep |
 | all key/scale contexts materialize | introduce a root/scale-dependent failure in the 31,680-case sweep |
 | exact fifth stays chromatic | route tagged `+7` through scale-degree conversion |
@@ -276,8 +284,8 @@ Stage 15 does **not** add:
 - [ ] 16 base modes × 8 addresses deterministic matrix passes.
 - [ ] 33 exact profiles × all 256 production addresses register sweep passes (`8,448`).
 - [ ] 33 exact profiles × 10 scales × 12 roots × 8 addresses sweep passes (`31,680`).
-- [ ] Synth A notes stay in 24..47.
-- [ ] Synth B notes stay in 48..71.
+- [ ] Generic-owner Synth A notes stay in 24..47 and Synth B notes stay in 48..71.
+- [ ] Idiom-owner Synth A notes stay in 18..65 and Synth B notes stay in 51..94.
 - [ ] Legacy tonal baseline remains byte-for-byte unchanged with tonal materialization disabled.
 - [ ] Empty compatibility source still produces tonal material when intent exists.
 - [ ] Invalid tonal context leaves drums/A/B untouched.

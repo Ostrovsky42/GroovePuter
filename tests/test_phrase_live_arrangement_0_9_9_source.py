@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 GENERATED = (ROOT / "src/dsp/generated_phrase_song.h").read_text(encoding="utf-8")
@@ -50,12 +51,13 @@ require('std::array<PhraseGenerator::PhraseBar, kMaxPreparedBars> material' not 
 prepare = between(GENERATED, 'inline bool materializeLegacyBar(', 'template <typename Guard>\nResult generate(')
 require('applyRecipe' in prepare or 'deriveBar' in prepare,
         "D2 musical generation belongs to PREPARE")
-require('commitPrepared' not in prepare and 'markSceneMutated' not in prepare,
+prepare_code = re.sub(r'//[^\n]*|/\*[\s\S]*?\*/', '', prepare)
+require('commitPrepared' not in prepare_code and 'markSceneMutated' not in prepare_code,
         "PREPARE must not mutate Scene revision/Undo")
 
 # One logical mutation: Pattern allocation/data + Song refs + row timing through
 # the authoritative Undo owner. No direct markSceneMutated is allowed.
-generate = between(GENERATED, 'template <typename Guard>\nResult generate(', 'inline std::size_t preparedPhraseArrangementSize()')
+generate = between(GENERATED, 'template <typename Guard>\nResult generate(', 'enum class CycleStatus')
 require(0 <= generate.find('acquireWriteLease()') <
         generate.find('prepareWithGenerationAttempt('),
         "PLAY D2 must acquire the common Busy owner before PREPARE")

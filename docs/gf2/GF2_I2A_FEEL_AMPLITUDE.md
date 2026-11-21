@@ -23,22 +23,24 @@ It is an editorial decision, not a defect: nothing in the I2 chain is broken.
 `tools/gf2/gf2_i2a_feel_amplitude_dump.cpp` materializes every production
 genre/recipe against every FEEL profile across an amount sweep and reports what
 moved as well as how much. Artifact:
-`docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv` — 1815 rows, 33 genre/recipe
-pairs, 5 profile selections, 11 amounts. All 33 materialize.
+`docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv` is regenerated from the current
+37-recipe production catalog: 2035 rows, 5 profile selections, 11 amounts. All
+37 recipes materialize. The original threshold decision used the 33-recipe
+0.9.10 corpus; the refreshed measurements below use all 37 current recipes.
 
 ### The profiles are not on one scale
 
-Share of the 33 recipes where the profile differs from STRAIGHT at all:
+Share of the 37 current recipes where the profile differs from STRAIGHT at all:
 
 | amount | SWING COMPAT | LAID BACK | PUSH/PULL | all three mutually distinct |
 |---|---|---|---|---|
-| 12% | 0/33 | 33/33 | 0/33 | 0/33 |
-| **20%** (old default) | **0/33** | **33/33** | **0/33** | **0/33** |
-| 22% (LOOSE preset) | 0/33 | 33/33 | 0/33 | 0/33 |
-| 30% | 0/33 | 33/33 | 33/33 | 33/33 |
-| 50% | 0/33 | 33/33 | 33/33 | 33/33 |
-| 60% | 18/33 | 33/33 | 33/33 | 33/33 |
-| 80% | 33/33 | 33/33 | 33/33 | 33/33 |
+| 12% | 0/37 | 37/37 | 0/37 | 0/37 |
+| **20%** (old default) | **0/37** | **37/37** | **0/37** | **0/37** |
+| 22% (LOOSE preset) | 0/37 | 37/37 | 0/37 | 0/37 |
+| 30% | 0/37 | 37/37 | 37/37 | 37/37 |
+| 50% | 0/37 | 37/37 | 37/37 | 37/37 |
+| 60% | 21/37 | 37/37 | 37/37 | 37/37 |
+| 80% | 37/37 | 37/37 | 37/37 | 37/37 |
 
 At the old default two of three profiles were **byte-identical** to STRAIGHT —
 not quiet, identical — and the third moved two events of nineteen by 5 ms.
@@ -47,10 +49,10 @@ not quiet, identical — and the third moved two events of nineteen by 5 ms.
 
 | amount | LAID BACK | PUSH/PULL | SWING COMPAT |
 |---|---|---|---|
-| 20% | 2 events / 5.1 ms | 0 | 0 |
-| 30% | 6 / 10.2 ms | 5 / 5.1 ms | 0 |
-| 50% | 10 / 14.6 ms | 7 / 10.2 ms | 0 |
-| 100% | 14 / 29.2 ms | 14 / 19.5 ms | 5 / 9.7 ms |
+| 20% | 2 events / 4.8 ms | 0 | 0 |
+| 30% | 4 / 9.7 ms | 5 / 4.8 ms | 0 |
+| 50% | 8 / 14.2 ms | 7 / 9.7 ms | 0 |
+| 100% | 11 / 28.4 ms | 12 / 18.9 ms | 5 / 9.4 ms |
 
 ### The anchor
 
@@ -74,7 +76,7 @@ fault as the amplitude.
 | HUMAN preset | 0.12 | **0.50** | matches the new default |
 | LOOSE preset | 0.22 | **0.80** | above the knee, where all three profiles register |
 | SwingCompatible | undecided | **expected zero by design** | it is defined as compatible with the independently applied `swingPct` and adds no displacement of its own |
-| 17 inert-AUTO recipes | undiagnosed | **recorded as correct** | acid, techno, house, drum & bass and rave are played straight |
+| 18 inert-AUTO recipes | undiagnosed | **recorded as correct** | acid, techno, house, drum & bass and rave are played straight |
 
 No `kFeel*` weight, profile coefficient or vocabulary was retuned. Rescaling
 SwingCompatible to match the other two was considered and rejected: it would
@@ -93,9 +95,9 @@ LAID BACK or PUSH/PULL must displace >= 3 events by >= 2 ticks, and
 STRAIGHT / LAID BACK / PUSH/PULL must stay mutually distinct.
 ```
 
-Thresholds come from the census: at 50% the weakest case is LAID BACK with 5
-events and PUSH/PULL with 3, both at 2 ticks; at the old 20% default PUSH/PULL
-displaced nothing anywhere.
+Thresholds come from the refreshed census: at 50% the weakest LAID BACK case is
+4 events / 3 ticks and the weakest PUSH/PULL case is 3 events / 2 ticks. At the
+old 20% default PUSH/PULL displaced nothing anywhere.
 
 ### The named corpus
 
@@ -104,11 +106,11 @@ list, with the counts pinned so a vocabulary edit has to be acknowledged:
 
 | class | count | contract |
 |---|---|---|
-| AUTO draws LaidBack or PushPull | 16 | must reach the threshold |
-| AUTO draws Straight | 11 | must stay identical to STRAIGHT |
+| AUTO draws LaidBack or PushPull | 19 | must reach the threshold |
+| AUTO draws Straight | 12 | must stay identical to STRAIGHT |
 | AUTO draws SwingCompatible | 6 | must stay an expected zero |
 
-Manual selection is held to the threshold on **all 33** recipes — what AUTO
+Manual selection is held to the threshold on **all 37** recipes — what AUTO
 draws is a statement about the genre, but a musician who picks a profile by hand
 must hear it everywhere.
 
@@ -119,7 +121,7 @@ RED   at the 0.2 default: 82 failures. LAID BACK managed 1-2 events at one
       tick, PUSH/PULL zero, and no recipe kept its three profiles distinct.
 
 GREEN shipped FEEL AMOUNT: 50%  (threshold: >=3 events, >=2 ticks)
-      corpus: 16 active, 11 draw STRAIGHT, 6 draw SWING COMPAT
+      corpus: 19 active, 12 draw STRAIGHT, 6 draw SWING COMPAT
       every active recipe is audible at the default              OK
       FEEL amount zero is neutral for every profile              OK
       TIGHT / HUMAN / LOOSE stay recognisably different          OK (1 < 9 < 12)
@@ -251,7 +253,7 @@ GF2-I5   secondary-role depth
 GF2-C2-V1 / C2 / G1
 ```
 
-Recorded for Gate B: **17 of 33 recipes have an inert AUTO** — 11 drawing
-STRAIGHT and 6 drawing SwingCompatible. That is an accepted editorial state, not
-a defect, but it is exactly the kind of fact Gate B exists to weigh when it
-classifies real against declared capacity.
+Recorded for Gate B on the refreshed corpus: **18 of 37 recipes have an inert
+AUTO** — 12 drawing STRAIGHT and 6 drawing SwingCompatible. That is an accepted
+editorial state, not a defect, but it is exactly the kind of fact Gate B exists
+to weigh when it classifies real against declared capacity.

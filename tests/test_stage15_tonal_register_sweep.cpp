@@ -90,6 +90,7 @@ void printFailure(GenerativeMode mode,
       << " melodyProj=" << static_cast<int>(result.melodicTonalProjectionStatus)
       << " melodyAdapt=" << static_cast<int>(result.melodicTonalAdaptStatus)
       << " synthBRole=" << static_cast<int>(result.synthBRole)
+      << " idiom=" << static_cast<int>(result.idiomTemplate)
       << " Areg=" << (aRegisterOk ? 1 : 0)
       << " Breg=" << (bRegisterOk ? 1 : 0)
       << '\n';
@@ -111,8 +112,15 @@ void runCase(const GenreSettings& settings,
       drums,
       synthA,
       synthB);
-  const bool aRegisterOk = registerOk(synthA, 24, 47);
-  const bool bRegisterOk = registerOk(synthB, 48, 71);
+  // Generic materialization and GenreIdiom own different pitch corridors.
+  // Idiom templates deliberately use wider, overlapping registers.
+  const bool idiomOwnsPitches = result.idiomTemplate != 0xFFu;
+  const bool aRegisterOk = idiomOwnsPitches
+      ? registerOk(synthA, 18, 65)
+      : registerOk(synthA, 24, 47);
+  const bool bRegisterOk = idiomOwnsPitches
+      ? registerOk(synthB, 51, 94)
+      : registerOk(synthB, 48, 71);
   if (result.status != StrongRhythmMigrationStatus::Applied ||
       !result.tonalMaterializationApplied ||
       !aRegisterOk || !bRegisterOk) {

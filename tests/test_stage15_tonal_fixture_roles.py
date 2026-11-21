@@ -17,7 +17,7 @@ F13_FROZEN_NAME = "stage15_tonal_enabled_f13_baseline.tsv.gz.b64"
 
 EXPECTED_PRE_F13_BLOB = "4bd456235b49a98deee2dc6778287353ad7721b5"
 EXPECTED_F13_FROZEN_BLOB = "64fd07afc99dc4652f798fd41a56213768a6f42f"
-EXPECTED_CURRENT_BLOB = "a927181840c8ba92324bcdaa7c1225ce39ec7e08"
+EXPECTED_CURRENT_BLOB = "4a468833d55765b1da2d82f229376a91b1bfec3a"
 
 
 def git_blob_sha(path: Path) -> str:
@@ -75,11 +75,11 @@ expected_current_consumers = {
     "scripts/ci/run_stage15_baseline_contract.sh",
     "tests/run_0_9_9_phrase_w1_tests.sh",
     "tests/run_0_9_9_phrase_w1r_tests.sh",
+    "tests/test_stage15_tonal_corpus_boundary.py",
     "tests/test_stage15_tonal_fixture_roles.py",
 }
 expected_pre_f13_consumers = {
     "scripts/ci/run_stage15_baseline_contract.sh",
-    "tests/test_stage15_tonal_corpus_boundary.py",
     "tests/test_stage15_tonal_fixture_roles.py",
 }
 expected_f13_consumers = {
@@ -114,15 +114,15 @@ assert "stage15_tonal_enabled_f13_expected.tsv" in historical_block
 assert CURRENT_NAME not in historical_block
 
 current_start = baseline_workflow.index("# CURRENT ACCEPTED GOLDEN")
-current_end = baseline_workflow.index("# HISTORICAL OWNERSHIP BOUNDARY", current_start)
+current_end = baseline_workflow.index("# CURRENT LEGACY / TONAL BOUNDARY", current_start)
 current_block = baseline_workflow[current_start:current_end]
 assert CURRENT_NAME in current_block
 assert "stage15_tonal_enabled_actual.tsv" in current_block
 assert PRE_F13_NAME not in current_block
 assert F13_FROZEN_NAME not in current_block
 
-assert PRE_F13_NAME in boundary
-assert CURRENT_NAME not in boundary
+assert CURRENT_NAME in boundary
+assert PRE_F13_NAME not in boundary
 
 assert "if articulation_changes == 0:" in f13_test
 assert "if full_changes == 0:" in f13_test

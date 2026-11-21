@@ -25,6 +25,15 @@ FeelPatternApplyStatus applyFeelToMaterializedPattern(
     const GenerationContext& generation,
     MaterializedPatterns& destination);
 
+// Apply the same interpreter to the drum hits after an idiom has replaced the
+// rhythm material. This keeps FEEL tied to the final onset topology.
+FeelPatternApplyStatus applyFeelToMaterializedDrums(
+    const PatternMaterializerBinding& binding,
+    FeelProfileId profile,
+    uint8_t amount,
+    const GenerationContext& generation,
+    DrumPatternSet& destination);
+
 }  // namespace GroovePuterRhythm
 
 #endif  // GROOVEPUTER_GENERATION_FEEL_FEEL_PATTERN_ADAPTER_H

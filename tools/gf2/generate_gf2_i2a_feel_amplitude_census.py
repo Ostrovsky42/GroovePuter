@@ -18,6 +18,7 @@ OUT = BUILD / "gf2_i2a_feel_amplitude_dump"
 ARTIFACT = ROOT / "docs/research/GF2_I2A_FEEL_AMPLITUDE_CENSUS.tsv"
 
 STAGE15_RUNNER = ROOT / "tests/run_stage15_tonal_integration_tests.sh"
+HGS_SOURCE_LIST = ROOT / "tests/hgs_song_state_sources.sh"
 
 
 def common_sources() -> list[str]:
@@ -40,8 +41,32 @@ def common_sources() -> list[str]:
     return sources
 
 
+def hgs_song_state_sources() -> list[str]:
+    """Reuse the shared Song Harmonic State dependency list used by host tests."""
+    result = subprocess.run(
+        [
+            "bash",
+            "-c",
+            'ROOT_DIR="$1"; source "$2"; printf "%s\\n" "${HGS_SONG_STATE_SOURCES[@]}"',
+            "gf2-i2a-source-list",
+            str(ROOT),
+            str(HGS_SOURCE_LIST),
+        ],
+        check=True,
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+    )
+    return [
+        Path(source).resolve().relative_to(ROOT).as_posix()
+        for source in result.stdout.splitlines()
+        if source
+    ]
+
+
 SOURCES = [
     *common_sources(),
+    *hgs_song_state_sources(),
     "src/dsp/genre_manager.cpp",
     "scenes.cpp",
     "json_evented.cpp",

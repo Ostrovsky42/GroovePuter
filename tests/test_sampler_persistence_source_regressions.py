@@ -42,7 +42,10 @@ cardputer_read_ack = cardputer_storage_header[cardputer_storage_header.index("bo
 assert cardputer_read_ack.index("if (!reader.validateRead()) return false;") < cardputer_read_ack.index("persistCurrentSceneName()") < cardputer_read_ack.index("return !reader.failed();")
 scene_cpp = (ROOT / "scenes.cpp").read_text(encoding="utf-8")
 load = scene_cpp[scene_cpp.index("bool SceneManager::loadSceneEventedWithReader"):]
-assert load.index("if (acknowledge && !acknowledge()) return false;") < load.index("*scene_ = *loaded;")
+acknowledge_check = load.index("if (acknowledge && !acknowledge())")
+acknowledge_rejection = load.index("return false;", acknowledge_check)
+scene_publication = load.index("*scene_ = *loaded;")
+assert acknowledge_check < acknowledge_rejection < scene_publication
 assert "manager.writeSceneJson(filtered) && filtered.finish()" in store_cpp
 
 # Sample IDs use all 32 bits. A signed JSON conversion turns IDs above INT_MAX

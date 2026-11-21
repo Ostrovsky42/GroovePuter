@@ -29,5 +29,5 @@ diff -u \
   tests/data/stage15_tonal_enabled_baseline.tsv \
   build/host-tests/stage15_tonal_enabled_actual.tsv
 
-# HISTORICAL OWNERSHIP BOUNDARY
+# CURRENT LEGACY / TONAL BOUNDARY
 python3 tests/test_stage15_tonal_corpus_boundary.py

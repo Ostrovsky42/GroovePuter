@@ -15,6 +15,7 @@
 #include "../src/generation/composition/generation_profile.h"
 #include "../src/generation/migration/strong_rhythm_migration.h"
 #include "../src/phrase/runtime_pattern_event_bank.h"
+#include "../src/state/generated_pattern_harmony_origin.h"
 #include "../src/state/generation_request_state.h"
 #include "../src/state/scene_revision.h"
 #include "../src/state/undo_owner.h"
@@ -110,6 +111,9 @@ class MiniAcid {
     return runtime_[voice == 0 ? 0 : 1];
   }
   void barrierPatternRuntimeSourceTransition() { ++runtimeBarrierCount_; }
+  void publishGeneratedPatternHarmony(
+      const GroovePuterMaterial::GeneratedPatternHarmonyOrigin&) {}
+  void clearGeneratedPatternHarmony() {}
 
  private:
   TestSceneManager scenes_{};

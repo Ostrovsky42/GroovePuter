@@ -267,8 +267,16 @@ void testAllModesDeterministicAndInRegister() {
       assert(activeMask(legacyA) == activeMask(tonalA));
       assert(activeMask(legacyB) == activeMask(tonalB));
 
-      assertRegister(tonalA, 24, 47);
-      assertRegister(tonalB, 48, 71);
+      // A selected genre idiom writes its authored paired template after the
+      // generic role materializer; its pitches are governed by that template,
+      // not the generic TonalGenerationProfile corridors.
+      if (tonal.idiomTemplate == 0xFFu) {
+        assertRegister(tonalA, 24, 47);
+        assertRegister(tonalB, 48, 71);
+      } else {
+        assertRegister(tonalA, 18, 65);
+        assertRegister(tonalB, 51, 94);
+      }
 
       DrumPatternSet repeatDrums{};
       SynthPattern repeatA = pitchSource(36, 5);
@@ -322,8 +330,13 @@ void testNoPitchSourceStillMaterializes() {
   assert(result.tonalMaterializationApplied);
   assert(result.bassTonalStatus == TonalMaterializationStatus::Ok ||
          result.bassTonalStatus == TonalMaterializationStatus::ValidButEmpty);
-  assertRegister(emptyA, 24, 47);
-  assertRegister(emptyB, 48, 71);
+  if (result.idiomTemplate == 0xFFu) {
+    assertRegister(emptyA, 24, 47);
+    assertRegister(emptyB, 48, 71);
+  } else {
+    assertRegister(emptyA, 18, 65);
+    assertRegister(emptyB, 51, 94);
+  }
 }
 
 void testInvalidTonalContextIsAtomic() {
