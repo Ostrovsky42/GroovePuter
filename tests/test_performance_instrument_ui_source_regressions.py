@@ -92,6 +92,24 @@ def main() -> None:
 
     require('"N/A"' in page,
             "dependency-disabled controls must render deterministic N/A states")
+
+    # Product UX invariant: an experimental feature that is not compiled into
+    # the product must consume zero cursor rows and zero visible screen lines.
+    require("#ifdef GROOVEPUTER_TILT\n    // Experimental TILT has zero UI footprint" in header,
+            "TILT INPUT rows must exist only in GROOVEPUTER_TILT builds")
+    require('"production INPUT ends after the HELPER group"' in header,
+            "production PERFORM INPUT must end after its 11 MIDI/HELPER rows")
+    require("#ifdef GROOVEPUTER_TILT\n    static constexpr uint8_t kTiltRowFirst" in header,
+            "TILT row boundaries must not exist in the normal product build")
+    require('"TILT TARGET", "N/A"' not in page and
+            '"TILT SENS", "N/A"' not in page and
+            '"TILT ZERO", "N/A"' not in page,
+            "disabled TILT must be absent, not rendered as dead N/A controls")
+    tilt_draw = block(page, "#ifdef GROOVEPUTER_TILT\n            // TILT is experimental",
+                      "            break;\n        }")
+    require('"--- TILT ---"' in tilt_draw and '"TILT TARGET"' in tilt_draw and
+            '"TILT ZERO"' in tilt_draw,
+            "experimental TILT build must retain the complete TILT UI")
     require("rotationIsAudible" in page and "strumIsAudible" in page,
             "N/A dependency predicates must remain explicit and deterministic")
     require("performanceRole()" in tools and "leadMode()" in tools and

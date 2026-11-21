@@ -152,8 +152,12 @@ constexpr uint8_t lr(LoopRow row) { return performLoopRow(row); }
 
 // INPUT screen line of a focusable row: one heading line above each group.
 constexpr uint8_t inputLine(uint8_t row) {
-    return static_cast<uint8_t>(row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u)
-                                + (row >= PerformPage::kTiltRowFirst ? 1u : 0u));
+    uint8_t line = static_cast<uint8_t>(
+        row + 1u + (row >= PerformPage::kPartnerRowFirst ? 1u : 0u));
+#ifdef GROOVEPUTER_TILT
+    if (row >= PerformPage::kTiltRowFirst) ++line;
+#endif
+    return line;
 }
 constexpr uint8_t kInputLineCount = static_cast<uint8_t>(inputLine(PerformPage::kInputRowCount - 1u) + 1u);
 
@@ -487,11 +491,13 @@ void PerformPage::adjustSelectedValue(int direction) {
                 case ir(InRow::Variation): case ir(InRow::NewRiffIf):
                     cyclePartnerSetting(row, direction);
                     break;
+#ifdef GROOVEPUTER_TILT
                 case ir(InRow::TiltTargetRow): case ir(InRow::TiltSensRow):
                 case ir(InRow::TiltXRow): case ir(InRow::TiltYRow): case ir(InRow::TiltZRow):
                 case ir(InRow::TiltZeroRow):
                     cycleTiltSetting(row, direction);
                     break;
+#endif
                 default:
                     break;
             }
@@ -1067,12 +1073,14 @@ const char* PerformPage::selectedRowHint() const {
                     return riff ? "HOW MUCH THE RIFF CHANGES" : "N/A: SET HELPER TO RIFF";
                 case ir(InRow::NewRiffIf):
                     return riff ? "NOTES YOU PLAY TO START A NEW RIFF" : "N/A: SET HELPER TO RIFF";
+#ifdef GROOVEPUTER_TILT
                 case ir(InRow::TiltTargetRow): return "TILT: WHICH SYNTH THE TILT REACHES";
                 case ir(InRow::TiltSensRow): return "TILT: DEGREES OF TILT FOR FULL SCALE";
                 case ir(InRow::TiltXRow): return "TILT: CONTROLLER FOR THE X AXIS (NONE TO OFF)";
                 case ir(InRow::TiltYRow): return "TILT: CONTROLLER FOR THE Y AXIS (NONE TO OFF)";
                 case ir(InRow::TiltZRow): return "TILT: CONTROLLER FOR THE GYRO TURN (NONE TO OFF)";
                 case ir(InRow::TiltZeroRow): return "TILT: PRESS TO ZERO X, Y, Z AT THIS POSE";
+#endif
                 default: return "";
             }
         }
@@ -1434,9 +1442,9 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
             drawRow(ir(InRow::Variation), "VARIATION", riff ? riffVariationName(partner.loopEvolve()) : "N/A", riff);
             drawRow(ir(InRow::NewRiffIf), "NEW RIFF IF", riff ? newRiffIfName(partner.loopReplace()) : "N/A", riff);
 
-            // TILT: the offsets the apostrophe switches on. Each axis picks its controller.
-            drawHeading(inputLine(kTiltRowFirst) - 1u, "--- TILT ---");
 #ifdef GROOVEPUTER_TILT
+            // TILT is experimental and therefore owns UI only in a TILT build.
+            drawHeading(inputLine(kTiltRowFirst) - 1u, "--- TILT ---");
             drawRow(ir(InRow::TiltTargetRow), "TILT TARGET",
                     GroovePuterTilt::targetName(GroovePuterTilt::gController.target()), true);
             std::snprintf(value, sizeof(value), "%s", tiltSensName(GroovePuterTilt::gSensIndex));
@@ -1452,13 +1460,6 @@ void PerformPage::drawToolsLayer(IGfx& gfx) {
                            GroovePuterTilt::gController.angleDeg(2));
             drawRow(ir(InRow::TiltZRow), "TILT Z", value, true);
             drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "SET HERE", true);
-#else
-            drawRow(ir(InRow::TiltTargetRow), "TILT TARGET", "N/A", false);
-            drawRow(ir(InRow::TiltSensRow), "TILT SENS", "N/A", false);
-            drawRow(ir(InRow::TiltXRow), "TILT X", "N/A", false);
-            drawRow(ir(InRow::TiltYRow), "TILT Y", "N/A", false);
-            drawRow(ir(InRow::TiltZRow), "TILT Z", "N/A", false);
-            drawRow(ir(InRow::TiltZeroRow), "TILT ZERO", "N/A", false);
 #endif
 
             break;
