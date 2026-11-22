@@ -534,7 +534,7 @@ bool GenrePage::handleGenPanelNav(int nav) {
     case GenRow::Drums:
       if (GroovePuterState::generationTarget() ==
           GroovePuterState::GenerationTarget::Melody) {
-        UI::showToast("MELODY KEEPS DRUMS", 900);
+        UI::showToast("MELODY: DRUMS SAME", 900);
       } else {
         (void)GroovePuterState::toggleGenerationKeepsDrums();
       }
@@ -544,6 +544,11 @@ bool GenrePage::handleGenPanelNav(int nav) {
     case GenRow::Notes: (void)GroovePuterState::cycleGenerationNoteLength(delta); break;
   }
   return true;
+}
+
+static const char* generationAction() {
+  return GroovePuterState::generationTarget() == GroovePuterState::GenerationTarget::Melody
+      ? "G:NEW MELODY" : "G:NEW GROOVE";
 }
 
 void GenrePage::drawGenPanel(IGfx& gfx) {
@@ -567,7 +572,7 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
                        gen_focus_ == GenRow::Target, axisColor, palette);
   const bool keepDrums = melody || GroovePuterState::generationKeepsDrums();
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(2), width, "DRUMS",
-                       melody ? "KEEP (MELODY)" : keepDrums ? "KEEP" : "NEW",
+                       keepDrums ? "SAME" : "NEW",
                        gen_focus_ == GenRow::Drums, axisColor, palette);
   std::snprintf(value, sizeof(value), "%u BAR%s", bars, bars == 1 ? "" : "S");
   AxisUI::drawValueRow(gfx, x, LayoutManager::lineY(3), width, "LENGTH", value,
@@ -590,7 +595,8 @@ void GenrePage::drawGenPanel(IGfx& gfx) {
         : "G: NEW TAKE, DRUMS + SYNTHS");
   }
   gfx.drawText(x + 2, LayoutManager::lineY(6) + 1, value);
-  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", "G:GENERATE");
+  UI::publishShellInfo(generationAction(), nullptr);
+  UI::drawStandardFooter(gfx, "[TAB]FEEL U/D:FIELD L/R:CHANGE", generationAction());
 }
 
 void GenrePage::startSoundSend() {
@@ -730,7 +736,7 @@ void GenrePage::draw(IGfx& gfx) {
       : focus_ == FocusRow::Apply
           ? GenreUi::applyEnterHint(GroovePuterMidi::midiDeviceProfileRuntime().profile() ==
                                     GroovePuterMidi::MidiDeviceProfile::SeqtrakNative)
-          : "G 1 BAR  ALT+8 MATERIAL 4 BARS",
+          : generationAction(),
       statusIsNews ? UI::genreProfile(selectedGenre).tag : nullptr);
   char keyHint[40];
   std::snprintf(keyHint, sizeof(keyHint), "ENT:SCALE H:HARM L/R:ROOT");
@@ -738,7 +744,7 @@ void GenrePage::draw(IGfx& gfx) {
       focus_ == FocusRow::Key ? keyHint
       : focus_ == FocusRow::Variant ? "ENTER:LIST L/R:STEP"
       : focus_ == FocusRow::Depth ? "L/R:STYLE P:STYLE"
-                                    : "ENTER:APPLY G:TAKE");
+                                    : generationAction());
   if (popupKind_ == PopupKind::Recipe) {
     selectionPopup_.draw(gfx, recipePopupLabels_);
   } else if (popupKind_ == PopupKind::Scale) {

@@ -2161,6 +2161,7 @@ int SceneManager::activeSongSlot() const { return scene_->activeSongSlot; }
 void SceneManager::setActiveSongSlot(int slot) {
   if (slot < 0) slot = 0;
   if (slot > 1) slot = 1;
+  if (scene_->activeSongSlot != slot) GroovePuterState::setPhrasePlacementValid(false);
   scene_->activeSongSlot = slot;
 }
 

@@ -1,3 +1,4 @@
+#include "src/generation/composition/phrase_evolution_admission.h"
 #include "phrase_page.h"
 
 #include <algorithm>
@@ -391,23 +392,10 @@ void PhrasePage::onEnter(int context) {
   replace_view_ = false;          // entering the page always starts on the product view
   replace_confirming_ = false;
   replace_confirmed_ = false;
-  if (context > 0) {
-    // Explicit placement only on a row with no material yet; a filled row keeps APPEND.
-    const int row = context - 1;
-    if (row >= 0 && row < Song::kMaxPositions) {
-      bool filled = false;
-      for (SongTrack track : {SongTrack::SynthA, SongTrack::SynthB, SongTrack::Drums}) {
-        if (mini_acid_.songPatternAt(row, track) >= 0) filled = true;
-      }
-      if (!filled) {
-        placement_mode_ = PlacementMode::Explicit;
-        explicit_row_ = static_cast<int16_t>(row);
-        return;
-      }
-    }
+  if (context > 0 && context <= Song::kMaxPositions) {
+    explicit_row_ = context - 1;
+    GroovePuterState::setPhrasePlacementValid(true);
   }
-  placement_mode_ = PlacementMode::Append;
-  explicit_row_ = 0;
 }
 
 PhraseCore::Role PhrasePage::defaultRoleForSlot(PhraseCore::SlotId slot) {
@@ -495,16 +483,16 @@ int PhrasePage::resolvedAppendRow() const {
 }
 
 int PhrasePage::resolvedToRow() const {
-  return placement_mode_ == PlacementMode::Append
+  return !GroovePuterState::generatedPhraseProductState().placementValid
       ? resolvedAppendRow()
       : static_cast<int>(explicit_row_);
 }
 
 void PhrasePage::adjustToField(int delta) {
-  if (placement_mode_ == PlacementMode::Append) {
+  if (!GroovePuterState::generatedPhraseProductState().placementValid) {
     const int row = std::clamp(
         resolvedAppendRow() + delta, 0, Song::kMaxPositions - 1);
-    placement_mode_ = PlacementMode::Explicit;
+    GroovePuterState::setPhrasePlacementValid(true);
     explicit_row_ = static_cast<int16_t>(row);
     return;
   }
@@ -514,8 +502,8 @@ void PhrasePage::adjustToField(int delta) {
 }
 
 bool PhrasePage::handleToEnter() {
-  if (placement_mode_ == PlacementMode::Explicit) {
-    placement_mode_ = PlacementMode::Append;
+  if (GroovePuterState::generatedPhraseProductState().placementValid) {
+    GroovePuterState::setPhrasePlacementValid(false);
     explicit_row_ = 0;
   }
   return true;
@@ -688,7 +676,7 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   gfx.setTextColor(palette.dim);
   gfx.drawText(x, LayoutManager::lineY(1), "TO");
   std::snprintf(line, sizeof(line), "%s %c%d",
-                placement_mode_ == PlacementMode::Append ? "APPEND" : "EXPLICIT",
+                !GroovePuterState::generatedPhraseProductState().placementValid ? "APPEND" : "EXPLICIT",
                 static_cast<char>('A' + songSlot), toRow + 1);
   gfx.setTextColor(toColor);
   gfx.drawText(x + 24, LayoutManager::lineY(1), line);
@@ -737,14 +725,33 @@ void PhrasePage::drawProductView(IGfx& gfx) {
     return true;
   };
 
+  const char* growHint = nullptr;
+  if (!recipe) growHint = "PRESS G FIRST";
+  else if (recipe->cycleSongStart < 0) {
+    if (recipe->bars != GeneratedPhraseSong::kCycleSectionBars) growHint = "GROW NEEDS 4B";
+    else if (recipe->materialization.level != GroovePuterRhythm::RealizationLevel::P3Transformation)
+      growHint = "GROW NEEDS P3";
+    else if (!GroovePuterRhythm::phraseEvolutionGenreAdmitted(recipe->genre))
+      growHint = "GROW N/A (FORM)";
+  }
+  auto drawLast = [&]() {
+    if (drawCycleSummary()) return true;
+    if (!growHint) return false;
+    if (recipe) std::snprintf(line, sizeof(line), "LAST %uB  %s", unsigned(recipe->bars), growHint);
+    else std::snprintf(line, sizeof(line), "LAST --  %s", growHint);
+    gfx.setTextColor(palette.dim);
+    gfx.drawText(x, LayoutManager::lineY(3), line);
+    return true;
+  };
+
   if (!live) {
-    if (!drawCycleSummary()) {
+    if (!(recipe ? drawCycleSummary() : drawLast())) {
       gfx.setTextColor(palette.dim);
       gfx.drawText(x, LayoutManager::lineY(3), "LAST  --");
     }
     gfx.drawText(x, LayoutManager::lineY(4), "G CREATES A NEW TAKE");
   } else {
-    if (!drawCycleSummary()) {
+    if (!drawLast()) {
       std::snprintf(line, sizeof(line), "LAST %uB  SONG %c%d-%d",
                     static_cast<unsigned>(accepted.bars),
                     static_cast<char>('A' + accepted.songSlot),
@@ -793,11 +800,11 @@ void PhrasePage::drawProductView(IGfx& gfx) {
   GenreTempoText::formatStatus(
       scene.genre, GenreTempoText::infoFor(scene.genre, mini_acid_.bpm()),
       nullptr, genreLine, sizeof(genreLine));
-  UI::publishShellInfo(genreLine, nullptr);
+  UI::publishShellInfo(genreLine, "G:WRITE TAKE");
 
   UI::drawStandardFooter(gfx,
                          "[TAB]SONG [U/D]FOCUS [L/R]ADJ",
-                         "G:TAKE D:GROW P:STYLE R:ROOM");
+                         (growHint || cycleBars) ? "G:WRITE TAKE R:ROOM" : "G:WRITE TAKE D:GROW");
 }
 
 bool PhrasePage::growKeptPhrase() {
@@ -1512,7 +1519,7 @@ bool PhrasePage::generatePhraseToSong() {
     }
     UI::showToast(message, 1600);
   } else {
-    placement_mode_ = PlacementMode::Append;
+    GroovePuterState::setPhrasePlacementValid(false);
     explicit_row_ = 0;
     std::snprintf(message, sizeof(message), "NEW TAKE %dB -> %c%d-%d",
                   static_cast<uint8_t>(out.bars), static_cast<char>('A' + out.songSlot),

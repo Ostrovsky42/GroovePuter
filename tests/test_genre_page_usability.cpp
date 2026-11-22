@@ -168,7 +168,7 @@ int main() {
   frame(display, gfx);
   expect(std::lround(engine.bpm()) == 134, "NEW TAKE + TEMPO sets the suggested tempo");
   // --- U2: nothing to report, so the line points at the 4-bar path.
-  expectShown(gfx, "G 1 BAR  ALT+8 MATERIAL 4 BARS", "idle status line points at MATERIAL");
+  expectShown(gfx, "G:NEW GROOVE", "idle status shows the current generation target");
   expect(!shows(gfx, "BPM (124-146)"), "no tempo warning inside the corridor");
 
   // An applied choice leaves quietly (checked first: toasts outlive a frame).

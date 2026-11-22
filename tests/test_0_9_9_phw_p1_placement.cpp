@@ -177,9 +177,9 @@ void testNormalEntryResolvesAppend() {
 
 // ---------------------------------------------------------------------
 // (2) SONG cursor -> PHRASE one-shot handoff produces EXPLICIT at exactly
-// that row; a later normal entry (no fresh handoff) discards it.
+// that row; a later normal entry retains it until the Song changes.
 // ---------------------------------------------------------------------
-void testHandoffExplicitThenDiscarded() {
+void testHandoffSurvivesRecreation() {
   resetProductSessionState();
   MiniAcid engine(kSampleRate, nullptr);
   configureKnownGoodFamily(engine);
@@ -192,11 +192,17 @@ void testHandoffExplicitThenDiscarded() {
   redraw(page, gfx);
   assert(has(gfx, "EXPLICIT A25"));
 
-  page.onEnter(0);  // returning to PHRASE normally, no fresh handoff
-  redraw(page, gfx);
+  UI::UiViewContinuityState state{};
+  page.captureViewContinuity(state);
+  PhrasePage recreated(gfx, engine, AudioGuard{}, false);
+  recreated.restoreViewContinuity(state);
+  recreated.onEnter(0);
+  redraw(recreated, gfx);
+  assert(has(gfx, "EXPLICIT A25"));
+  engine.setActiveSongSlot(1);
+  engine.setActiveSongSlot(0);
+  redraw(recreated, gfx);
   assert(has(gfx, "APPEND A6"));
-  assert(!has(gfx, "EXPLICIT"));
-  std::puts("PHW-P1 T2 SONG handoff -> EXPLICIT, discarded on next normal entry: OK");
 }
 
 // ---------------------------------------------------------------------
@@ -414,6 +420,18 @@ void testAcceptedLivenessSynthAAnchorOnly() {
   redraw(page, gfx);
   assert(has(gfx, "LAST ") && !has(gfx, "LAST  --"));
 
+  const auto* originalRecipe = engine.generatedPhraseRecipe();
+  if (originalRecipe) {
+    auto original = *originalRecipe;
+    auto twoBars = original;
+    twoBars.bars = 2;
+    engine.publishGeneratedPhraseRecipe(twoBars);
+    GroovePuterState::setRequestedPhraseBars(4);
+    redraw(page, gfx);
+    assert(has(gfx, "LAST 2B  GROW NEEDS 4B"));
+    engine.publishGeneratedPhraseRecipe(original);
+  }
+
   // Change only Synth B ref -> remains live.
   const int16_t savedB = song.positions[row].patterns[synthBIdx];
   song.positions[row].patterns[synthBIdx] = -1;
@@ -523,7 +541,7 @@ void testCoreModeIsSeparateInstance() {
 
 int main() {
   testNormalEntryResolvesAppend();
-  testHandoffExplicitThenDiscarded();
+  testHandoffSurvivesRecreation();
   testAppendResolvesDynamically();
   testToPlacementStateMachine();
   testAdmissibilityStates();
