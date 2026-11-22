@@ -494,14 +494,14 @@ timeline.
 | `Left/Right` | Adjust the focused field (length 1/2/4/8, style, TO placement, or accepted bar) |
 | `Enter` (focus `TO`) | `EXPLICIT` row -> `APPEND` (no effect while already `APPEND`) |
 | `Enter` (focus `BAR`) | Focus the accepted bar's Song/pattern context (STOP-only) |
-| `G` | Generate into the resolved `TO` row |
+| `G` | WRITE TAKE into the resolved `TO` row |
 | `P` | Cycle `STYLE` (same value as the focused STYLE field) |
 | `D` | Grow an eligible fresh TAKE (see below) |
 | `R` | Make room: reuse unused takes (plain `R` only; Alt/Ctrl/Meta+R are other shortcuts) |
 
 `TO` always shows the row `G` would actually target right now: `APPEND` resolves
 against the Song's current logical end every frame, or `EXPLICIT` if entering
-MATERIAL from SONG with `Alt+J`, or after moving `TO` manually. Admissibility
+MATERIAL from SONG with `Alt+J`, or after moving `TO` manually. An explicit row survives page navigation within this Song until a successful write or an explicit reset. Switching Songs or loading a project clears it. Admissibility
 (`FREE`/`OCCUPIED`/`NO ROOM`) mirrors the exact generation-availability check.
 `LAST ACCEPTED` is retrospective only and disappears (`LAST --`) if its
 generated material is no longer structurally present in the Song.

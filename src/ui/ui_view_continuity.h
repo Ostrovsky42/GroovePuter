@@ -19,8 +19,10 @@ struct UiViewContinuityState {
   uint8_t performToolsVisible : 1;
   uint8_t performContext : 3;
   uint8_t performRows[6]{0, 0, 0, 0, 0, 0};
-  uint8_t feelFocus{0};
-  uint8_t feelPreset{1};
+  uint8_t feelFocus : 6;
+  uint8_t feelPreset : 2;
+  uint8_t songDestinationRow{0};
+  UiViewContinuityState() : performToolsVisible(0), performContext(0), feelFocus(0), feelPreset(1) {}
   uint8_t genreFocus{0};
 };
 

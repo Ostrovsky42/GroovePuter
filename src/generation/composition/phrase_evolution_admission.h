@@ -14,10 +14,14 @@ namespace GroovePuterRhythm {
 // bar functions may act. P0 excludes Acid and House explicitly (spec section 4): widening the
 // musical task there is a separate decision. Product code and the M0 tooling both call this one
 // function, so a measurement can never admit something production would refuse.
+inline bool phraseEvolutionGenreAdmitted(const GenreSettings& settings) {
+  return settings.generativeMode != static_cast<uint8_t>(GenerativeMode::Acid) &&
+         settings.generativeMode != static_cast<uint8_t>(GenerativeMode::House);
+}
+
 inline bool phraseEvolutionAdmitted(const GenreSettings& settings,
                                     ReferenceVocabulary::Archetype key) {
-  if (settings.generativeMode == static_cast<uint8_t>(GenerativeMode::Acid) ||
-      settings.generativeMode == static_cast<uint8_t>(GenerativeMode::House)) {
+  if (!phraseEvolutionGenreAdmitted(settings)) {
     return false;
   }
   return ReferenceVocabulary::phraseEvolutionEnabled(key);

@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "../ui_core.h"
+#include "../ui_view_continuity.h"
 #include "src/dsp/miniacid_engine.h"
 #include "src/phrase/phrase_workspace.h"
 #include "src/state/undo_owner.h"
@@ -29,9 +30,15 @@ class PhrasePage : public IPage {
   // Consumes a one-shot SONG -> PHRASE placement handoff carried through the
   // existing IPage transition context (see MiniAcidDisplay::transitionToPage_
   // / IPage::requestPageTransition). context == row+1 requests EXPLICIT at
-  // `row`; context == 0 (normal entry) resets to APPEND. No-op on the CORE
+  // `row`; context == 0 retains a valid placement. No-op on the CORE
   // instance, which keeps its own unrelated destination_row_ semantics.
   void onEnter(int context) override;
+  void captureViewContinuity(UI::UiViewContinuityState& state) const override {
+    if (!core_mode_) state.songDestinationRow = static_cast<uint8_t>(explicit_row_);
+  }
+  void restoreViewContinuity(const UI::UiViewContinuityState& state) override {
+    if (!core_mode_) explicit_row_ = state.songDestinationRow;
+  }
 
  private:
   template <typename PrepareFn>
@@ -96,7 +103,6 @@ class PhrasePage : public IPage {
   // NEXT REQUEST (LENGTH/DEPTH/TO) and LAST ACCEPTED (BAR/activity) are
   // different objects -- see spec sections 1-2. TO placement is a two-mode
   // state machine (section 7), never seeded from transport position.
-  enum class PlacementMode : uint8_t { Append, Explicit };
   // Replace: a backing run exists only through slots the musician allowed to be replaced.
   enum class Admissibility : uint8_t { Free, Occupied, NoRoom, NoSlots, Replace };
   enum class ProductFocus : uint8_t { Length, Depth, To, Bar };
@@ -194,7 +200,6 @@ class PhrasePage : public IPage {
   // NEXT REQUEST placement session state (product view only). Discarded
   // whenever PHRASE is (re)entered without a fresh SONG handoff and without
   // an intervening successful G -- see spec section 7.
-  PlacementMode placement_mode_ = PlacementMode::Append;
   int16_t explicit_row_ = 0;
 
   PhraseCore::SlotId selected_slot_ = PhraseCore::SlotId::A;

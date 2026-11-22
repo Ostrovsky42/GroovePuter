@@ -28,6 +28,7 @@ struct GeneratedPhraseAcceptedSnapshot {
 
 struct GeneratedPhraseProductState {
   GeneratedPhraseOutcome lastOutcome = GeneratedPhraseOutcome::None;
+  bool placementValid = false;  // Cleared on project replacement or Song switch.
   uint8_t lastRequestedBars = 0;
   GeneratedPhraseAcceptedSnapshot accepted{};
 };
@@ -48,6 +49,10 @@ inline GeneratedPhraseProductState& storage() {
 
 inline const GeneratedPhraseProductState& generatedPhraseProductState() {
   return generated_phrase_product_detail::storage();
+}
+
+inline void setPhrasePlacementValid(bool valid) {
+  generated_phrase_product_detail::storage().placementValid = valid;
 }
 
 inline const char* generatedPhraseOutcomeName(GeneratedPhraseOutcome outcome) {

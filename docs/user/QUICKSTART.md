@@ -45,14 +45,14 @@ of the same selected musical direction.
 3. Set `LENGTH` to `4B`.
 4. Set `STYLE` to `P3` (Rework).
 5. Leave `TO` on `APPEND` for the simplest first session.
-6. Press `G`.
+6. Press `G` (WRITE TAKE).
 
 `G` creates a fresh TAKE at the destination shown on screen. The generated TAKE is
 real editable project material; it is not an opaque audio preview.
 
 ## 3. Develop it
 
-While that fresh TAKE remains unedited, press `D` on **MATERIAL**.
+LAST describes the previous take. Changing LENGTH or STYLE configures the next write. While that fresh TAKE remains unedited, press `D` on **MATERIAL**.
 
 GroovePuter appends the currently supported related development cycle. Depending on
 the admitted musical form, the result can be shown as `DEVELOP + BREAK` or

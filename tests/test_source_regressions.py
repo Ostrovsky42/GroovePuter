@@ -450,7 +450,7 @@ def test_enter_applies_selected_recipe() -> None:
                               page.index("void GenrePage::draw(IGfx& gfx)"))
     footer_end = page.index(");", footer_start)
     footer_block = page[footer_start:footer_end]
-    require('"ENTER:APPLY G:TAKE"' in footer_block,
+    require("generationAction()" in footer_block and '"G:NEW GROOVE"' in page and '"G:NEW MELODY"' in page,
             "Genre footer must show how to apply the selected profile and generate a take")
     require('case FocusRow::Key: (void)cycleProjectKeyRoot(delta); return true;' in page,
             "Genre KEY selector must be editable from the selected row")
