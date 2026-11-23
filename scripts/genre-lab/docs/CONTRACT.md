@@ -76,3 +76,20 @@ Ride / crash в секвенсоре нет (лейна нет; `CYMBAL` ест�
   gplab их игнорирует (`schema.py`, `Bar.from_json` читает только `src`, `variant`, `bar_idx`, `take`, `bpm`, `events`).
 - Адрес `pattern_address` для пути MATERIAL всегда `0xFFFF` (`kLogicalPhraseAttemptChannel`, `generated_phrase_p1r_materializer.h:36`).
   Дубль k — k-е нажатие G от сброшенной таблицы попыток, ordinal = k (`src/state/generation_request_state.h:192-234`).
+
+## Метод дублей: undo или sequential (доказательство)
+
+- `gen_probe --emit-takes-jsonl` по умолчанию: `--sequence undo`. Каждый дубль k: свежий проект, k пробных нажатий G с Ctrl+Z, затем измеряемое нажатие. Номер попытки = k.
+- `--sequence sequential`: один проект, одно reset, нажатия G подряд, как на устройстве.
+- Проверка `tools/gen_probe/test_takes_jsonl.sh`, PASS 4: для House, Techno, UKG и Acid BASE события (`events`) каждого такта у sequential и undo побайтно совпадают для k = 0 и 1 (8 из 8 тактов в каждом рецепте).
+- Sequential за два дубля упирается в место в Song: длина 8 → 12 → 16, третье нажатие не добавляет такт (`#SEQ`, ошибка «no room»). Значит, k ≥ 2 через sequential не получить, и устройство тоже не выдаст восемь дублей подряд в одном проекте без очистки.
+- **Решение:** `undo` — метод по умолчанию, потому что он даёт все восемь дублей. Доказательство равенства покрывает только k = 0, 1.
+
+## Легаси-счётчик аудита (факт, не исправлен)
+
+- Измерено (копия в scratchpad, без изменения репо): после измеряемого нажатия `next_ordinal` для House, Acid, Techno, UKG = 1, 3, 6, 10, 15, 21, 28, 36. Значит, номера дублей аудита: 0, 2, 5, 9, 14, 20, 27, 35, как и предполагалось.
+- Легаси-цикл `tools/gen_probe/genrefeatures.cpp` не сбрасывает таблицу попыток между дублями. Исправление вне этого PR.
+
+## Тайминг: DEFERRED
+
+- `timing:"grid"` в v1. Формула `processSequencerEvents` (`src/dsp/miniacid_engine.cpp:3108-3169`) найдена, но сверка смещений с движком на воспроизведении требует отдельного host-харнесса. Он не входит в этот PR.
