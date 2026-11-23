@@ -27,6 +27,8 @@
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
+#include <fstream>
+#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -39,6 +41,7 @@
 #include "src/input/performance_keyboard.h"
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/state/generation_request_state.h"
+#include "src/state/phrase_generation_request_state.h"
 #include "src/ui/miniacid_display.h"
 #include "src/ui/ui_common.h"
 #include "src/ui/workflow_mode.h"
@@ -293,7 +296,406 @@ static void printFeat(const char* tag, const char* genre, const char* take, cons
               grow);
 }
 
+// ---------------------------------------------------------------------------
+// --emit-takes-jsonl (genre lab, PR-B). Host-only. It serializes what the product
+// path already writes: MATERIAL G (PhrasePage::generatePhraseToSong) writes one
+// phrase of N bars into the Song, and the bars are read back from the scene.
+// Generation is not changed. Contract: scripts/genre-lab/docs/CONTRACT.md.
+//
+// Tuple: (mode, recipe, P-level, pattern address). Take k is the k-th press of G
+// from a reset attempt table, so the measured press has attempt ordinal k. The
+// tool checks this against the table after every take (#ATT lines).
+// ---------------------------------------------------------------------------
+#ifndef GP_BUILD_SHA
+#define GP_BUILD_SHA "unknown"
+#endif
+
+namespace takes_jsonl {
+
+// kLogicalPhraseAttemptChannel (src/dsp/generated_phrase_p1r_materializer.h:36).
+// The MATERIAL path keys its attempts with this address, not a physical one, so
+// it is the only address this tool accepts.
+constexpr int kMaterialAddress = 0xFFFF;
+
+const char* const kFamilyName[16] = {
+    "acid", "synthwave", "darksynth", "electro", "rave", "dubreggae", "triphop", "breaks",
+    "chip", "house", "techno", "hiphop", "funksoul", "ukgarage", "dnb", "lofi"};
+
+struct Options {
+  std::string out;
+  int mode = -1;
+  std::vector<int> recipes;
+  int takes = 8;
+  int phraseBars = 4;
+  GroovePuterRhythm::RealizationLevel level = GroovePuterRhythm::RealizationLevel::P2Variation;
+  int patternAddress = kMaterialAddress;
+  std::map<int, std::string> variantOverride;
+};
+
+std::string lowerCopy(std::string s) {
+  for (char& c : s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+  return s;
+}
+
+bool parseInt(const std::string& s, int& v) {
+  if (s.empty()) return false;
+  char* end = nullptr;
+  const long x = std::strtol(s.c_str(), &end, 0);  // base 0: accepts 65535 and 0xFFFF
+  if (*end != '\0') return false;
+  v = static_cast<int>(x);
+  return true;
+}
+
+bool safeLabel(const std::string& s) {
+  if (s.empty()) return false;
+  for (char c : s) {
+    const bool ok = std::isalnum(static_cast<unsigned char>(c)) || c == '.' || c == '_' || c == '-';
+    if (!ok) return false;
+  }
+  return true;
+}
+
+bool parseArgs(int argc, char** argv, Options& o, std::string& err) {
+  for (int i = 1; i < argc; ++i) {
+    const std::string a = argv[i];
+    std::string v;
+    auto value = [&]() -> bool {
+      if (i + 1 >= argc) {
+        err = a + " needs a value";
+        return false;
+      }
+      v = argv[++i];
+      return true;
+    };
+    if (a == "--emit-takes-jsonl") {
+      if (!value()) return false;
+      o.out = v;
+    } else if (a == "--mode") {
+      if (!value()) return false;
+      const std::string lv = lowerCopy(v);
+      o.mode = -1;
+      for (int m = 0; m < 16; ++m)
+        if (lv == kFamilyName[m]) o.mode = m;
+      if (o.mode < 0 && !(parseInt(v, o.mode) && o.mode >= 0 && o.mode < 16)) {
+        err = "unknown --mode " + v;
+        return false;
+      }
+    } else if (a == "--recipes") {
+      if (!value()) return false;
+      o.recipes.clear();
+      std::size_t p = 0;
+      while (p <= v.size()) {
+        std::size_t c = v.find(',', p);
+        if (c == std::string::npos) c = v.size();
+        int r = -1;
+        if (!parseInt(v.substr(p, c - p), r) || r < 0 || r > 255) {
+          err = "bad recipe id in --recipes: " + v;
+          return false;
+        }
+        o.recipes.push_back(r);
+        p = c + 1;
+      }
+    } else if (a == "--takes") {
+      if (!value() || !parseInt(v, o.takes) || o.takes < 1 || o.takes > 16) {
+        err = "--takes must be 1..16";
+        return false;
+      }
+    } else if (a == "--phrase-bars") {
+      if (!value() || !parseInt(v, o.phraseBars) ||
+          !(o.phraseBars == 1 || o.phraseBars == 2 || o.phraseBars == 4 || o.phraseBars == 8)) {
+        err = "--phrase-bars must be 1, 2, 4 or 8";
+        return false;
+      }
+    } else if (a == "--p-level") {
+      if (!value()) return false;
+      const std::string lv = lowerCopy(v);
+      if (lv == "p1") o.level = GroovePuterRhythm::RealizationLevel::P1Canonical;
+      else if (lv == "p2") o.level = GroovePuterRhythm::RealizationLevel::P2Variation;
+      else if (lv == "p3") o.level = GroovePuterRhythm::RealizationLevel::P3Transformation;
+      else {
+        err = "--p-level must be P1, P2 or P3";
+        return false;
+      }
+    } else if (a == "--pattern-address") {
+      if (!value() || !parseInt(v, o.patternAddress)) {
+        err = "bad --pattern-address";
+        return false;
+      }
+      if (o.patternAddress != kMaterialAddress) {
+        err = "MATERIAL path keys attempts with 0xFFFF only; GENRE/SYNTH addresses are not supported here";
+        return false;
+      }
+    } else if (a == "--variant-name") {
+      // "<recipe>=<label>[,<recipe>=<label>...]", e.g. "0=house.base,9=house.deep"
+      if (!value()) return false;
+      std::size_t p = 0;
+      while (p < v.size()) {
+        std::size_t c = v.find(',', p);
+        if (c == std::string::npos) c = v.size();
+        const std::string item = v.substr(p, c - p);
+        const std::size_t eq = item.find('=');
+        int r = -1;
+        if (eq == std::string::npos || !parseInt(item.substr(0, eq), r) || r < 0 ||
+            !safeLabel(item.substr(eq + 1))) {
+          err = "bad --variant-name item: " + item;
+          return false;
+        }
+        o.variantOverride[r] = item.substr(eq + 1);
+        p = c + 1;
+      }
+    } else {
+      err = "unknown argument " + a;
+      return false;
+    }
+  }
+  if (o.out.empty()) err = "--emit-takes-jsonl <out> is required";
+  else if (o.mode < 0) err = "--mode is required";
+  else if (o.recipes.empty()) err = "--recipes is required";
+  return err.empty();
+}
+
+std::string variantFor(const Options& o, int recipe) {
+  const auto it = o.variantOverride.find(recipe);
+  if (it != o.variantOverride.end()) return it->second;
+  std::string v = kFamilyName[o.mode];
+  v += '.';
+  v += recipe == 0 ? std::string("base") : "r" + std::to_string(recipe);
+  return v;
+}
+
+// Read-only view of the attempt table: the nextOrdinal stored for the key, or -1
+// when the key was never allocated. Same probing as allocateGenerationAttempt.
+int attemptNextOrdinal(uint8_t mode, uint8_t recipe,
+                       GroovePuterRhythm::RealizationLevel level, int addr) {
+  namespace D = GroovePuterState::generation_request_detail;
+  uint32_t packed = 0;
+  if (!D::packAttemptKey(mode, recipe, level, addr, packed)) return -1;
+  const uint32_t keyPlusOne = packed + 1u;
+  auto* entries = D::attemptStorage();
+  const std::size_t start = D::attemptStartIndex(packed);
+  for (std::size_t probe = 0; probe < D::kGenerationAttemptCapacity; ++probe) {
+    const auto& e = entries[(start + probe) & (D::kGenerationAttemptCapacity - 1u)];
+    if (e.keyPlusOne == keyPlusOne) return static_cast<int>(e.nextOrdinal);
+    if (e.keyPlusOne == 0) return -1;
+  }
+  return -1;
+}
+
+std::string num(double v) {
+  char b[32];
+  std::snprintf(b, sizeof(b), "%.6g", v);
+  return b;
+}
+
+// Events of one bar in the contract's shape. Grid time only: pos is the step
+// index, so swing and per-step timing are NOT in this number (see PR body).
+// vel is the stored MIDI velocity / 127. Bass dur is in grid steps, counted as the
+// audit does (a slide-tied step continues the note); it is not the sounding gate.
+std::string barEventsJson(const Scene& scene, int row) {
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  const SongPosition& pos = scene.songs[songSlot].positions[row];
+  std::string out = "{";
+  bool firstRole = true;
+
+  struct DrumRole {
+    const char* name;
+    int voices[2];
+    int count;
+  };
+  // kick = BD; snare = SD + CP (voice 7); hat = CH; ohat = OH. No ride/crash lane.
+  const DrumRole roles[] = {
+      {"kick", {0, 0}, 1}, {"snare", {1, 7}, 2}, {"hat", {2, 0}, 1}, {"ohat", {3, 0}, 1}};
+
+  const int drumCell = pos.patterns[static_cast<int>(SongTrack::Drums)];
+  if (drumCell >= 0) {
+    const DrumPatternSet& d =
+        scene.drumBanks[songPatternBank(drumCell)].patterns[songPatternIndexInBank(drumCell)];
+    for (const DrumRole& role : roles) {
+      std::string list;
+      int n = 0;
+      for (int s = 0; s < 16; ++s) {
+        bool hit = false;
+        int vel = 0;
+        for (int j = 0; j < role.count; ++j) {
+          const DrumStep& st = d.voices[role.voices[j]].steps[s];
+          if (!st.hit) continue;
+          hit = true;
+          vel = std::max(vel, static_cast<int>(st.velocity));
+        }
+        if (!hit) continue;
+        if (n++) list += ",";
+        list += "[" + num(s) + "," + num(std::min(1.0, vel / 127.0)) + "]";
+      }
+      if (n == 0) continue;
+      if (!firstRole) out += ",";
+      firstRole = false;
+      out += std::string("\"") + role.name + "\":[" + list + "]";
+    }
+  }
+
+  const int bassCell = pos.patterns[static_cast<int>(SongTrack::SynthA)];
+  if (bassCell >= 0) {
+    const SynthPattern& p =
+        scene.synthABanks[songPatternBank(bassCell)].patterns[songPatternIndexInBank(bassCell)];
+    std::string list;
+    int n = 0;
+    for (int s = 0; s < 16; ++s) {
+      const SynthStep& st = p.steps[s];
+      if (st.note < 0) continue;
+      if (s > 0 && st.slide && p.steps[s - 1].note == st.note) continue;  // tied, not an attack
+      int dur = 1;
+      for (int j = s + 1; j < 16; ++j) {
+        const SynthStep& nx = p.steps[j];
+        if (nx.note < 0 || !nx.slide || nx.note != p.steps[j - 1].note) break;
+        ++dur;
+      }
+      if (n++) list += ",";
+      list += "[" + num(s) + "," + num(std::min(1.0, st.velocity / 127.0)) + "," +
+              std::to_string(static_cast<int>(st.note)) + "," + std::to_string(dur) + "]";
+    }
+    if (n > 0) {
+      if (!firstRole) out += ",";
+      out += "\"bass\":[" + list + "]";
+    }
+  }
+  return out + "}";
+}
+
+// The k-th press of MATERIAL G for one recipe, from a reset attempt table.
+bool pressTake(const Options& o, int recipe, int k, std::vector<std::string>& lines,
+               std::string& err) {
+  GroovePuterState::resetGenerationAttemptState();
+  GroovePuterState::setGenerationLevel(o.level);
+  GroovePuterState::setRequestedPhraseBars(static_cast<uint8_t>(o.phraseBars));
+  if (GroovePuterState::requestedPhraseBars() != o.phraseBars) {
+    err = "could not set phrase bars";
+    return false;
+  }
+  if (GroovePuterState::currentGenerationLevel() != o.level) {
+    err = "could not set P-level";
+    return false;
+  }
+
+  // Fresh project per take, as in the legacy path above (unchanged).
+  const auto root = std::filesystem::temp_directory_path() /
+                    ("gp_takes_" + std::to_string(o.mode) + "_" + std::to_string(recipe) +
+                     "_" + std::to_string(k));
+  std::error_code ec;
+  std::filesystem::remove_all(root, ec);
+  std::filesystem::create_directories(root);
+  std::filesystem::current_path(root);
+  SD.setRoot(root);
+  GroovePuterPlatform::clearMaterialPublication("gen_probe_takes", 0);
+  PatternPagingService::setProjectName("gen_probe_takes");
+  SceneStorageSdl storage;
+  storage.setCurrentSceneName("default");
+  MiniAcid engine(44100, &storage);
+  engine.init();
+  engine.setSongMode(false);
+  engine.genreManager().setGenerativeMode(static_cast<GenerativeMode>(o.mode));
+  engine.genreManager().setRecipe(static_cast<GenreRecipeId>(recipe));
+  auto& scene = engine.sceneManager().currentScene();
+  const auto profile = GroovePuterRhythm::generationProfileFor(scene.genre);
+  if (profile.corridor.suggestedBpm > 0) engine.setBpm(profile.corridor.suggestedBpm);
+
+  NullGfx gfx;
+  MusicalEventRouter router;
+  PerformanceKeyboard keyboard(router);
+  MiniAcidDisplay display(gfx, engine, keyboard);
+  display.dismissSplash();
+  display.goToPage(WorkflowPages::kPhrase);
+  display.update();
+
+  for (int skip = 0; skip < k; ++skip) {  // throwaway presses, each taken back
+    auto g = key('g');
+    display.handleEvent(g);
+    for (int i = 0; i < 3; ++i) display.update();
+    auto z = key('z', true);
+    display.handleEvent(z);
+    for (int i = 0; i < 2; ++i) display.update();
+  }
+  auto g = key('g');  // the measured press
+  display.handleEvent(g);
+  for (int i = 0; i < 3; ++i) display.update();
+
+  const int next = attemptNextOrdinal(static_cast<uint8_t>(o.mode), static_cast<uint8_t>(recipe),
+                                      o.level, o.patternAddress);
+  std::printf("#ATT recipe=%d take=%d next_ordinal=%d\n", recipe, k, next);
+  if (next != k + 1) {
+    err = "attempt table does not show press " + std::to_string(k) + " (next_ordinal=" +
+          std::to_string(next) + ")";
+    return false;
+  }
+
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  const int afterG = scene.songs[songSlot].length;
+  if (afterG < o.phraseBars) {
+    err = "G wrote no phrase of " + std::to_string(o.phraseBars) + " bars";
+    return false;
+  }
+
+  const std::string variant = variantFor(o, recipe);
+  const std::string modeName = kFamilyName[o.mode];
+  const char* levelCode = o.level == GroovePuterRhythm::RealizationLevel::P1Canonical ? "P1"
+                        : o.level == GroovePuterRhythm::RealizationLevel::P3Transformation ? "P3"
+                                                                                           : "P2";
+  for (int b = 0; b < o.phraseBars; ++b) {
+    const int row = afterG - o.phraseBars + b;
+    lines.push_back("{\"src\":\"take:" + variant + ":" + std::to_string(k) + "\",\"variant\":\"" +
+                    variant + "\",\"bar_idx\":" + std::to_string(b) + ",\"take\":" +
+                    std::to_string(k) + ",\"bpm\":" + num(engine.bpm()) + ",\"events\":" +
+                    barEventsJson(scene, row) + ",\"recipe_id\":" + std::to_string(recipe) +
+                    ",\"mode\":\"" + modeName + "\",\"p_level\":\"" + levelCode +
+                    "\",\"pattern_address\":" + std::to_string(o.patternAddress) +
+                    ",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
+  }
+  return true;
+}
+
+int emitTakesJsonl(int argc, char** argv) {
+  Options o;
+  std::string err;
+  if (!parseArgs(argc, argv, o, err)) {
+    std::fprintf(stderr, "gen_probe --emit-takes-jsonl: %s\n", err.c_str());
+    return 2;
+  }
+  for (int recipe : o.recipes) {
+    // Refuse instead of falling back to BASE: the file must say what was measured.
+    if (!GroovePuterRhythm::isRecipeAvailable(static_cast<GenerativeMode>(o.mode),
+                                              static_cast<GenreRecipeId>(recipe))) {
+      std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d is not available for mode %d\n",
+                   recipe, o.mode);
+      return 3;
+    }
+  }
+  std::vector<std::string> lines;
+  for (int recipe : o.recipes) {
+    for (int k = 0; k < o.takes; ++k) {
+      if (!pressTake(o, recipe, k, lines, err)) {
+        std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d take %d: %s\n", recipe, k,
+                     err.c_str());
+        return 4;
+      }
+    }
+  }
+  std::ofstream file(o.out, std::ios::binary | std::ios::trunc);
+  if (!file) {
+    std::fprintf(stderr, "gen_probe --emit-takes-jsonl: cannot write %s\n", o.out.c_str());
+    return 5;
+  }
+  for (const std::string& line : lines) file << line << '\n';
+  file.close();
+  std::printf("#EMIT lines=%zu recipes=%zu takes=%d phrase_bars=%d out=%s\n", lines.size(),
+              o.recipes.size(), o.takes, o.phraseBars, o.out.c_str());
+  return file ? 0 : 5;
+}
+
+}  // namespace takes_jsonl
+
 int main(int argc, char** argv) {
+  if (argc > 1 && std::string(argv[1]) == "--emit-takes-jsonl") {
+    return takes_jsonl::emitTakesJsonl(argc, argv);
+  }
   const int takes = argc > 1 ? std::max(1, std::atoi(argv[1])) : 6;
   const bool print = argc > 2;
   const bool applyTempo = std::getenv("GP_PROBE_NO_TEMPO") == nullptr;
