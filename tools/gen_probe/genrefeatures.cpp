@@ -42,6 +42,8 @@
 #include "src/platform/cardputer_material_publication_session.h"
 #include "src/state/generation_request_state.h"
 #include "src/state/phrase_generation_request_state.h"
+#include "src/generation/migration/quantized_generation_commit_impl.h"
+#include <memory>
 #include "src/ui/miniacid_display.h"
 #include "src/ui/ui_common.h"
 #include "src/ui/workflow_mode.h"
@@ -336,6 +338,12 @@ struct Options {
   // clear: sequential, and after each take its Song rows and the pattern slots they
   // reference are emptied (not Undo; the attempt table is not touched).
   bool clearBetween = false;
+  // --g-path material (default: MATERIAL G, phrase page) | genre (GENRE G, one bar).
+  std::string gPath = "material";
+  // --g-address: physical slot address of GENRE G; -1 = the device's address on a fresh boot.
+  int gAddress = -1;
+  // --print-grid: ASCII grid of every emitted bar (for comparison with the device screen).
+  bool printGrid = false;
   // warmup: modes whose BASE is pressed once in this process before the measured
   // recipes (checks state that survives a genre change).
   std::vector<int> warmup;
@@ -464,6 +472,20 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& err) {
         o.warmup.push_back(m);
         p = c + 1;
       }
+    } else if (a == "--g-path") {
+      if (!value()) return false;
+      if (v != "material" && v != "genre") {
+        err = "--g-path must be material or genre";
+        return false;
+      }
+      o.gPath = v;
+    } else if (a == "--g-address") {
+      if (!value() || !parseInt(v, o.gAddress) || o.gAddress < 0) {
+        err = "bad --g-address";
+        return false;
+      }
+    } else if (a == "--print-grid") {
+      o.printGrid = true;
     } else if (a == "--variant-name") {
       // "<recipe>=<label>[,<recipe>=<label>...]", e.g. "0=house.base,9=house.deep"
       if (!value()) return false;
@@ -530,9 +552,10 @@ std::string num(double v) {
 // index, so swing and per-step timing are NOT in this number (see PR body).
 // vel is the stored MIDI velocity / 127. Bass dur is in grid steps, counted as the
 // audit does (a slide-tied step continues the note); it is not the sounding gate.
-std::string barEventsJson(const Scene& scene, int row) {
-  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
-  const SongPosition& pos = scene.songs[songSlot].positions[row];
+// Contract events from patterns (shared by MATERIAL rows and GENRE slots).
+// Grid time only: pos is the step index. vel = MIDI velocity / 127. Bass dur is in grid
+// steps (a slide-tied step continues the note, as in the audit), not the sounding gate.
+std::string eventsJsonFromPatterns(const DrumPatternSet* d, const SynthPattern* p) {
   std::string out = "{";
   bool firstRole = true;
 
@@ -545,10 +568,7 @@ std::string barEventsJson(const Scene& scene, int row) {
   const DrumRole roles[] = {
       {"kick", {0, 0}, 1}, {"snare", {1, 7}, 2}, {"hat", {2, 0}, 1}, {"ohat", {3, 0}, 1}};
 
-  const int drumCell = pos.patterns[static_cast<int>(SongTrack::Drums)];
-  if (drumCell >= 0) {
-    const DrumPatternSet& d =
-        scene.drumBanks[songPatternBank(drumCell)].patterns[songPatternIndexInBank(drumCell)];
+  if (d != nullptr) {
     for (const DrumRole& role : roles) {
       std::string list;
       int n = 0;
@@ -556,7 +576,7 @@ std::string barEventsJson(const Scene& scene, int row) {
         bool hit = false;
         int vel = 0;
         for (int j = 0; j < role.count; ++j) {
-          const DrumStep& st = d.voices[role.voices[j]].steps[s];
+          const DrumStep& st = d->voices[role.voices[j]].steps[s];
           if (!st.hit) continue;
           hit = true;
           vel = std::max(vel, static_cast<int>(st.velocity));
@@ -572,20 +592,17 @@ std::string barEventsJson(const Scene& scene, int row) {
     }
   }
 
-  const int bassCell = pos.patterns[static_cast<int>(SongTrack::SynthA)];
-  if (bassCell >= 0) {
-    const SynthPattern& p =
-        scene.synthABanks[songPatternBank(bassCell)].patterns[songPatternIndexInBank(bassCell)];
+  if (p != nullptr) {
     std::string list;
     int n = 0;
     for (int s = 0; s < 16; ++s) {
-      const SynthStep& st = p.steps[s];
+      const SynthStep& st = p->steps[s];
       if (st.note < 0) continue;
-      if (s > 0 && st.slide && p.steps[s - 1].note == st.note) continue;  // tied, not an attack
+      if (s > 0 && st.slide && p->steps[s - 1].note == st.note) continue;  // tied, not an attack
       int dur = 1;
       for (int j = s + 1; j < 16; ++j) {
-        const SynthStep& nx = p.steps[j];
-        if (nx.note < 0 || !nx.slide || nx.note != p.steps[j - 1].note) break;
+        const SynthStep& nx = p->steps[j];
+        if (nx.note < 0 || !nx.slide || nx.note != p->steps[j - 1].note) break;
         ++dur;
       }
       if (n++) list += ",";
@@ -600,6 +617,75 @@ std::string barEventsJson(const Scene& scene, int row) {
   return out + "}";
 }
 
+// MATERIAL: the bar at `row` of the active Song.
+std::string barEventsJson(const Scene& scene, int row) {
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  const SongPosition& pos = scene.songs[songSlot].positions[row];
+  const DrumPatternSet* d = nullptr;
+  const SynthPattern* p = nullptr;
+  const int drumCell = pos.patterns[static_cast<int>(SongTrack::Drums)];
+  if (drumCell >= 0)
+    d = &scene.drumBanks[songPatternBank(drumCell)].patterns[songPatternIndexInBank(drumCell)];
+  const int bassCell = pos.patterns[static_cast<int>(SongTrack::SynthA)];
+  if (bassCell >= 0)
+    p = &scene.synthABanks[songPatternBank(bassCell)].patterns[songPatternIndexInBank(bassCell)];
+  return eventsJsonFromPatterns(d, p);
+}
+
+// ASCII grid of one bar: drums as x/., bass as note name + octave per step.
+std::string gridText(const DrumPatternSet* d, const SynthPattern* p) {
+  static const char* kNames[12] = {"C ", "C#", "D ", "D#", "E ", "F ", "F#", "G ", "G#", "A ", "A#", "B "};
+  auto drumRow = [&](const char* name, int voice0, int voice1) {
+    std::string line = std::string(name) + " ";
+    for (int i = 0; i < 16; ++i) {
+      bool hit = false;
+      if (d != nullptr) {
+        hit = d->voices[voice0].steps[i].hit || (voice1 >= 0 && d->voices[voice1].steps[i].hit);
+      }
+      line += hit ? " x " : " . ";
+      if (i % 4 == 3 && i < 15) line += "|";
+    }
+    return line + "\n";
+  };
+  std::string out;
+  out += drumRow("KICK", 0, -1);
+  out += drumRow("SNRE", 1, 7);
+  out += drumRow("HATC", 2, -1);
+  out += drumRow("OHAT", 3, -1);
+  std::string bass = "BASS ";
+  for (int i = 0; i < 16; ++i) {
+    std::string cell = " . ";
+    if (p != nullptr) {
+      const SynthStep& st = p->steps[i];
+      const bool tied = i > 0 && st.slide && st.note >= 0 && p->steps[i - 1].note == st.note;
+      if (st.note >= 0 && !tied) {
+        cell = std::string(kNames[st.note % 12]) + std::to_string(st.note / 12 - 1);
+      } else if (st.note >= 0) {
+        cell = " ~ ";  // held (tie)
+      }
+    }
+    bass += cell;
+    if (i % 4 == 3 && i < 15) bass += "|";
+  }
+  out += bass + "\n";
+  return out;
+}
+
+// Grid of the Song row `row` (MATERIAL) for --print-grid.
+std::string rowGridText(const Scene& scene, int row) {
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  const SongPosition& pos = scene.songs[songSlot].positions[row];
+  const DrumPatternSet* d = nullptr;
+  const SynthPattern* p = nullptr;
+  const int drumCell = pos.patterns[static_cast<int>(SongTrack::Drums)];
+  if (drumCell >= 0)
+    d = &scene.drumBanks[songPatternBank(drumCell)].patterns[songPatternIndexInBank(drumCell)];
+  const int bassCell = pos.patterns[static_cast<int>(SongTrack::SynthA)];
+  if (bassCell >= 0)
+    p = &scene.synthABanks[songPatternBank(bassCell)].patterns[songPatternIndexInBank(bassCell)];
+  return gridText(d, p);
+}
+
 // Writes the rows of take k: the last o.phraseBars rows up to afterG.
 void appendTakeLines(const Options& o, int recipe, int k, const Scene& scene, float bpm,
                      int afterG, std::vector<std::string>& lines) {
@@ -610,6 +696,7 @@ void appendTakeLines(const Options& o, int recipe, int k, const Scene& scene, fl
                                                                                            : "P2";
   for (int b = 0; b < o.phraseBars; ++b) {
     const int row = afterG - o.phraseBars + b;
+    if (o.printGrid) std::printf("== MATERIAL %s take %d bar %d\n%s", variant.c_str(), k, b + 1, rowGridText(scene, row).c_str());
     lines.push_back("{\"src\":\"take:" + variant + ":" + std::to_string(k) + "\",\"variant\":\"" +
                     variant + "\",\"bar_idx\":" + std::to_string(b) + ",\"take\":" +
                     std::to_string(k) + ",\"bpm\":" + num(bpm) + ",\"events\":" +
@@ -799,6 +886,146 @@ bool pressTake(const Options& o, int recipe, int k, std::vector<std::string>& li
   return true;
 }
 
+// ---------------------------------------------------------------------------
+// GENRE G (--g-path genre). Path, measured in the code of this tree:
+//   genre_page.cpp:421-436  keyG -> applyCurrent(true)
+//   genre_page.cpp:347      applyCurrent -> regenerateWithQuantizedCommit (:388-400)
+//   quantized_generation_commit_impl.h:664  regenerateWithQuantizedCommit
+//   quantized_generation_commit_impl.h:641,651,817  the candidate is written into the
+//     CURRENT working slots (one bar, 16 steps). No Song row is added.
+//   attempt key: (genre mode, recipe, P-level, patternAddressFor(captureTarget))
+//     quantized_generation_commit_impl.h:236-247 (allocateAttemptFor), :259-268
+//     (captureTarget), :293-296 (patternAddressFor).
+// One GENRE take is one bar; the MATERIAL path writes four.
+// ---------------------------------------------------------------------------
+namespace genre_path {
+
+struct World {
+  std::unique_ptr<SceneStorageSdl> storage;
+  std::unique_ptr<MiniAcid> engine;
+  NullGfx gfx;
+  MusicalEventRouter router;
+  std::unique_ptr<PerformanceKeyboard> keyboard;
+  std::unique_ptr<MiniAcidDisplay> display;
+};
+
+// captureTarget + patternAddressFor: the address GENRE G keys its attempts with.
+int deviceAddress(MiniAcid& engine) {
+  namespace QD = GroovePuterRhythm::QuantizedGenerationDetail;
+  return QD::patternAddressFor(QD::captureTarget(engine.sceneManager()));
+}
+
+std::unique_ptr<World> makeWorld(const Options& o, int recipe, int k, bool freshBoot) {
+  (void)freshBoot;
+  auto w = std::make_unique<World>();
+  const auto root = std::filesystem::temp_directory_path() /
+                    ("gp_genre_" + std::to_string(o.mode) + "_" + std::to_string(recipe) +
+                     "_" + std::to_string(k));
+  std::error_code ec;
+  std::filesystem::remove_all(root, ec);
+  std::filesystem::create_directories(root);
+  std::filesystem::current_path(root);
+  SD.setRoot(root);
+  GroovePuterPlatform::clearMaterialPublication("gen_probe_genre", 0);
+  PatternPagingService::setProjectName("gen_probe_genre");
+  w->storage = std::make_unique<SceneStorageSdl>();
+  w->storage->setCurrentSceneName("default");
+  w->engine = std::make_unique<MiniAcid>(44100, w->storage.get());
+  w->engine->init();
+  w->engine->setSongMode(false);
+  w->engine->genreManager().setGenerativeMode(static_cast<GenerativeMode>(o.mode));
+  w->engine->genreManager().setRecipe(static_cast<GenreRecipeId>(recipe));
+  const auto profile = GroovePuterRhythm::generationProfileFor(w->engine->sceneManager().currentScene().genre);
+  if (profile.corridor.suggestedBpm > 0) w->engine->setBpm(profile.corridor.suggestedBpm);
+  w->keyboard = std::make_unique<PerformanceKeyboard>(w->router);
+  w->display = std::make_unique<MiniAcidDisplay>(w->gfx, *w->engine, *w->keyboard);
+  w->display->dismissSplash();
+  w->display->goToPage(WorkflowPages::kGenre);  // updateFromEngine() reads the genre from the scene
+  w->display->update();
+  return w;
+}
+
+void pressG(World& w) {
+  auto g = key('g');
+  w.display->handleEvent(g);
+  for (int i = 0; i < 3; ++i) w.display->update();
+}
+
+void undoLast(World& w) {
+  auto z = key('z', true);
+  w.display->handleEvent(z);
+  for (int i = 0; i < 2; ++i) w.display->update();
+}
+
+// One bar: the current working slots of the target.
+void appendGenreLine(const Options& o, int recipe, int k, World& w, int address,
+                     std::vector<std::string>& lines) {
+  namespace QD = GroovePuterRhythm::QuantizedGenerationDetail;
+  Scene& scene = w.engine->sceneManager().currentScene();
+  const auto t = QD::captureTarget(w.engine->sceneManager());
+  const SynthPattern& bass = scene.synthABanks[t.synthBank[0]].patterns[t.synthSlot[0]];
+  const DrumPatternSet& drums = scene.drumBanks[t.drumBank].patterns[t.drumSlot];
+  const std::string variant = variantFor(o, recipe);
+  const char* levelCode = o.level == GroovePuterRhythm::RealizationLevel::P1Canonical ? "P1"
+                        : o.level == GroovePuterRhythm::RealizationLevel::P3Transformation ? "P3"
+                                                                                           : "P2";
+  if (o.printGrid) {
+    std::printf("== GENRE %s take %d bar 1\n%s", variant.c_str(), k, gridText(&drums, &bass).c_str());
+  }
+  lines.push_back("{\"src\":\"take:" + variant + ":" + std::to_string(k) + "\",\"variant\":\"" +
+                  variant + "\",\"bar_idx\":0,\"take\":" + std::to_string(k) + ",\"bpm\":" +
+                  num(w.engine->bpm()) + ",\"events\":" + eventsJsonFromPatterns(&drums, &bass) +
+                  ",\"recipe_id\":" + std::to_string(recipe) + ",\"mode\":\"" +
+                  std::string(kFamilyName[o.mode]) + "\",\"p_level\":\"" + levelCode +
+                  "\",\"pattern_address\":" + std::to_string(address) +
+                  ",\"g_path\":\"genre\",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
+}
+
+// freshPerTake = true: undo-style (fresh project per take, k presses taken back with
+// Ctrl+Z, then the measured press). false: one project, one reset, presses in a row.
+bool run(const Options& o, int recipe, bool freshPerTake, std::vector<std::string>& lines,
+         std::string& err) {
+  GroovePuterState::setGenerationLevel(o.level);
+  if (GroovePuterState::currentGenerationLevel() != o.level) {
+    err = "could not set P-level";
+    return false;
+  }
+  GroovePuterState::resetGenerationAttemptState();
+  std::unique_ptr<World> w;
+  int address = -1;
+  for (int k = 0; k < o.takes; ++k) {
+    if (!w || freshPerTake) {
+      if (freshPerTake) GroovePuterState::resetGenerationAttemptState();
+      w = makeWorld(o, recipe, k, true);
+      address = deviceAddress(*w->engine);
+      if (o.gAddress >= 0 && o.gAddress != address) {
+        err = "--g-address " + std::to_string(o.gAddress) + " is not the device working slot (" +
+              std::to_string(address) + ")";
+        return false;
+      }
+      if (k == 0) std::printf("#GENRE recipe=%d device_address=%d\n", recipe, address);
+      if (freshPerTake) {
+        for (int skip = 0; skip < k; ++skip) {
+          pressG(*w);
+          undoLast(*w);
+        }
+      }
+    }
+    pressG(*w);
+    const int next = attemptNextOrdinal(static_cast<uint8_t>(o.mode), static_cast<uint8_t>(recipe),
+                                        o.level, address);
+    std::printf("#ATT recipe=%d take=%d next_ordinal=%d g_path=genre\n", recipe, k, next);
+    if (next != k + 1) {
+      err = "take " + std::to_string(k) + ": attempt table shows next_ordinal=" + std::to_string(next);
+      return false;
+    }
+    appendGenreLine(o, recipe, k, *w, address, lines);
+  }
+  return true;
+}
+
+}  // namespace genre_path
+
 int emitTakesJsonl(int argc, char** argv) {
   Options o;
   std::string err;
@@ -824,13 +1051,26 @@ int emitTakesJsonl(int argc, char** argv) {
     w.sequential = false;
     w.clearBetween = false;
     std::vector<std::string> discard;
-    if (!pressTake(w, 0, 0, discard, err)) {
+    const bool ok = o.gPath == "genre" ? genre_path::run(w, 0, true, discard, err)
+                                        : pressTake(w, 0, 0, discard, err);
+    if (!ok) {
       std::fprintf(stderr, "gen_probe --emit-takes-jsonl: warmup mode %d: %s\n", m, err.c_str());
       return 6;
     }
   }
+  if (o.gPath == "genre" && o.clearBetween) {
+    std::fprintf(stderr, "gen_probe --emit-takes-jsonl: --sequence clear is MATERIAL only (GENRE G overwrites its slot)\n");
+    return 2;
+  }
   std::vector<std::string> lines;
   for (int recipe : o.recipes) {
+    if (o.gPath == "genre") {
+      if (!genre_path::run(o, recipe, !o.sequential, lines, err)) {
+        std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d (genre): %s\n", recipe, err.c_str());
+        return 4;
+      }
+      continue;
+    }
     if (o.sequential) {
       if (!sequentialRecipe(o, recipe, lines, err)) {
         std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d (sequential): %s\n", recipe,
