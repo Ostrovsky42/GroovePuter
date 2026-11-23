@@ -263,6 +263,18 @@ def cmd_demo(a):
     sys.exit(0 if summary == expected else 1)
 
 
+def cmd_diversity(a):
+    from .diversity import diversity, render_markdown
+    from .schema import ROLES, read_bars
+
+    roles = a.roles.split(",") if a.roles else list(ROLES)
+    res = diversity(read_bars(a.takes), roles, a.tau)
+    text = render_markdown(res, roles)
+    print(text, end="")
+    if a.out:
+        Path(a.out).write_text(text, encoding="utf-8")
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="gplab", description="GroovePuter genre lab")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -310,6 +322,12 @@ def main(argv=None):
     s = add("validate", cmd_validate, "takes.jsonl vs profiles -> report (exit 1 on FAIL)")
     s.add_argument("--takes", required=True); s.add_argument("--profiles", required=True)
     s.add_argument("--config", required=True); s.add_argument("--out", required=True)
+
+    s = add("diversity", cmd_diversity, "distinct/N and mean_pair_hits per role, no profiles")
+    s.add_argument("--takes", required=True)
+    s.add_argument("--roles", default=None, help="comma list, default all roles (e.g. kick,snare,bass)")
+    s.add_argument("--tau", type=float, default=None)
+    s.add_argument("--out")
 
     s = add("holdout", cmd_holdout, "calibrate thresholds: held-out corpus tracks as takes")
     s.add_argument("--bars", required=True); s.add_argument("--config", required=True)
