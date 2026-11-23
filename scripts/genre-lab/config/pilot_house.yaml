@@ -1,0 +1,55 @@
+# Pilot: one family, three variants. Copy this file per family.
+# Variant ids are append-only once shipped (scenes store them).
+family: house
+bpm_range: [112, 132]
+
+# Steps the family is expected to play; used ONLY to fix whole-beat downbeat
+# errors (rotation by 4/8/12 steps). Never used to score or generate.
+anchors:
+  kick: [0, 4, 8, 12]
+  snare: [4, 12]
+
+segment:            # analyse the body of a track, skip intros
+  start_frac: 0.2
+  max_seconds: 90
+min_bars_per_track: 8
+
+corpus:
+  label_policy: both          # both | tag | classifier  (both = cross-check)
+  min_duration_s: 90
+  min_style_prob: 0.25
+  min_margin: 0.05            # beat every sibling style by this much
+  max_tracks_per_variant: 150
+  max_tracks_per_artist: 3
+  min_tracks: 30              # below this: NO-GO, do not build the profile
+  seed: 42
+
+# discogs_style must match a label of the Discogs-400 model exactly;
+# `gplab selfcheck --models ...` prints MISSING + nearby labels if not.
+# jamendo_tags must exist in MTG-Jamendo; `gplab tags --tsv ...` lists them.
+variants:
+  house.base:
+    jamendo_tags: [house]
+    discogs_style: "Electronic---House"
+  house.deep:
+    jamendo_tags: [deephouse, house]
+    discogs_style: "Electronic---Deep House"
+  house.acid:
+    jamendo_tags: [house, techno, electronic]
+    discogs_style: "Electronic---Acid House"
+
+profile:
+  cell_k: 8
+  merge_radius: 1
+  protected_threshold: 0.9
+  protected_min_low: 0.8      # Wilson lower bound over sources: evidence, not luck
+
+validate:
+  role_weights: {kick: 1.0, snare: 1.0, hat: 0.5, ohat: 0.5, bass: 1.5}
+  tau_distinct_hits: 2.0      # takes differ by >= 2 weighted hits per bar on average
+  takes_expected: 8
+  min_distinct: 4             # of 8 takes (scaled if fewer takes)
+  separation_ratio: 0.8       # d(self) <= 0.8 * d(runner-up variant)
+  min_take_accuracy: 0.75
+  identity_ratio: 0.7         # intra-variant / inter-variant take distance
+  protected_coverage: 0.75     # share of takes that keep each protected step

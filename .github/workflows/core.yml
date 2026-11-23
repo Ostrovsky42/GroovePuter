@@ -73,3 +73,22 @@ jobs:
           sudo apt-get install -y --no-install-recommends build-essential libsdl2-dev libsdl2-gfx-dev
       - name: Build desktop target
         run: make -C platform_sdl clean all CXX=g++
+
+  genre-lab:
+    # Offline genre lab (scripts/genre-lab): 17 pytest tests + synthetic demo.
+    # Core dependencies only (numpy, pyyaml, pytest); no audio, no models.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install genre-lab core dependencies
+        run: pip install -r scripts/genre-lab/requirements-core.txt
+      - name: Run genre-lab tests and demo
+        working-directory: scripts/genre-lab
+        run: |
+          make test
+          make demo
