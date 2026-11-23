@@ -93,3 +93,41 @@ Ride / crash в секвенсоре нет (лейна нет; `CYMBAL` ест�
 ## Тайминг: DEFERRED
 
 - `timing:"grid"` в v1. Формула `processSequencerEvents` (`src/dsp/miniacid_engine.cpp:3108-3169`) найдена, но сверка смещений с движком на воспроизведении требует отдельного host-харнесса. Он не входит в этот PR.
+
+## Какой G эмулируется (чтение кода, origin/main)
+
+- **GENRE G** (`src/ui/pages/genre_page.cpp:421-436` → `applyCurrent(true)` `:347`, `:388-400` → `regenerateWithQuantizedCommit`, `src/generation/migration/quantized_generation_commit_impl.h:664`). Пишет **один такт в текущий рабочий слот** (`impl.h:641`, `:651`, `:817`): перезаписывает, Song не растёт. Ключ попыток — физический адрес слота (`patternAddressFor`, `impl.h:293-296`), не 0xFFFF.
+- **MATERIAL G** (`src/ui/pages/phrase_page.cpp:1215-1216` → `generatePhraseToSong` `:1480` → `GeneratedPhraseSong::generate`). Дописывает **4-тактную фразу в Song** в строку `songLength()` (`phrase_page.cpp:493-494`, `resolvedAppendRow`). Ключ попыток: `(mode, recipe, P, 0xFFFF)` (`generated_phrase_song.h:1013-1031`). Это путь эмулятора.
+
+## Почему Song останавливается на 16 тактах
+
+Это **ёмкость слотов**, не лимит Song (`Song::kMaxPositions = 128`, `scenes.h:170`).
+- Фраза занимает `bars` подряд **свободных** слотов страницы (16 на страницу): `findSafeContiguousEmptySlots` (`src/dsp/phrase_generator.h:192-210`).
+- Слот свободен, если он пуст, не резидентен для материального голоса и не ссылается ни одна строка Song (`localSlotIsSafeForPhrase`, `phrase_generator.h:173-188`; дескриптор `material_slot_access.h:41`).
+- Длина 8 → 12 → 16 при двух дублях: 8 слотов занимает исходная сцена (по измерению), 2 × 4 такта заполняют страницу. Третье нажатие: `NoContiguousPatternSlots` → «NO ROOM» (`phrase_page.cpp:1434`).
+- MAKE ROOM (`R`) освобождает только такты **не в Song** (`src/ui/docs/keys.md:526`, `phrase_page.cpp:1139-1146`). Такты из Song он не трогает.
+
+**Вывод для устройства:** на MATERIAL G третий дубль подряд в одной Song не запишется, пока пользователь не уберёт такты из Song. Значит, «8 подряд без Undo» на устройстве без очистки невозможно.
+
+## Метод дублей: undo ≡ clear (P3, k = 0..7, четыре BASE)
+
+- `--sequence clear`: одно reset, 8 нажатий G подряд, после каждого нажатия очищаются строки Song, на которые ссылается такт, его pattern-слоты и дескрипторы материала (`clearTakeRows`, `genrefeatures.cpp`). Undo не используется, таблица попыток не сбрасывается.
+- Результат: `events` всех 32 тактов совпадают с `undo` у House, Techno, UKG и Acid (32/32 на каждый рецепт). Тест `tools/gen_probe/test_takes_jsonl.sh`, PASS 5 (P3, k=0..7). PASS 4 — sequential против undo только для k=0,1.
+- Решение: **undo остаётся по умолчанию** (совпадает с результатом clear и даёт все 8 дублей). Очистка Song на устройстве — действие пользователя, не автоматическое.
+
+## Утечка состояния между жанрами (House k=0, P3)
+
+- Свежий процесс против процесса, где перед House прошли Techno → UKG → Acid (`--warmup`): события совпадают 4/4 тактов.
+- Прогрев всеми режимами 0–8 перед House (порядок легаси): события тоже совпадают.
+- **Вывод:** утечки между жанрами в этих путях нет. Дубли не нужно дополнять состоянием; их снимают из свежего процесса.
+
+## Умолчание P-уровня
+
+- Эмиттер по умолчанию использует **P3** (`kDefaultGenerationLevel`, `src/state/generation_request_state.h:19-21`). Раньше здесь стоял P2 и не совпадал с устройством; исправлено.
+- Легаси-`genrefeatures` работает на P3 по умолчанию: его дубль 0 совпадает с эмиттерным P3 k=0 по бочке, малому и хэтам (бар 1).
+
+## Легаси-счётчик аудита (подтверждено)
+
+- Легаси-дубль 1 совпадает с эмиттерным P3 **k=2** (ordinal 2), а не k=1. Измерено через `next_ordinal`: House, Acid, Techno, UKG → измеряемые ordinal **0, 2, 5, 9, 14, 20, 27, 35**.
+- Причина: `resetGenerationAttemptState()` в легаси-цикле не вызывается (`genrefeatures.cpp`).
+- Не исправлено в этом PR.

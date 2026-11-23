@@ -13,7 +13,7 @@ BIN="$WORK/genrefeatures"
 bash "$ROOT/tools/gen_probe/build.sh" "$ROOT/tools/gen_probe/genrefeatures.cpp" "$BIN"
 
 TAKES=8
-TUPLE=(--mode house --recipes 0 --takes "$TAKES" --phrase-bars 4 --p-level p2 --pattern-address 0xFFFF)
+TUPLE=(--mode house --recipes 0 --takes "$TAKES" --phrase-bars 4 --p-level p3 --pattern-address 0xFFFF)
 
 "$BIN" --emit-takes-jsonl "$WORK/a.jsonl" "${TUPLE[@]}" >"$WORK/a.stdout" 2>"$WORK/a.stderr"
 "$BIN" --emit-takes-jsonl "$WORK/b.jsonl" "${TUPLE[@]}" >"$WORK/b.stdout" 2>"$WORK/b.stderr"
@@ -51,9 +51,9 @@ echo "PASS 3: gplab parsed the takes file (validation verdict not interpreted: s
 #    holds two 4-bar takes in one project, so k >= 2 is not comparable (see PR body).
 for mode in house techno ukgarage acid; do
   "$BIN" --emit-takes-jsonl "$WORK/u_$mode.jsonl" --mode "$mode" --recipes 0 --takes 2 --phrase-bars 4 \
-    --p-level p2 --pattern-address 0xFFFF --sequence undo >/dev/null 2>&1
+    --p-level p3 --pattern-address 0xFFFF --sequence undo >/dev/null 2>&1
   "$BIN" --emit-takes-jsonl "$WORK/s_$mode.jsonl" --mode "$mode" --recipes 0 --takes 2 --phrase-bars 4 \
-    --p-level p2 --pattern-address 0xFFFF --sequence sequential >/dev/null 2>&1
+    --p-level p3 --pattern-address 0xFFFF --sequence sequential >/dev/null 2>&1
   python3 - "$WORK/u_$mode.jsonl" "$WORK/s_$mode.jsonl" "$mode" <<'PY'
 import json, sys
 def ev(p):
@@ -64,5 +64,23 @@ if not u or u != s:
     print(f"FAIL 4: {mode}: undo and sequential events differ ({len(u)} vs {len(s)} bars)")
     sys.exit(1)
 print(f"PASS 4: {mode} BASE: sequential == undo, {len(u)} bars (take 0-1)")
+PY
+done
+
+# 5. clear (empty Song rows and their slots between presses, no Undo) == undo for k = 0..7.
+for mode in house techno ukgarage acid; do
+  "$BIN" --emit-takes-jsonl "$WORK/u8_$mode.jsonl" --mode "$mode" --recipes 0 --takes 8 --phrase-bars 4 \
+    --p-level p3 --pattern-address 0xFFFF --sequence undo >/dev/null 2>&1
+  "$BIN" --emit-takes-jsonl "$WORK/c8_$mode.jsonl" --mode "$mode" --recipes 0 --takes 8 --phrase-bars 4 \
+    --p-level p3 --pattern-address 0xFFFF --sequence clear >/dev/null 2>&1
+  python3 - "$WORK/u8_$mode.jsonl" "$WORK/c8_$mode.jsonl" "$mode" <<'PY'
+import json, sys
+def ev(p):
+    return {(r["take"], r["bar_idx"]): json.dumps(r["events"], sort_keys=True) for r in map(json.loads, open(p, encoding="utf-8"))}
+u, c, mode = ev(sys.argv[1]), ev(sys.argv[2]), sys.argv[3]
+if len(u) != 32 or u != c:
+    print(f"FAIL 5: {mode}: clear and undo differ for k=0..7 ({len(u)} vs {len(c)} bars)")
+    sys.exit(1)
+print(f"PASS 5: {mode} BASE P3: clear == undo for k=0..7 (32 bars)")
 PY
 done
