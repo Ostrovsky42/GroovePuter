@@ -7,8 +7,10 @@
 #   leadrender.cpp <out-dir> <tag>            Acid/Synthwave/House, 2 takes, 8-bar WAV each
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# Build provenance for --emit-takes-jsonl (build_sha in every row).
+GP_BUILD_SHA="$(git -C "$ROOT" rev-parse --short HEAD 2>/dev/null || echo unknown)"
 SRC="$(cd "$(dirname "$1")" && pwd)/$(basename "$1")"
 OUT="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"
 cd "$ROOT/platform_sdl"
 mapfile -t SRCS < <(awk '/^SOURCES :=/ { c = 1; next } c && /^[^[:space:]]/ { c = 0 } c { l = $0; sub(/^[[:space:]]+/, "", l); sub(/[[:space:]]*\\[[:space:]]*$/, "", l); n = split(l, p, /[[:space:]]+/); for (i = 1; i <= n; i++) if (p[i] != "" && p[i] != "sdl_main.cpp") print p[i] }' Makefile)
-g++ -std=c++17 -w -I.. -I. -include arduino_compat.h $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 "${SRCS[@]}" "$SRC" $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "$OUT"
+g++ -std=c++17 -w -DGP_BUILD_SHA="\"$GP_BUILD_SHA\"" -I.. -I. -include arduino_compat.h $(sdl2-config --cflags) $(pkg-config --cflags SDL2_gfx) -O1 "${SRCS[@]}" "$SRC" $(sdl2-config --libs) $(pkg-config --libs SDL2_gfx) -o "$OUT"
