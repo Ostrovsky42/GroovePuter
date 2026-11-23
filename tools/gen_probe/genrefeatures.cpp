@@ -329,6 +329,9 @@ struct Options {
   int phraseBars = 4;
   GroovePuterRhythm::RealizationLevel level = GroovePuterRhythm::RealizationLevel::P2Variation;
   int patternAddress = kMaterialAddress;
+  // undo (default): each take is a fresh project; k throwaway presses are undone.
+  // sequential: one project, one reset, `takes` presses of G in a row (device order).
+  bool sequential = false;
   std::map<int, std::string> variantOverride;
 };
 
@@ -423,6 +426,14 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& err) {
       }
       if (o.patternAddress != kMaterialAddress) {
         err = "MATERIAL path keys attempts with 0xFFFF only; GENRE/SYNTH addresses are not supported here";
+        return false;
+      }
+    } else if (a == "--sequence") {
+      if (!value()) return false;
+      if (v == "sequential") o.sequential = true;
+      else if (v == "undo") o.sequential = false;
+      else {
+        err = "--sequence must be undo or sequential";
         return false;
       }
     } else if (a == "--variant-name") {
@@ -561,6 +572,97 @@ std::string barEventsJson(const Scene& scene, int row) {
   return out + "}";
 }
 
+// Writes the rows of take k: the last o.phraseBars rows up to afterG.
+void appendTakeLines(const Options& o, int recipe, int k, const Scene& scene, float bpm,
+                     int afterG, std::vector<std::string>& lines) {
+  const std::string variant = variantFor(o, recipe);
+  const std::string modeName = kFamilyName[o.mode];
+  const char* levelCode = o.level == GroovePuterRhythm::RealizationLevel::P1Canonical ? "P1"
+                        : o.level == GroovePuterRhythm::RealizationLevel::P3Transformation ? "P3"
+                                                                                           : "P2";
+  for (int b = 0; b < o.phraseBars; ++b) {
+    const int row = afterG - o.phraseBars + b;
+    lines.push_back("{\"src\":\"take:" + variant + ":" + std::to_string(k) + "\",\"variant\":\"" +
+                    variant + "\",\"bar_idx\":" + std::to_string(b) + ",\"take\":" +
+                    std::to_string(k) + ",\"bpm\":" + num(bpm) + ",\"events\":" +
+                    barEventsJson(scene, row) + ",\"recipe_id\":" + std::to_string(recipe) +
+                    ",\"mode\":\"" + modeName + "\",\"p_level\":\"" + levelCode +
+                    "\",\"pattern_address\":" + std::to_string(o.patternAddress) +
+                    ",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
+  }
+}
+
+// --sequence sequential: one reset, one project, then `takes` presses of G in a
+// row, as on the device. A press that adds no rows (no room in the Song) is an
+// error, not a skipped take: the take index must keep meaning the press index.
+bool sequentialRecipe(const Options& o, int recipe, std::vector<std::string>& lines,
+                      std::string& err) {
+  GroovePuterState::resetGenerationAttemptState();
+  GroovePuterState::setGenerationLevel(o.level);
+  GroovePuterState::setRequestedPhraseBars(static_cast<uint8_t>(o.phraseBars));
+  if (GroovePuterState::requestedPhraseBars() != o.phraseBars ||
+      GroovePuterState::currentGenerationLevel() != o.level) {
+    err = "could not set phrase bars or P-level";
+    return false;
+  }
+
+  const auto root = std::filesystem::temp_directory_path() /
+                    ("gp_takes_seq_" + std::to_string(o.mode) + "_" + std::to_string(recipe));
+  std::error_code ec;
+  std::filesystem::remove_all(root, ec);
+  std::filesystem::create_directories(root);
+  std::filesystem::current_path(root);
+  SD.setRoot(root);
+  GroovePuterPlatform::clearMaterialPublication("gen_probe_takes", 0);
+  PatternPagingService::setProjectName("gen_probe_takes");
+  SceneStorageSdl storage;
+  storage.setCurrentSceneName("default");
+  MiniAcid engine(44100, &storage);
+  engine.init();
+  engine.setSongMode(false);
+  engine.genreManager().setGenerativeMode(static_cast<GenerativeMode>(o.mode));
+  engine.genreManager().setRecipe(static_cast<GenreRecipeId>(recipe));
+  auto& scene = engine.sceneManager().currentScene();
+  const auto profile = GroovePuterRhythm::generationProfileFor(scene.genre);
+  if (profile.corridor.suggestedBpm > 0) engine.setBpm(profile.corridor.suggestedBpm);
+
+  NullGfx gfx;
+  MusicalEventRouter router;
+  PerformanceKeyboard keyboard(router);
+  MiniAcidDisplay display(gfx, engine, keyboard);
+  display.dismissSplash();
+  display.goToPage(WorkflowPages::kPhrase);
+  display.update();
+
+  const int songSlot = std::clamp(scene.activeSongSlot, 0, 1);
+  int previousLength = scene.songs[songSlot].length;
+  for (int k = 0; k < o.takes; ++k) {
+    auto g = key('g');
+    display.handleEvent(g);
+    for (int i = 0; i < 3; ++i) display.update();
+
+    const int next = attemptNextOrdinal(static_cast<uint8_t>(o.mode), static_cast<uint8_t>(recipe),
+                                        o.level, o.patternAddress);
+    std::printf("#SEQ recipe=%d press=%d next_ordinal=%d length=%d\n", recipe, k, next,
+                scene.songs[songSlot].length);
+    if (next != k + 1) {
+      err = "press " + std::to_string(k) + ": attempt table shows next_ordinal=" +
+            std::to_string(next);
+      return false;
+    }
+    const int afterG = scene.songs[songSlot].length;
+    if (afterG != previousLength + o.phraseBars) {
+      err = "press " + std::to_string(k) + " added no take (length " +
+            std::to_string(previousLength) + " -> " + std::to_string(afterG) +
+            "); the Song has no room for more takes in this order";
+      return false;
+    }
+    appendTakeLines(o, recipe, k, scene, engine.bpm(), afterG, lines);
+    previousLength = afterG;
+  }
+  return true;
+}
+
 // The k-th press of MATERIAL G for one recipe, from a reset attempt table.
 bool pressTake(const Options& o, int recipe, int k, std::vector<std::string>& lines,
                std::string& err) {
@@ -634,21 +736,7 @@ bool pressTake(const Options& o, int recipe, int k, std::vector<std::string>& li
     return false;
   }
 
-  const std::string variant = variantFor(o, recipe);
-  const std::string modeName = kFamilyName[o.mode];
-  const char* levelCode = o.level == GroovePuterRhythm::RealizationLevel::P1Canonical ? "P1"
-                        : o.level == GroovePuterRhythm::RealizationLevel::P3Transformation ? "P3"
-                                                                                           : "P2";
-  for (int b = 0; b < o.phraseBars; ++b) {
-    const int row = afterG - o.phraseBars + b;
-    lines.push_back("{\"src\":\"take:" + variant + ":" + std::to_string(k) + "\",\"variant\":\"" +
-                    variant + "\",\"bar_idx\":" + std::to_string(b) + ",\"take\":" +
-                    std::to_string(k) + ",\"bpm\":" + num(engine.bpm()) + ",\"events\":" +
-                    barEventsJson(scene, row) + ",\"recipe_id\":" + std::to_string(recipe) +
-                    ",\"mode\":\"" + modeName + "\",\"p_level\":\"" + levelCode +
-                    "\",\"pattern_address\":" + std::to_string(o.patternAddress) +
-                    ",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
-  }
+  appendTakeLines(o, recipe, k, scene, engine.bpm(), afterG, lines);
   return true;
 }
 
@@ -670,6 +758,14 @@ int emitTakesJsonl(int argc, char** argv) {
   }
   std::vector<std::string> lines;
   for (int recipe : o.recipes) {
+    if (o.sequential) {
+      if (!sequentialRecipe(o, recipe, lines, err)) {
+        std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d (sequential): %s\n", recipe,
+                     err.c_str());
+        return 4;
+      }
+      continue;
+    }
     for (int k = 0; k < o.takes; ++k) {
       if (!pressTake(o, recipe, k, lines, err)) {
         std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d take %d: %s\n", recipe, k,
