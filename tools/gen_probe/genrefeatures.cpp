@@ -327,11 +327,18 @@ struct Options {
   std::vector<int> recipes;
   int takes = 8;
   int phraseBars = 4;
-  GroovePuterRhythm::RealizationLevel level = GroovePuterRhythm::RealizationLevel::P2Variation;
+  // Default = the device default (kDefaultGenerationLevel, generation_request_state.h:19-21).
+  GroovePuterRhythm::RealizationLevel level = GroovePuterRhythm::RealizationLevel::P3Transformation;
   int patternAddress = kMaterialAddress;
   // undo (default): each take is a fresh project; k throwaway presses are undone.
   // sequential: one project, one reset, `takes` presses of G in a row (device order).
   bool sequential = false;
+  // clear: sequential, and after each take its Song rows and the pattern slots they
+  // reference are emptied (not Undo; the attempt table is not touched).
+  bool clearBetween = false;
+  // warmup: modes whose BASE is pressed once in this process before the measured
+  // recipes (checks state that survives a genre change).
+  std::vector<int> warmup;
   std::map<int, std::string> variantOverride;
 };
 
@@ -431,10 +438,31 @@ bool parseArgs(int argc, char** argv, Options& o, std::string& err) {
     } else if (a == "--sequence") {
       if (!value()) return false;
       if (v == "sequential") o.sequential = true;
-      else if (v == "undo") o.sequential = false;
+      else if (v == "clear") {
+        o.sequential = true;
+        o.clearBetween = true;
+      } else if (v == "undo") o.sequential = false;
       else {
-        err = "--sequence must be undo or sequential";
+        err = "--sequence must be undo, sequential or clear";
         return false;
+      }
+    } else if (a == "--warmup") {
+      if (!value()) return false;
+      o.warmup.clear();
+      std::size_t p = 0;
+      while (p < v.size()) {
+        std::size_t c = v.find(',', p);
+        if (c == std::string::npos) c = v.size();
+        const std::string item = lowerCopy(v.substr(p, c - p));
+        int m = -1;
+        for (int i = 0; i < 16; ++i)
+          if (item == kFamilyName[i]) m = i;
+        if (m < 0 && !(parseInt(item, m) && m >= 0 && m < 16)) {
+          err = "unknown --warmup mode: " + item;
+          return false;
+        }
+        o.warmup.push_back(m);
+        p = c + 1;
       }
     } else if (a == "--variant-name") {
       // "<recipe>=<label>[,<recipe>=<label>...]", e.g. "0=house.base,9=house.deep"
@@ -592,6 +620,33 @@ void appendTakeLines(const Options& o, int recipe, int k, const Scene& scene, fl
   }
 }
 
+// Empties Song rows [from, to) and the pattern slots they reference, as a user
+// removing takes does. Undo is not involved and the attempt table is not touched.
+// The generator reads these slots only for availability (localSlotIsSafeForPhrase);
+// the take content is decided by the attempt ordinal and the scene genre.
+void clearTakeRows(Scene& scene, int songSlot, int from, int to) {
+  Song& song = scene.songs[songSlot];
+  for (int row = from; row < to; ++row) {
+    SongPosition& pos = song.positions[row];
+    for (int track = 0; track < SongPosition::kTrackCount; ++track) {
+      const int cell = pos.patterns[track];
+      if (cell < 0) continue;
+      const int bank = songPatternBank(cell);
+      const int idx = songPatternIndexInBank(cell);
+      if (track == static_cast<int>(SongTrack::SynthA)) scene.synthABanks[bank].patterns[idx] = SynthPattern{};
+      else if (track == static_cast<int>(SongTrack::SynthB)) scene.synthBBanks[bank].patterns[idx] = SynthPattern{};
+      else if (track == static_cast<int>(SongTrack::Drums)) scene.drumBanks[bank].patterns[idx] = DrumPatternSet{};
+      // Material descriptors of the slot go back to free: the generator's availability
+      // check reads them (phrase_generator.h:181, material_slot_access.h:41).
+      const int localSlot = bank * Bank<SynthPattern>::kPatterns + idx;  // as phrase_page.cpp:1424
+      for (int voice = 0; voice < Scene::kMaterialVoices; ++voice)
+        scene.materialSlots[voice][localSlot] = GroovePuterMaterial::MaterialSlotDescriptor{};
+    }
+    pos = SongPosition{};
+  }
+  song.length = from;
+}
+
 // --sequence sequential: one reset, one project, then `takes` presses of G in a
 // row, as on the device. A press that adds no rows (no room in the Song) is an
 // error, not a skipped take: the take index must keep meaning the press index.
@@ -658,7 +713,11 @@ bool sequentialRecipe(const Options& o, int recipe, std::vector<std::string>& li
       return false;
     }
     appendTakeLines(o, recipe, k, scene, engine.bpm(), afterG, lines);
-    previousLength = afterG;
+    if (o.clearBetween) {
+      clearTakeRows(scene, songSlot, previousLength, afterG);
+    } else {
+      previousLength = afterG;
+    }
   }
   return true;
 }
@@ -754,6 +813,20 @@ int emitTakesJsonl(int argc, char** argv) {
       std::fprintf(stderr, "gen_probe --emit-takes-jsonl: recipe %d is not available for mode %d\n",
                    recipe, o.mode);
       return 3;
+    }
+  }
+  for (int m : o.warmup) {
+    // One BASE press in a fresh project of mode m; its takes are discarded.
+    Options w = o;
+    w.mode = m;
+    w.recipes = {0};
+    w.takes = 1;
+    w.sequential = false;
+    w.clearBetween = false;
+    std::vector<std::string> discard;
+    if (!pressTake(w, 0, 0, discard, err)) {
+      std::fprintf(stderr, "gen_probe --emit-takes-jsonl: warmup mode %d: %s\n", m, err.c_str());
+      return 6;
     }
   }
   std::vector<std::string> lines;
