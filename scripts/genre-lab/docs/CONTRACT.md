@@ -133,3 +133,13 @@ Ride / crash в секвенсоре нет (лейна нет; `CYMBAL` ест�
 - Легаси-дубль 1 совпадает с эмиттерным P3 **k=2** (ordinal 2), а не k=1. Измерено через `next_ordinal`: House, Acid, Techno, UKG → измеряемые ordinal **0, 2, 5, 9, 14, 20, 27, 35**.
 - Причина: `resetGenerationAttemptState()` в легаси-цикле не вызывается (`genrefeatures.cpp`).
 - Не исправлено в этом PR.
+
+## GENRE G (`--g-path genre`, PR-B2)
+
+- Путь: `genre_page.cpp:421-436` → `applyCurrent(true)` (`:347`) → `regenerateWithQuantizedCommit` (`quantized_generation_commit_impl.h:664`). Один такт в текущие рабочие слоты (`:641,651,817`), строки Song не добавляются.
+- Ключ попыток: `(mode, recipe, P, patternAddressFor(captureTarget))` (`:236-247`, `:259-268`, `:293-296`).
+- Умолчание `--g-address` — адрес, который даёт `captureTarget` на свежей загрузке: **0** (измерено, `#GENRE ... device_address=0`). Другой адрес отвергается.
+- Один дубль GENRE — **один такт** (`bar_idx` 0). Строки несут `"g_path":"genre"`.
+- Проверено: детерминизм (PASS 6), `next_ordinal = k+1` (PASS 7), GENRE undo-style = sequential (PASS 8), утечка между жанрами нет (PASS 10).
+- **GENRE и MATERIAL совпадают только при k = 0** (PASS 9: позиции и ноты баса). Для k ≥ 1 различаются позиции барабанов; ноты баса совпадают не во всех дублях. Это разные пути генерации, одинаковость не ожидалась.
+- **GENRE для Techno и UKG меняет высоты баса, но не ритм:** `gplab diversity` даёт distinct/8 = 1/8 на всех ролях. Позиции шагов одинаковы во всех дублях (вариативность — в нотах). Метрика измеряет позиции, это ожидаемо.
