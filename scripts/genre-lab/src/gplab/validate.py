@@ -91,7 +91,10 @@ def validate(take_bars: list[Bar], corpus: dict[str, VariantProfile], cfg: dict)
                            "misclassified": {t: p for t, p in preds.items() if p != v}}
 
         # 3. diversity
-        phrases = [feats[v][t] for t in sorted(feats[v])]
+        # Protected steps of this variant are not diversity (they are kept by design).
+        from .diversity import exclusion_masks, strip_steps
+        pmasks = exclusion_masks({r: set(sv) for r, sv in corpus[v].protected.items()})
+        phrases = [strip_steps(feats[v][t], pmasks) for t in sorted(feats[v])]
         dc = distinct_count(phrases, vc["tau_distinct_hits"], w)
         pair = [phrase_distance(a, b, w) for i, a in enumerate(phrases) for b in phrases[i + 1:]]
         need = vc["min_distinct"] * len(ts) / vc["takes_expected"]
