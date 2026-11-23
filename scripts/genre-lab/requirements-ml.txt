@@ -1,0 +1,9 @@
+# ML stages (corpus styles, beats, separation, bass). Heavy: needs torch.
+# Verify each with `python -m gplab selfcheck` before a long run.
+-r requirements-core.txt
+demucs
+basic-pitch
+essentia-tensorflow
+mido
+beat_this @ https://github.com/CPJKU/beat_this/archive/main.zip
+# ADTOF (recommended drums, run separately, export MIDI): https://github.com/MZehren/ADTOF

@@ -37,3 +37,15 @@ platform_sdl/grooveputer
 !.agent/skills/embedded-runtime-debugging/**
 
 /platform_sdl/tempo_sync_ui_test
+
+# Genre lab (scripts/genre-lab): generated outputs, corpora, models, audio. Never commit.
+scripts/genre-lab/out/
+scripts/genre-lab/data/
+scripts/genre-lab/models/
+scripts/genre-lab/**/__pycache__/
+scripts/genre-lab/**/.pytest_cache/
+scripts/genre-lab/**/*.wav
+scripts/genre-lab/**/*.mp3
+scripts/genre-lab/**/*.flac
+scripts/genre-lab/**/*.ogg
+scripts/genre-lab/**/*.m4a

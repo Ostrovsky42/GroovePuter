@@ -1,0 +1,15 @@
+[project]
+name = "gplab"
+version = "0.1.0"
+description = "GroovePuter genre lab: audio corpus -> variant profiles -> validated takes"
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "pyyaml>=6"]
+
+[project.scripts]
+gplab = "gplab.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
