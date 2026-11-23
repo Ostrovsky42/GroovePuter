@@ -268,7 +268,17 @@ def cmd_diversity(a):
     from .schema import ROLES, read_bars
 
     roles = a.roles.split(",") if a.roles else list(ROLES)
-    res = diversity(read_bars(a.takes), roles, a.tau)
+    exclude: dict[str, set[int]] = {}
+    for token in a.exclude_steps:
+        role, _, steps = token.partition(":")
+        if not steps:
+            raise SystemExit(f"--exclude-steps needs ROLE:STEPS, got {token!r}")
+        exclude.setdefault(role, set()).update(int(x) for x in steps.split(","))
+    profiles = None
+    if a.profiles:
+        from .profile import load_profiles
+        profiles, _meta = load_profiles(a.profiles)
+    res = diversity(read_bars(a.takes), roles, a.tau, exclude=exclude, profiles=profiles)
     text = render_markdown(res, roles)
     print(text, end="")
     if a.out:
@@ -327,6 +337,10 @@ def main(argv=None):
     s.add_argument("--takes", required=True)
     s.add_argument("--roles", default=None, help="comma list, default all roles (e.g. kick,snare,bass)")
     s.add_argument("--tau", type=float, default=None)
+    s.add_argument("--exclude-steps", nargs="*", default=[], metavar="ROLE:STEPS",
+                   help="e.g. kick:0,4,8,12 snare:4,12 (steps 0..15, ignored for every variant)")
+    s.add_argument("--profiles", default=None,
+                   help="profiles.json: its protected steps are ignored for each variant it has")
     s.add_argument("--out")
 
     s = add("holdout", cmd_holdout, "calibrate thresholds: held-out corpus tracks as takes")
