@@ -616,7 +616,7 @@ void appendTakeLines(const Options& o, int recipe, int k, const Scene& scene, fl
                     barEventsJson(scene, row) + ",\"recipe_id\":" + std::to_string(recipe) +
                     ",\"mode\":\"" + modeName + "\",\"p_level\":\"" + levelCode +
                     "\",\"pattern_address\":" + std::to_string(o.patternAddress) +
-                    ",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
+                    ",\"g_path\":\"material\",\"build_sha\":\"" + GP_BUILD_SHA + "\",\"timing\":\"grid\"}");
   }
 }
 

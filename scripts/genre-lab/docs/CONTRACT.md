@@ -96,6 +96,8 @@ Ride / crash в секвенсоре нет (лейна нет; `CYMBAL` ест�
 
 ## Какой G эмулируется (чтение кода, origin/main)
 
+**Измеряется MATERIAL G (phrase page); GENRE G — отдельный путь, см. PR-B2.** Каждая строка несёт `"g_path":"material"`.
+
 - **GENRE G** (`src/ui/pages/genre_page.cpp:421-436` → `applyCurrent(true)` `:347`, `:388-400` → `regenerateWithQuantizedCommit`, `src/generation/migration/quantized_generation_commit_impl.h:664`). Пишет **один такт в текущий рабочий слот** (`impl.h:641`, `:651`, `:817`): перезаписывает, Song не растёт. Ключ попыток — физический адрес слота (`patternAddressFor`, `impl.h:293-296`), не 0xFFFF.
 - **MATERIAL G** (`src/ui/pages/phrase_page.cpp:1215-1216` → `generatePhraseToSong` `:1480` → `GeneratedPhraseSong::generate`). Дописывает **4-тактную фразу в Song** в строку `songLength()` (`phrase_page.cpp:493-494`, `resolvedAppendRow`). Ключ попыток: `(mode, recipe, P, 0xFFFF)` (`generated_phrase_song.h:1013-1031`). Это путь эмулятора.
 
